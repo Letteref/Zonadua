@@ -539,3 +539,105 @@ test.describe('M2 — the dashboard stays responsive with a full season of rides
     ).toBeLessThan(100);
   });
 });
+test.describe('routes hero stat strip', () => {
+  /**
+   * The AVG · KCAL · NP strip must stay on one line at every phone width.
+   *
+   * This is a geometry bug, not a text bug: the old markup used `flex-wrap` with loose
+   * inline spans, so a long value broke a single stat across two lines and the strip itself
+   * could wrap — the card silently grew a row on the one screen where a rider is planning.
+   * Every number stayed readable in both states, which is exactly why it went unnoticed.
+   *
+   * The strip needs ~21 px of width per px of font size, so it was also measured before
+   * being fixed. That measurement is why MOVING moved up into the EST FINISH tile: four
+   * metrics could not hold 11 px on a 320 px screen without dropping to ~8 px, which is not
+   * a font size anyone can read on a moving bike.
+   */
+  const WIDTHS = [320, 360, 390, 420];
+
+  /** Drive the estimator to its most label-heavy plan: Attack IF, max headwind and cargo. */
+  async function maxOutPlan(page: Page): Promise<void> {
+    await page.getByRole('button', { name: /^attack/i }).click();
+    for (const [label, value] of [
+      ['Headwind in kilometres per hour', '40'],
+      ['Cargo weight in kilograms', '10']
+    ] as const) {
+      await page.locator(`input[aria-label="${label}"]`).fill(value);
+    }
+    await page.waitForTimeout(600);
+  }
+
+  /**
+   * The strip, plus the geometry that decides whether it wrapped.
+   *
+   * Found by structure — the hero section, then the row whose children include the AVG
+   * metric — rather than by the `whitespace-nowrap` class that fixes the bug. Searching for
+   * the fix's own class would make this test pass and fail for the wrong reason: dropping
+   * the class made the row unfindable instead of measuring a wrap.
+   */
+  const stripGeometry = (page: Page) =>
+    page.evaluate(() => {
+      const hero = [...document.querySelectorAll('section')].find((s) =>
+        /PROJECTED RIDE TIME/i.test(s.innerText)
+      );
+      if (!hero) return null;
+      const strip = [...hero.querySelectorAll('div')].find((d) =>
+        [...d.children].some((k) => /^AVG\b/i.test(k.textContent?.trim() ?? ''))
+      );
+      if (!strip) return null;
+      const group = strip.firstElementChild as HTMLElement;
+      const visible = [...group.children].filter(
+        (c) => getComputedStyle(c).display !== 'none'
+      ) as HTMLElement[];
+      return {
+        fontSize: parseFloat(getComputedStyle(strip).fontSize),
+        stripOverflow: strip.scrollWidth - strip.clientWidth,
+        groupOverflow: group.scrollWidth - group.clientWidth,
+        // A wrapped strip is taller than one line box; this is the direct measurement.
+        stripHeight: Math.round(strip.getBoundingClientRect().height),
+        lineHeight: Math.round(visible[0]?.getBoundingClientRect().height ?? 0),
+        // every visible metric must occupy exactly one line box; a wrapped one is taller
+        metricHeights: visible.map((c) => Math.round(c.getBoundingClientRect().height)),
+        text: visible.map((c) => c.textContent.trim()).join(' '),
+        stripText: strip.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      };
+    });
+
+  for (const width of WIDTHS) {
+    test(`stays on one line at ${width} px with the longest figures`, async ({ page }) => {
+      await openApp(page, '#/routes');
+      await page.getByText('PROJECTED RIDE TIME').waitFor({ timeout: 20_000 });
+      await page.setViewportSize({ width, height: 900 });
+      await maxOutPlan(page);
+
+      const g = await stripGeometry(page);
+      expect(g, 'stat strip not found').not.toBeNull();
+      expect(g!.text).toMatch(/12,977 KCAL/); // the widest the plan can get
+      expect(g!.stripOverflow, 'the strip overflows its card').toBeLessThanOrEqual(0);
+      expect(g!.groupOverflow, 'the metrics overflow each other').toBeLessThanOrEqual(0);
+      // One line box per metric — a wrapped stat is the failure this guards against.
+      expect(new Set(g!.metricHeights).size, `uneven metric heights: ${g!.metricHeights}`).toBe(1);
+      // Belt and braces: the row itself must not have grown a second line.
+      expect(
+        g!.stripHeight,
+        `the strip is ${g!.stripHeight}px tall for ${g!.lineHeight}px of text — it wrapped`
+      ).toBeLessThanOrEqual(g!.lineHeight + 8);
+      // And it must stay readable rather than solving the fit by shrinking away.
+      expect(g!.fontSize, `font collapsed to ${g!.fontSize}px`).toBeGreaterThanOrEqual(10);
+    });
+  }
+
+  test('MOVING time sits with the finish estimate instead of in the strip', async ({ page }) => {
+    await openApp(page, '#/routes');
+    await page.getByText('PROJECTED RIDE TIME').waitFor({ timeout: 20_000 });
+    await maxOutPlan(page);
+
+    // It is the same number in different clothes — elapsed including stops, and the same
+    // ride excluding them — so the pair reads as one figure with its allowance broken out.
+    const tile = page.locator('div', { hasText: 'Est finish' }).filter({ hasText: /Moving/i }).first();
+    await expect(tile.getByText(/Moving\s+40h\s+05m/i)).toBeVisible();
+
+    const strip = await stripGeometry(page);
+    expect(strip!.stripText, 'MOVING crept back into the strip').not.toMatch(/MOVING/i);
+  });
+});

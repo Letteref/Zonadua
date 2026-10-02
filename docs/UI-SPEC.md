@@ -1032,3 +1032,75 @@ diklaim tentang PWA tidak ada di `vite dev`.
 
 Ditambah satu jebakan non-obvious: `navigator.serviceWorker.ready` harus ditunggu **sebelum**
 reload. Tanpa itu, reload terjadi sebelum worker selesai dipasang, sehingga tesnya lulus sendiri tapi gagal di dalam suite.
+
+## §31 — Strip statistik hero Routes: satu baris, selalu (v7.0)
+
+Permintaan: AVG · KCAL · W NP · MOVING tidak boleh berubah jadi dua baris saat angkanya panjang.
+
+### 31.1 Geometri, bukan teks
+
+Markup lama memakai `flex-wrap`, dan tiap metrik berupa inline text longgar (`AVG` lalu
+`31.9 KM/H`). Akibatnya dua hal berbeda bisa terjadi: satu statistik **pecah jadi dua
+baris**, dan strip-nya sendiri **wrap**. Di kedua keadaan semua angka tetap terbaca — itu
+justru sebabnya bug ini tidak pernah terlihat.
+
+Diukur langsung di browser pada kondisi terburuk (IF Attack, headwind 40 km/h, cargo
+10 kg → `5.0 KM/H · 12,977 KCAL · 223 W NP · MOVING 40h 05m`):
+
+| | tinggi strip |
+|---|---|
+| Layout lama | **46 px** (dua baris) |
+| Sesudah | **21 px** (satu baris) |
+
+### 31.2 Satu baris vs terbaca — datanya bertentangan
+
+`whitespace-nowrap` saja tidak cukup. Strip ini membutuhkan **~30 px lebar per px font**,
+dan hampir semua lebar itu dipakai *label*, bukan angkanya: kasus realistik (32,1 km/h,
+1.063 kkal, 6j14m) punya rasio 29,99, sedangkan kasus terburuk hanya 31,07. Selisihnya
+4 % — artinya makin banyak effort tidak akan menolong; yang mendominasi justru labelnya.
+
+Artinya "selalu satu baris" dan "selalu terbaca" tidak bisa dua-duanya di ponsel kecil:
+
+| Lebar layar | Font terbesar agar muat 1 baris |
+|---|---|
+| 420 px | 11,6 px → **11 px penuh** |
+| 390 px | 10,6 px |
+| 360 px | 9,6 px |
+| 320 px | **8,3 px** — tidak terbaca di sepeda |
+
+### 31.3 Yang dipilih: MOVING pindah ke tile EST FINISH
+
+Empat metrik tidak akan pernah muat satu baris pada 11 px di layar 320 px. Solusinya
+bukan mengecilkan font, tapi **mengurangi isinya**: `MOVING` dipindah ke bawah tile
+`EST FINISH` sebagai baris ketiga.
+
+Ini bukan pemindahan asal — `estFinish` adalah waktu tempuh **termasuk** berhenti, dan
+`movingSec` adalah ride yang sama **tanpa** berhenti. Pasangan itu sudah enak dibaca sebagai
+satu angka dengan rinciannya, dan sekarang selisih antara keduanya terlihat langsung sebagai
+ durasi berhenti.
+
+Sisa strip jadi tiga metrik: rasio turun ke **21,29 px per px font**, sehingga **11 px penuh
+muat di 320 px** (231 px konten di ruang 248 px). Tidak ada font yang mengecil, tidak ada
+teks yang terpotong.
+
+### 31.4 Bullet separator mengalah di layar tersempit
+
+Bullet tidak membawa informasi apa pun dan memakan ~28 px. Pada lebar < 340 px bullet
+ disembunyikan (`hidden min-[340px]:inline`); tiap metrik tetap punya label sendiri, jadi
+ tidak ada yang menjadi ambigu. Di 360 px ke atas bullet kembali muncul.
+
+### 31.5 Tes geometri
+
+Lima tes E2E baru di `routes hero stat strip`, pada 320/360/390/420 px dengan angka
+terpanjang: tinggi strip tidak boleh melebihi satu line box + 8 px, tinggi tiap metrik harus
+sama, tidak boleh ada overflow pada strip maupun di antar metrik, dan font tidak boleh turun
+di bawah 10 px — supaya "cocok" tidak diselesaikan denganmengecil sampai tidak terbaca.
+
+Elemennya dicari **secara struktural** (hero section → baris yang anaknya berisi metrik AVG),
+bukan lewat kelas `whitespace-nowrap`. Mencari kelas perbaikannya sendiri akan membuat tes
+lolos dan gagal karena alasan yang salah: mencabut kelas membuat baris tidak ditemukan,
+alih-alih mengukur wrap.
+
+**Bukti menangkap regresi:** markup `flex-wrap` + `whitespace-nowrap` dilepas dan font
+dinaikkan ke 16 px — keempat lebar gagal dengan `the strip is 61px tall for 24px of text — it
+wrapped`. Dikembalikan: 30/30 hijau.
