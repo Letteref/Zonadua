@@ -8,15 +8,12 @@ Estimasi adalah *effort relatif*, bukan janji kalender.
 
 ## Status aktual (2 Okt 2026)
 
-> Dokumen ini terakhir menyatakan "M0 — foundation" sementara codebase sudah di **UI v5.7.2**.
-> Bagian di bawah sudah diselaraskan dengan kondisi repo sebenarnya. Ringkasan yang sama ada di
-> [README.md](../README.md#status).
+> Ringkasan yang sama ada di [README.md](../README.md#status).
 
-**Kesenjangannya: UI jauh mendahului logic.** Phase M0 sudah punya test runner (Vitest) sejak
-langkah 0 dieksekusi, jadi phase berikutnya bisa dinyatakan selesai secara terverifikasi.
-`physics` · `pacing` masuk lewat M3 dan `race` (slice pertama) masuk 2 Okt 2026; yang tersisa
-adalah **proyeksi race penuh** — hero buffer/finish masih memakai `AVG_KMH` konstanta dan
-feasibility belum dibandingkan dengan CP/W′.
+**Kesenjangan yang pernah tercatat sudah tertutup.** App pernah rebuilt dari mockup dengan UI
+jauh mendahului logic; hari ini M0–M4 terverifikasi oleh gerbang (275 tes unit · 14 tes E2E ·
+typecheck 0 error · build hijau). Yang tersisa bukan catch-up visual melainkan **kalibrasi
+pascalarace** — lihat DoD M4.
 
 | Phase | State | Bukti di repo |
 | --- | --- | --- |
@@ -163,8 +160,9 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 > `sustainAt(…, horizonSec)` menjawab "apakah plan pace masih bisa dipegang" — termasuk di
 > tooltip crosshair dan kartu `W′ at this pace`. Detail model: `UI-SPEC §26`.
 > **Slice 4 (v6.6):** DoD E2E Playwright + uji offline tertutup — `tests/e2e/race.spec.ts`
-> (10 tes) mengendarai cockpit dengan `page.clock`, memeriksa konsistensi buffer, dan memverifikasi
-> aplikasi tetap mem-*project* saat offline. Detail: `UI-SPEC §27`.
+> (14 tes) mengendarai cockpit dengan `page.clock`, memeriksa konsistensi buffer, memverifikasi
+> aplikasi tetap mem-*project* saat offline, menjaga pita readout tetap di atas plot (§28), dan
+> mengukur latensi input checkpoint. Detail: `UI-SPEC §27`.
 > **Sisa:** pascalarace belum menyimpan koreksi hasil aktual (masuk sebagai bahan kalibrasi M5).
 
 **Tujuan:** tracker race-day yang bekerja penuh offline dan menjawab "apakah saya aman?" dalam 1 detik.
@@ -177,12 +175,23 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 
 **Definition of done:**
 - [x] E2E: setup race 200 km → simulasi input checkpoint → buffer & proyeksi benar (fixture waktu,
-      `page.clock`, 10 tes di `tests/e2e/race.spec.ts`)
+      `page.clock`, 14 tes di `tests/e2e/race.spec.ts`)
 - [x] Semua fitur race jalan dengan network offline (Playwright `context.setOffline` — proyeksi
       tetap koheren, dan checkpoint yang di-*log* offline bertahan setelah reload)
 - [ ] Pasca-race: simpan hasil aktual vs estimasi (data kalibrasi M5) — belum dikerjakan
-- [ ] Input checkpoint → hasil < 100 ms
-- [ ] Status KRITIS muncul saat required pace > kemampuan (fixture W′)
+- [x] Input checkpoint → hasil < 100 ms — **terukur 3,7 ms** di Chromium (klik Log → hero
+      repaint, diukur in-page lewat `requestAnimationFrame`; `race.spec.ts` "repaints the
+      cockpit inside the 100 ms budget"). Angka ini tidak di-*mock*: ia mencakup tulis Dexie,
+      `liveQuery` untuk `race_logs`, dan re-derivasi `kmAtClock` → `planMinutesBetween` →
+      `wPrimeSpentAt`/`sustainAt`. Diukur dengan jam sungguhan, bukan `page.clock`, karena
+      Playwright ikut men-*stub* `performance.now`.
+- [x] Status KRITIS muncul saat required pace > kemampuan (fixture W′) — `race.test.ts`
+      "does not let even a fresh tank rescue an impossible gradient": dinding +12 % yang
+      ter-solve ke 10 km/h menghasilkan `sustainable === false` dengan W′ masih utuh, jadi
+      verdict-nya bukan "tangki habis" melainkan "gradiennya memang di luar jangkauan".
+      Pasangan ujinya "fails a wall once the tank is empty, but passes it fresh" — dinding
+      yang sama **lolos** sebelum W′ habis dan **gagal** sesudah, sehingga penilaiannya
+      benar-benar membaca tangki, bukan sekadar membaca rate.
 
 ---
 
