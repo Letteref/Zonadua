@@ -1,0 +1,44 @@
+{
+  "name": "EXAMPLE — replace me with a real ride",
+  "date": "2026-09-14",
+  "verified": false,
+  "notes": "Format reference only. This profile and these numbers are invented, which is exactly why `verified` is false: an unverified file is loaded and printed by the harness but never counted toward the ±7 % gate. Copy this shape, paste your own numbers, and only set verified to true for a ride you actually did on a device.",
+  "rider": {
+    "massKg": 70,
+    "bikeKg": 8.4,
+    "crr": 0.005,
+    "cda": 0.31
+  },
+  "pacing": {
+    "mode": "constant",
+    "watts": 220
+  },
+  "actual": {
+    "movingSec": 20500,
+    "distanceKm": 100,
+    "elevGainM": 2010
+  },
+  "profile": [
+    { "distKm": 0, "altM": 400 },
+    { "distKm": 5, "altM": 600 },
+    { "distKm": 10, "altM": 800 },
+    { "distKm": 15, "altM": 1000 },
+    { "distKm": 20, "altM": 1200 },
+    { "distKm": 25, "altM": 1500 },
+    { "distKm": 30, "altM": 1800 },
+    { "distKm": 35, "altM": 2100 },
+    { "distKm": 40, "altM": 2400 },
+    { "distKm": 45, "altM": 2402.5 },
+    { "distKm": 50, "altM": 2405 },
+    { "distKm": 55, "altM": 2407.5 },
+    { "distKm": 60, "altM": 2410 },
+    { "distKm": 65, "altM": 2032.5 },
+    { "distKm": 70, "altM": 1655 },
+    { "distKm": 75, "altM": 1277.5 },
+    { "distKm": 80, "altM": 900 },
+    { "distKm": 85, "altM": 705 },
+    { "distKm": 90, "altM": 510 },
+    { "distKm": 95, "altM": 315 },
+    { "distKm": 100, "altM": 120 }
+  ]
+}

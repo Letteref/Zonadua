@@ -36,7 +36,7 @@ Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
 > mean-max curve + CP/W' fit, time in zones), `course.ts` (GPX/TCX), `units.ts`, `trend.ts`,
 > and the M3 solver pair `physics.ts` + `pacing.ts` (power→speed → finish time → checkpoints →
-interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **284 unit tests** and **25 Playwright E2E tests**.
+interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **310 unit tests** (308 passing, 2 waiting on a real device ride) and **37 Playwright E2E tests**.
 Still missing: everything in M5 — the AI Coach has no LLM call, and Strava sync has no backend.
 
 ## Commands
@@ -100,7 +100,10 @@ were run for real, and **two turned out to be genuine bugs** the boxes had been 
 backup silently dropped the power-curve table, and "Delete all data" was undone by the seed on the
 next boot. Both now have regression tests. What remains open needs something this repo cannot
 provide: Cloudflare credentials for the preview deploy, a phone for the Android install check, and a
-real device on the same route for the ±7 % golden test. Design work is at **v6.9**
+real device on the same route for the ±7 % golden test. That last one now has its instrument in
+place — drop a ride into `validation/rides/` and `npm test` projects it through the app's own
+planner and fails past ±7 %, per ride and on the mean ([docs/validation](validation/rides/README.md)) —
+but the box stays unticked until a real ride fills it. Design work is at **v6.9**
 (see [docs/UI-SPEC.md](docs/UI-SPEC.md)):
 
 | Phase | State |

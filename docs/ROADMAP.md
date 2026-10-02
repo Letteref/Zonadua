@@ -188,10 +188,53 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 - Map preview (MapLibre, lazy-load) — opsional saat online
 
 **Definition of done:**
-- [ ] Golden test: deviasi estimasi vs ride nyata di rute sama < ±7% — *butuh data ride nyata di rute yang sama; belum ada device tersambung*
+- [ ] Golden test: deviasi estimasi vs ride nyata di rute sama < ±7% — *harness siap, kotak masih kosong: butuh data ride nyata di rute yang sama; belum ada device tersambung. Lihat "Harness validasi" di bawah*
 - [x] Parameter naik/turun menghasilkan arah perubahan yang logis (property test di `physics.test.ts` + `pacing.test.ts`)
 - [x] Tabel checkpoint menampilkan KM / grade / ETA jam lokal (+ `legKph` dan buffer vs cut-off)
 - [x] Rute 250 km dihitung < 1 s (satu lintasan sinkron; ukuran hike <1 ms, web worker tidak dibutuhkan)
+
+#### Harness validasi akurasi prediksi (2 Okt 2026)
+
+Kotak golden test di atas butuh device; yang bisa dikerjakan tanpa device sudah dikerjakan:
+**instrumennya sekarang ada**, kotaknya sendiri masih kosong.
+
+Tiga lapisan di `src/lib/domain/__tests__/validation.test.ts` (19 tes), sengaja tidak
+saling-rujukan:
+
+1. **Angka dari luar.** Konstanta atmosfer standar ICAO (1,225 / 1,112 / 0,7364 kg/m³) dan
+   power yang dihitung tangan dari teksbook — 149,86 W untuk 80 kg di 30 km/h datar,
+   484,67 W di tanjakan 5 %, −185,03 W di turunan 5 %. Ditulis sebagai literal dan
+   dibandingkan ke output model. Lapisan ini gagal kalau fisikanya salah, bukan kalau
+   tidak konsisten dengan dirinya sendiri.
+2. **Identitas yang harus menutup tepat.** Residu solver di 42 pasang (gradien, watt);
+   headwind dihargai tepat sebesar selisih aero kubik dan tidak menyentuh gravity/rolling;
+   joule yang dikeluarkan = watt × waktu.
+3. **Buku besar atas rute utuh.** Empat profil (datar, bergelombang, alpine, turunan-led)
+   — Σ jarak = panjang rute, Σ waktu = total, Σ rise = alt akhir − alt awal, kolom kumulatif
+   monoton. Bug jahitan di `resampleProfile` akan muncul di sini.
+
+Separuh device-nya ada di `src/lib/domain/__tests__/deviation.test.ts`: membaca
+`validation/rides/*.json`, memroyeksikan tiap ride lewat planner yang sama, dan gagal jika
+deviasi > ±7 % **per ride maupun rata-rata absolut**. Berkas wajib punya
+`"verified": true` — tidak ada yang bisa mengeceknya, justru itu sebabnya dipisah dari
+seluruh yang bisa dicek, supaya ride demo tidak bisa menutup kotak secara tak sengaja.
+
+**Bukti gerbang menangkap:** sebuah ride `verified` dengan `actual.movingSec` dikurangi
+sepihak gagal di kedua separuh dengan pesan
+`215.6 min predicted vs 233.3 min actual → -7.6%`. Berkas probe lalu dihapus.
+
+**Tiga tes yang gagal saat pertama ditulis, semuanya asumsi saya yang salah — bukan bug
+produk, dan satu di antaranya berarti fisikanya salah di kepala saya:** (a) headwind 10 km/h
+dianggap sama dengan bersepeda 40 km/h di angin tenang — SALAH, karena
+rolling dan gravity tetap mengikuti kecepatan tanah; (b) checkpoint tengah jarak
+diasumsikan tengah waktu — SALAH, di profil alpine separuh pertama memakan 72 % waktu;
+(c) `clockAtKm` dibandingkan dengan elapsed — SALAH, fungsinya mengembalikan menit jam
+dinding yang memuat start 07:00. Tiga kegagalan ini justru bukti bahwa harness bekerja: ia menolak asumsi saya, bukan menyalinnya.
+
+#### Kotak yang tetap kosong setelah harness ini
+
+Golden test ±7 % (butuh device), deploy preview (butuh kredensial Cloudflare), pemasangan
+Android (butuh ponsel). Tujuh kotak lain tetap tertutup.
 
 ---
 
