@@ -780,3 +780,66 @@ Verifikasi browser dua arah (CP fit 231 W dari data seed): pada IF 0,70 (195 W) 
 `W′ 0%`, `271 W needed · 231 W left`, `W′ is spent`. Kesimpulan berubah sesuai power yang
 dibutuhkan. Gerbang: `npm test` 275 hijau, `npm run check` 0 error 0 warning, `npm run build`
 hijau 2.82 s.
+
+## 27. v6.6 — E2E race cockpit dengan clock simulasi (2 Okt 2026)
+
+Item terakhir DoD M4: suite E2E yang mengendarai cockpit dengan jam palsu dan memeriksa
+buffer — termasuk dalam kondisi offline.
+
+### 27.1 Kenapa E2E ini meng-*assert hubungan*, bukan angka
+
+Bug yang harus ditangkap suite ini adalah §25.1: hero buffer yang selalu `+0h 00m` karena
+projected finish diturunkan dari required pace, dan required pace diturunkan dari sisa waktu
+ke cut-off — keduanya saling meniadakan. Tes yang menulis *"BUFFER harus +0h 00m"* akan
+**lulus** terhadap build yang rusak itu. Jadi assertion berbebannya adalah klaim
+konsistensi:
+
+- `buffer` = `cut-off − projected finish` (selisih ≤ 1 menit),
+- `buffer` bukan nol,
+- jam maju → `km done` naik, `km to go` turun, `required avg` turun,
+- logged checkpoint benar-benar menggerakkan proyeksi.
+
+Nilai literal hanya muncul di tempat form setup sendiri yang mengaturnya (roll-out 05:30).
+
+**Bukti bahwa suite ini benar-benar menangkap regresi:** tautologi lama diinjeksi balik ke
+`Race.svelte` dan suite dijalankan — **5 dari 10 tes gagal**, termasuk "buffer equals the gap".
+Setelah dikembalikan: 10/10 hijau. Tes yang tidak pernah gagal tidak membuktikan apa pun.
+
+### 27.2 Clock palsu, dan jebakan `startTimeMs`
+
+Race cockpit membaca `Date.now()` saat init, jadi jam harus dipasang **sebelum** navigasi —
+`page.clock.install()` di `page.goto` sesudahnya akan diabaikan diam-diam dan setiap
+assertion akan mengukur waktu dinding. `timezoneId` di-*pin* ke Asia/Jakarta karena
+"roll-out 05:30" harus berarti instant yang sama di setiap mesin.
+
+Temuan yang harus dicatat: **projected finish sengaja INVARIAN** ketika rider persis
+mengikuti plan. Jam 10:00 dan 11:30 sama-sama proyeksi 12:49, karena datang lebih awal dan
+menempuh lebih jauh saling meniadakan — itu benar secara fisika, bukan clock beku. Yang
+harus bergerak adalah `km done` / `km to go` / `required avg`. Tes pertama kali gagal karena
+menganggap sebaliknya; ini dicatat di `§27.1` supaya tidak diulang.
+
+### 27.3 Fixture menyemai IndexedDB, bukan `seed.ts`
+
+`seed.ts` mengisi athlete, bikes, components, activities, streams — **tidak** `routes`
+atau `races`. Seluruh nilai cockpit bergantung pada profil yang ter-solve, jadi suite yang
+memakai seed hanya akan menguji state "No GPX". Daripada memperluas seed produksi (yang akan
+meletakkan rute palsu di layar pertama setiap pengguna), tes menyemai persis baris yang
+dibutuhkan:
+
+- store **tidak** dibuat di fixture — skema milik Dexie di `db.ts`; membuatnya dengan
+  indeks berbeda akan membuat aplikasi melempar `SchemaError` saat dibuka,
+- profil adalah sinusoid 200 km dengan pendakian nyata, bukan garis datar —
+  `powerForSpeed` menilai *gradien*, dan di rute datar semua jawaban feasibility jadi
+  "sustainable" secara trivial,
+- kompresi memakai `CompressionStream('deflate-raw')` yang sama dengan `deflateJson`,
+  sehingga byte-nya benar-benar lewat `inflateJson`, bukan jalur fallback JSON biasa.
+
+### 27.4 Gate baru
+
+`npm run test:e2e` (butuh `npm run test:e2e:install` sekali). `npm run test:all` menjalankan
+unit + E2E. E2E berjalan terhadap **build preview**, bukan dev server: klaim offline hanya
+bermakna untuk output build dengan service worker dan bundel ter-minify-nya.
+
+`vitest.config.ts` dipisah dari `vite.config.ts` karena file E2E memakai sufiks `.spec.ts`
+konvensi Playwright; tanpa `include` eksplisit, Vitest akan mengoleksinya dan gagal di
+runner yang salah.

@@ -162,8 +162,10 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 > **Slice 3 (v6.5):** feasibility vs CP/W′. `wPrimeSpentAt` +
 > `sustainAt(…, horizonSec)` menjawab "apakah plan pace masih bisa dipegang" — termasuk di
 > tooltip crosshair dan kartu `W′ at this pace`. Detail model: `UI-SPEC §26`.
-> **Sisa (bukan domain):** DoD E2E Playwright + uji offline belum dikerjakan, dan
-> pascalarace belum menyimpan koreksi hasil aktual (masuk sebagai bahan kalibrasi M5).
+> **Slice 4 (v6.6):** DoD E2E Playwright + uji offline tertutup — `tests/e2e/race.spec.ts`
+> (10 tes) mengendarai cockpit dengan `page.clock`, memeriksa konsistensi buffer, dan memverifikasi
+> aplikasi tetap mem-*project* saat offline. Detail: `UI-SPEC §27`.
+> **Sisa:** pascalarace belum menyimpan koreksi hasil aktual (masuk sebagai bahan kalibrasi M5).
 
 **Tujuan:** tracker race-day yang bekerja penuh offline dan menjawab "apakah saya aman?" dalam 1 detik.
 
@@ -174,8 +176,11 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 - Pasca-race: hasil aktual vs estimasi → simpan koreksi faktor (data untuk kalibrasi M5)
 
 **Definition of done:**
-- [ ] E2E: setup race 250 km → simulasi input checkpoint → buffer & proyeksi benar (fixture waktu)
-- [ ] Semua fitur race jalan dengan network offline (Playwright context offline)
+- [x] E2E: setup race 200 km → simulasi input checkpoint → buffer & proyeksi benar (fixture waktu,
+      `page.clock`, 10 tes di `tests/e2e/race.spec.ts`)
+- [x] Semua fitur race jalan dengan network offline (Playwright `context.setOffline` — proyeksi
+      tetap koheren, dan checkpoint yang di-*log* offline bertahan setelah reload)
+- [ ] Pasca-race: simpan hasil aktual vs estimasi (data kalibrasi M5) — belum dikerjakan
 - [ ] Input checkpoint → hasil < 100 ms
 - [ ] Status KRITIS muncul saat required pace > kemampuan (fixture W′)
 

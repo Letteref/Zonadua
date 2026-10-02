@@ -12,3 +12,9 @@ coverage/
 
 # Freebuff desktop app metadata (preview logs, thread ids) — not part of the project
 .freebuff/
+
+# Playwright E2E artefacts (traces, failure screenshots)
+test-results/
+playwright-report/
+blob-report/
+.playwright/

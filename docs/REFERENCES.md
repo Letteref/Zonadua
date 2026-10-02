@@ -89,7 +89,7 @@ ada di `package.json`; sisanya **belum di-*install*** — jangan dibaca sebagai 
 | 📋 [pako](https://github.com/nodeca/pako) | Deflate untuk stream | MIT | **Belum** — alternatif native |
 | 📋 [nanoid](https://github.com/ai/nanoid) | ID | MIT | **Belum** — sekarang `newId()` sendiri |
 | 📋 [fast-check](https://github.com/dubzzz/fast-check) | Property testing | MIT | **Belum** — kandidat bagus untuk fisika |
-| 📋 [Playwright](https://github.com/microsoft/playwright) | E2E | Apache-2.0 | **Belum** — termasuk simulasi offline |
+| ✅ [Playwright](https://github.com/microsoft/playwright) | E2E | Apache-2.0 | Terpasang — race cockpit + simulasi offline (`UI-SPEC §27`) |
 | 📋 [Open-Meteo](https://open-meteo.com/) | Weather API | Free, no key | **Belum** — headwind masih input manual |
 | 📋 [OpenStreetMap tiles](https://operations.osmfoundation.org/policies/tiles/) | Basemap | ODbL | **Belum** — max 1 req/s, cache agresif |
 | 📋 [OSM France tiles](https://wiki.openstreetmap.org/wiki/Tile_servers) | Basemap alt | ODbL | **Belum** — untuk style topo |
