@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GowsLab — Mockup FAB × Pill Aktif (Anti-Bentrok)</title>
+<style>
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:40px 16px 80px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 28px; line-height:1.55; }
+  .lede em { color:var(--deep); font-style:italic; font-weight:600; }
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px; padding:22px 20px 8px; margin-bottom:18px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 10px 28px -14px rgba(23,24,28,.14); overflow:hidden; }
+  .mock h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.5; margin-bottom:14px; }
+  .stage { background:var(--canvas); border-radius:18px; padding:50px 14px 24px; position:relative; margin-bottom:10px; }
+  .stcap { position:absolute; top:10px; left:14px; font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+           color:var(--ink-dim); background:var(--surface); border:1px solid var(--hairline); padding:3px 9px; border-radius:999px; }
+  .stcap.bad { color:var(--deep); border-color:rgba(168,12,33,.35); background:rgba(232,16,46,.06); }
+  /* ---------- nav pill (v5.5) ---------- */
+  .navwrap { position:relative; }
+  .nav { position:relative; height:64px; border-radius:999px; display:flex; align-items:center; padding:0 8px;
+         background:linear-gradient(150deg,#17181d 0%,#141519 50%,#1a1218 100%); border:1px solid var(--hairline-dark);
+         box-shadow:0 16px 40px -16px rgba(20,21,25,.55), 0 6px 28px -10px rgba(232,16,46,.24); }
+  .tab { flex:1; display:flex; align-items:center; justify-content:center; height:44px; color:var(--on-mono-dim); position:relative; z-index:2; }
+  .tab svg { width:21px; height:21px; flex:none; }
+  .tab.pill { background:var(--fill); color:#fff; border-radius:999px; gap:6px; padding:0 8px;
+              font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+              box-shadow:0 4px 14px -6px rgba(232,16,46,.55); }
+  .tab.pill svg { width:16px; height:16px; }
+  .fabslot { width:64px; flex:none; position:relative; align-self:stretch; }
+  .fab { position:absolute; left:50%; transform:translateX(-50%); border-radius:999px; display:grid; place-items:center; z-index:2; }
+  .fab svg { width:24px; height:24px; }
+  /* ---------- FAB variants ---------- */
+  .fab-crimson { width:56px; height:56px; color:#fff;
+    background:linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 38%, transparent 58%), linear-gradient(135deg,#d50f26,#a80c21);
+    border:1px solid rgba(255,255,255,.28);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35); }
+  .fab-ink { width:56px; height:56px; color:var(--rose);
+    background:linear-gradient(150deg,#1b1c22,#141519); border:1px solid var(--hairline-dark);
+    box-shadow:0 16px 40px -16px rgba(20,21,25,.6); }
+  /* 0 — baseline: persis seperti app saat ini (-20px) */
+  .v0 .fab { top:-20px; }
+  /* 1 & 3 — curved crest: lengkungan nav + FAB docked di puncak */
+  .crestcut { position:absolute; left:50%; transform:translateX(-50%); top:-26px; width:96px; height:30px;
+    background:#15161a; border:1px solid var(--hairline-dark); border-bottom:none; border-radius:999px 999px 0 0; z-index:1; }
+  .v1 .fab, .v3 .fab { top:-42px; }
+  /* 2 — floating halo: naik lebih tinggi + ring canvas memotong bar */
+  .v2 .fab { top:-28px; box-shadow:0 0 0 6px var(--canvas), 0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35); }
+  /* 3 — ink crest: lengkungan + FAB monokrom, plus rose */
+  .pros { display:flex; gap:8px; flex-wrap:wrap; padding:12px 0 16px; }
+  .pros span { font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:999px; background:var(--tile);
+    border:1px solid var(--hairline); color:var(--ink-dim); }
+  .pros span.plus { color:var(--deep); border-color:rgba(168,12,33,.35); background:rgba(232,16,46,.06); }
+  .how { font-size:11.5px; color:var(--ink-dim); line-height:1.6; border-top:1px dashed var(--hairline); padding-top:12px; margin-bottom:6px; }
+  .how b { color:var(--ink); }
+  .pick { text-align:center; background:var(--surface); border:1px dashed rgba(168,12,33,.4); border-radius:20px; padding:18px 20px; }
+  .pick h3 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+  .pick p { font-size:12.5px; color:var(--ink-dim); line-height:1.6; }
+  .pick b { color:var(--deep); }
+  footer { text-align:center; color:var(--ink-dim); font-size:11.5px; margin-top:22px; line-height:1.6; }
+  footer b { color:var(--deep); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mockup FAB × Pill Aktif</h1>
+  <p class="lede">Masalah: sejak pill aktif <em>crimson</em> (v5.5), FAB gradien crimson lama jadi <em>blob merah ketiga</em> — paling parah saat tab <b>Rides</b> atau <b>Gear</b> aktif (pill merah tepat di samping FAB merah). Tiga strategi perbaikan di bawah, masing-masing ditampilkan dalam dua kondisi kritis.</p>
+
+  <!-- ============ 0 BASELINE ============ -->
+  <div class="mock">
+    <h2><span class="num">0</span>Sekarang — tiga titik merah</h2>
+    <p class="desc">FAB rendah, sebaris persis dengan pill. Pill aktif dan FAB bersaing: dua momen crimson di satu kartu nav.</p>
+    <div class="stage">
+      <span class="stcap bad">Rides aktif · bentrok</span>
+      <div class="navwrap v0">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Rides</div>
+          <div class="fabslot"><div class="fab fab-crimson"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="stage">
+      <span class="stcap bad">Gear aktif · bentrok</span>
+      <div class="navwrap v0">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="fabslot"><div class="fab fab-crimson"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg>Gear</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="pros"><span class="plus">+ status quo</span><span>− 3 blob merah searis</span><span>− melanggar "1 momen aksen/kartu"</span></div>
+  </div>
+
+  <!-- ============ 1 CURVED CREST ============ -->
+  <div class="mock">
+    <h2><span class="num">1</span>Curved Crest — bar melengkung, FAB di puncak</h2>
+    <p class="desc">Idemu: nav menumbuhkan <b>lengkungan halus</b> di tengah (curved bar) dan FAB <b>mengambang di puncaknya</b> — naik satu lapis, tidak lagi sebaris dengan pill. Pill dan FAB tak pernah bersentuhan visual.</p>
+    <div class="stage">
+      <span class="stcap">Rides aktif</span>
+      <div class="navwrap v1">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Rides</div>
+          <div class="fabslot"><div class="fab fab-crimson"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+        <div class="crestcut"></div>
+      </div>
+    </div>
+    <div class="stage">
+      <span class="stcap">Gear aktif</span>
+      <div class="navwrap v1">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="fabslot"><div class="fab fab-crimson"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg>Gear</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+        <div class="crestcut"></div>
+      </div>
+    </div>
+    <div class="how"><b>Implementasi:</b> lengkungan = pseudo-element pada wrapper nav (gradient + border sama, bulat atas); FAB naik ke −42px, slot konten nav tetap. Speed-dial, scrim, Escape — tak berubah.</div>
+    <div class="pros"><span class="plus">+ persis idemu "mengambang + curved bar"</span><span class="plus">+ hierarki jelas: pill di bar, FAB di puncak</span><span>− rework sedikit lebih besar (bentuk nav berubah)</span></div>
+  </div>
+
+  <!-- ============ 2 FLOATING HALO ============ -->
+  <div class="mock">
+    <h2><span class="num">2</span>Floating Halo — naik tinggi + ring canvas</h2>
+    <p class="desc">Tanpa mengubah bentuk nav: FAB <b>naik lebih tinggi</b> dan diberi <b>ring selebar 6px warna canvas</b> — seolah memotong bar di bawahnya. Jarak + "lubang" membuat pill dan FAB terbaca sebagai dua objek berbeda.</p>
+    <div class="stage">
+      <span class="stcap">Rides aktif</span>
+      <div class="navwrap v2">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Rides</div>
+          <div class="fabslot"><div class="fab fab-crimson"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="stage">
+      <span class="stcap">Gear aktif</span>
+      <div class="navwrap v2">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="fabslot"><div class="fab fab-crimson"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg>Gear</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="how"><b>Implementasi:</b> satu perubahan — top −28px + <code>box-shadow: 0 0 0 6px var(--canvas)</code> sebelum glow. Paling murah, efek langsung.</div>
+    <div class="pros"><span class="plus">+ perubahan minimal (1 properti)</span><span class="plus">+ tetap ada ruang untuk speed-dial</span><span>− crimson masih dua momen, cuma terpisah ruang</span></div>
+  </div>
+
+  <!-- ============ 3 INK CREST ============ -->
+  <div class="mock">
+    <h2><span class="num">3</span>Ink Crest — lengkungan + FAB monokrom</h2>
+    <p class="desc">Kombinasi paling tegas: lengkungan varian 1, tapi FAB jadi <b>monokrom gelap</b> dengan plus <i>rose</i>. Crimson menjadi <b>eksklusif milik pill aktif</b> — nav hanya punya satu momen aksen, sesuai aturan sistem warna.</p>
+    <div class="stage">
+      <span class="stcap">Rides aktif</span>
+      <div class="navwrap v3">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Rides</div>
+          <div class="fabslot"><div class="fab fab-ink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+        <div class="crestcut"></div>
+      </div>
+    </div>
+    <div class="stage">
+      <span class="stcap">Gear aktif</span>
+      <div class="navwrap v3">
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="fabslot"><div class="fab fab-ink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+          <div class="tab pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg>Gear</div>
+          <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+        </div>
+        <div class="crestcut"></div>
+      </div>
+    </div>
+    <div class="how"><b>Implementasi:</b> crest varian 1 + FAB ink. Saat dial terbuka: plus tetap berputar ×; saat Routes/Race aktif: ring rose tipis sebagai sinyal (bukan fill).</div>
+    <div class="pros"><span class="plus">+ paling patuh sistem warna (1 momen aksen)</span><span class="plus">+ pill aktif langsung jadi bintang nav</span><span>− identitas merah FAB hilang, lebih kalem</span></div>
+  </div>
+
+  <div class="pick">
+    <h3>Rekomendasi</h3>
+    <p><b>1 — Curved Crest</b> kalau mau nav punya karakter "cockpit" dan menjawab idemu secara harfiah (mengambang + curved bar).<br />
+    <b>3 — Ink Crest</b> kalau mau yang paling bersih secara sistem warna: pill aktif satu-satunya merah di nav.</p>
+  </div>
+
+  <footer>GowsLab · mockup statis — bukan build final.<br />Balas dengan <b>nomor varian</b> (mis. "pakai 1") untuk eksekusi di AppNav.svelte.</footer>
+</div>
+</body>
+</html>

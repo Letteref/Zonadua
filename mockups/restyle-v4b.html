@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GowsLab — Restyle v4 · Round 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #e9ebef;
+    padding: 40px 32px 64px;
+    color: #16181c;
+  }
+  .page-head { max-width: 1720px; margin: 0 auto 8px; }
+  .page-head h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+  .page-head p { color: #6b7076; font-size: 14px; margin-top: 6px; max-width: 760px; line-height: 1.6; }
+  .row {
+    display: flex; gap: 36px; padding: 28px 4px 12px;
+    overflow-x: auto; align-items: flex-start;
+    max-width: 1720px; margin: 0 auto;
+  }
+  .variant { flex: 0 0 auto; width: 372px; }
+  .variant-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .variant-label .tag {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    background: #16181c; color: #fff; border-radius: 999px; padding: 5px 12px;
+  }
+  .variant-label.ve .tag { background: linear-gradient(120deg,#F16001,#C10801); }
+  .variant-label.vf .tag { background: #FF3355; }
+  .variant-label.vg .tag { background: #111318; color: #D9F24C; }
+  .variant-label.vh .tag { background: #FF2E55; }
+  .variant-label h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+  .variant-desc { font-size: 12.5px; color: #6b7076; line-height: 1.55; margin-bottom: 14px; min-height: 58px; }
+
+  .phone {
+    width: 372px; border-radius: 44px; padding: 12px;
+    background: #0d0e10;
+    box-shadow: 0 24px 60px -24px rgba(10,12,16,.45), 0 2px 6px rgba(10,12,16,.2);
+  }
+  .screen { border-radius: 34px; overflow: hidden; height: 760px; position: relative; display: flex; flex-direction: column; }
+  .screen-body { flex: 1; overflow: hidden; }
+
+  .num { font-variant-numeric: tabular-nums; }
+  .k { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+
+  /* ============================================================
+     E — EMBER DARK  (ref: dark cycling app + gradient header,
+     orange brand #E85002, cream type, floating pill nav)
+     ============================================================ */
+  .E .screen { background: #0b0c10; }
+  .E .wrap { padding: 0 0 16px; display: flex; flex-direction: column; height: 100%; }
+  .E .head {
+    margin: 14px 14px 0; border-radius: 24px; padding: 20px 18px 18px; color: #F4EDE1;
+    background: linear-gradient(150deg, #131316 0%, #1c0d09 34%, #C10801 88%, #F16001 108%);
+    position: relative; overflow: hidden;
+  }
+  .E .head::after {
+    content:''; position:absolute; right:-50px; bottom:-70px; width:200px; height:200px; border-radius:50%;
+    background: radial-gradient(closest-side, rgba(241,96,1,.5), transparent 70%);
+  }
+  .E .greet { display:flex; justify-content:space-between; align-items:center; }
+  .E .greet .hello { font-size:13px; color: rgba(244,237,225,.75); }
+  .E .ava { width:36px; height:36px; border-radius:50%; background: rgba(244,237,225,.14); border:1px solid rgba(244,237,225,.3); display:grid; place-items:center; font-weight:800; font-size:12px; color:#F4EDE1; }
+  .E h1 { font-size:22px; font-weight:800; letter-spacing:-0.02em; margin-top:14px; }
+  .E .readiness { display:flex; align-items:baseline; gap:8px; margin-top:10px; }
+  .E .readiness .big { font-size:64px; font-weight:800; letter-spacing:-0.04em; line-height:1; color:#fff; }
+  .E .readiness .pct { font-size:18px; font-weight:800; color:#F16001; }
+  .E .status { margin-top:8px; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#FFB08A; }
+  .E .pmc { display:flex; gap:14px; margin-top:14px; padding-top:12px; border-top:1px solid rgba(244,237,225,.16); }
+  .E .pmc div { font-size:12px; color:rgba(244,237,225,.7); }
+  .E .pmc b { color:#fff; font-size:14px; }
+  .E .body { padding: 14px 14px 0; display:flex; flex-direction:column; gap:10px; flex:1; }
+  .E .wk { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .E .cell { background:#14151b; border:1px solid #23242c; border-radius:18px; padding:12px 14px; color:#EDEAE2; }
+  .E .cell .k { color:#8a8f9c; }
+  .E .cell .v { font-size:20px; font-weight:800; margin-top:4px; }
+  .E .cell .s { font-size:10.5px; color:#6f7480; margin-top:2px; }
+  .E .duo { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .E .stat { background:#14151b; border:1px solid #23242c; border-radius:18px; padding:12px 14px; color:#EDEAE2; }
+  .E .stat .k { color:#8a8f9c; }
+  .E .stat .v { font-size:22px; font-weight:800; margin-top:4px; }
+  .E .stat .v em { font-style:normal; font-size:12px; color:#F16001; font-weight:800; }
+  .E .stat .s { font-size:10.5px; color:#6f7480; margin-top:2px; }
+  .E .chart { background:#14151b; border:1px solid #23242c; border-radius:18px; padding:14px; }
+  .E .chart .t { display:flex; justify-content:space-between; color:#8a8f9c; }
+  .E .chart .t b { color:#EDEAE2; font-size:11px; }
+  .E .bars { display:flex; gap:7px; align-items:flex-end; height:64px; margin-top:12px; }
+  .E .bars i { flex:1; background:#23252e; border-radius:4px; display:block; }
+  .E .bars i.pk { background: linear-gradient(180deg,#F16001,#C10801); box-shadow: 0 0 14px rgba(241,96,1,.45); }
+  .E .days { display:flex; gap:7px; margin-top:6px; color:#5d626e; font-size:9px; font-weight:700; }
+  .E .days span { flex:1; text-align:center; }
+  .E .row-item { background:#14151b; border:1px solid #23242c; border-radius:18px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; color:#EDEAE2; }
+  .E .row-item .n { font-size:13.5px; font-weight:700; }
+  .E .row-item .m { font-size:11px; color:#6f7480; margin-top:2px; }
+  .E .row-item .tss { font-size:15px; font-weight:800; color:#F16001; }
+  .E .row-item .tss small { font-size:9px; color:#8a8f9c; margin-left:2px; }
+  .E .wear { display:flex; justify-content:space-between; align-items:center; }
+  .E .wear .chip { font-size:9.5px; font-weight:800; letter-spacing:.06em; padding:4px 9px; border-radius:999px; background:rgba(255,179,71,.14); color:#FFB35A; }
+  .E .nav {
+    flex:0 0 auto; margin: 12px 14px 14px; height:58px; border-radius:999px;
+    background:#14151b; border:1px solid #23242c;
+    display:flex; align-items:center; justify-content:space-between; padding:0 22px; position:relative;
+  }
+  .E .nav span { color:#6f7480; font-size:9.5px; font-weight:800; letter-spacing:.08em; }
+  .E .nav span.on { color:#F4EDE1; }
+  .E .nav .plus {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:46px; height:46px; border-radius:50%; display:grid; place-items:center;
+    background: linear-gradient(140deg,#F16001,#C10801); color:#fff; font-size:22px; font-weight:800;
+    box-shadow: 0 8px 20px rgba(241,96,1,.4);
+  }
+
+  /* ============================================================
+     F — CREAM MONOLITH  (ref: finance app — cream canvas, dark
+     monolith chart cards, brighter crimson, floating dark nav)
+     ============================================================ */
+  .F .screen { background: #F6F2EA; }
+  .F .wrap { padding: 22px 18px 0; display:flex; flex-direction:column; gap:12px; height:100%; }
+  .F .greet { display:flex; justify-content:space-between; align-items:center; }
+  .F .greet .k { color:#a09a8c; }
+  .F .greet h1 { font-size:24px; font-weight:800; letter-spacing:-0.02em; margin-top:3px; }
+  .F .ava { width:40px; height:40px; border-radius:50%; background:#141519; color:#F6F2EA; display:grid; place-items:center; font-weight:800; font-size:12px; }
+  .F .mono {
+    background:#141519; border-radius:26px; padding:18px; color:#F6F2EA; position:relative; overflow:hidden;
+  }
+  .F .mono .k { color:#8f8b80; }
+  .F .readiness { display:flex; align-items:flex-end; justify-content:space-between; margin-top:8px; }
+  .F .readiness .big { font-size:60px; font-weight:800; letter-spacing:-0.04em; line-height:.95; color:#fff; }
+  .F .readiness .big small { font-size:20px; color:#FF3355; font-weight:800; }
+  .F .ring { width:74px; height:74px; border-radius:50%;
+    background: conic-gradient(#FF3355 0 119deg, #2c2d33 119deg 360deg);
+    display:grid; place-items:center; }
+  .F .ring i { width:56px; height:56px; border-radius:50%; background:#141519; display:grid; place-items:center; font-style:normal; font-size:10px; font-weight:800; color:#FF8FA5; letter-spacing:.06em; }
+  .F .mono .status { margin-top:10px; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#FF8FA5; }
+  .F .mono .pmc { display:flex; gap:16px; margin-top:12px; padding-top:12px; border-top:1px dashed #34353b; }
+  .F .mono .pmc b { font-size:14px; }
+  .F .mono .pmc div { font-size:10px; color:#8f8b80; font-weight:700; letter-spacing:.04em; }
+  .F .tiles { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .F .tile { background:#fff; border-radius:18px; padding:12px 13px; box-shadow: 0 1px 2px rgba(20,21,25,.06); }
+  .F .tile .k { color:#a09a8c; }
+  .F .tile .v { font-size:19px; font-weight:800; margin-top:4px; }
+  .F .duo { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .F .tile2 { background:#fff; border-radius:18px; padding:12px 13px; box-shadow: 0 1px 2px rgba(20,21,25,.06); }
+  .F .tile2 .k { color:#a09a8c; }
+  .F .tile2 .v { font-size:22px; font-weight:800; margin-top:4px; }
+  .F .tile2 .s { font-size:10.5px; color:#a09a8c; margin-top:2px; }
+  .F .tile2.hot .v { color:#FF3355; }
+  .F .chart { background:#141519; border-radius:22px; padding:16px 16px 12px; color:#F6F2EA; }
+  .F .chart .t { display:flex; justify-content:space-between; font-size:11px; color:#8f8b80; font-weight:700; }
+  .F .chart .t b { color:#fff; }
+  .F .bars { display:flex; gap:8px; align-items:flex-end; height:58px; margin-top:12px; }
+  .F .bars i { flex:1; background:#2c2d33; border-radius:5px; display:block; }
+  .F .bars i.pk { background:#FF3355; }
+  .F .days { display:flex; gap:8px; margin-top:6px; }
+  .F .days span { flex:1; text-align:center; font-size:9px; font-weight:700; color:#5c5a52; }
+  .F .list { display:flex; flex-direction:column; }
+  .F .row-item { display:flex; justify-content:space-between; align-items:center; padding:11px 4px; border-bottom:1px solid #e7e1d4; }
+  .F .row-item:last-child { border-bottom:none; }
+  .F .row-item .n { font-size:13.5px; font-weight:700; }
+  .F .row-item .m { font-size:11px; color:#a09a8c; margin-top:2px; }
+  .F .row-item .tss { font-size:15px; font-weight:800; }
+  .F .row-item .tss small { font-size:9px; color:#a09a8c; }
+  .F .wear { display:flex; justify-content:space-between; align-items:center; background:#fff; border-radius:18px; padding:12px 14px; box-shadow: 0 1px 2px rgba(20,21,25,.06); }
+  .F .wear .n { font-size:13px; font-weight:700; }
+  .F .wear .m { font-size:11px; color:#a09a8c; margin-top:2px; }
+  .F .wear .chip { font-size:9.5px; font-weight:800; letter-spacing:.06em; padding:4px 10px; border-radius:999px; background:#FFE3E9; color:#C1082E; }
+  .F .nav {
+    flex:0 0 auto; margin: 12px 18px 14px; height:56px; border-radius:999px;
+    background:#141519; display:flex; align-items:center; justify-content:space-between; padding:0 24px; position:relative;
+    box-shadow: 0 12px 24px -10px rgba(20,21,25,.5);
+  }
+  .F .nav span { color:#7a7669; font-size:9.5px; font-weight:800; letter-spacing:.08em; }
+  .F .nav span.on { color:#fff; }
+  .F .nav .plus {
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:44px; height:44px; border-radius:50%; display:grid; place-items:center;
+    background:#FF3355; color:#fff; font-size:22px; font-weight:800;
+    box-shadow: 0 8px 18px rgba(255,51,85,.45);
+  }
+
+  /* ============================================================
+     G — VOLT EDITORIAL  (ref: sales app — light editorial, neon
+     lime highlight, dark ink cards, oversized type)
+     ============================================================ */
+  .G .screen { background: #FAFAF6; }
+  .G .wrap { padding: 24px 20px 0; display:flex; flex-direction:column; gap:14px; height:100%; }
+  .G .greet { display:flex; justify-content:space-between; align-items:flex-end; }
+  .G .greet .k { color:#9aa0a6; }
+  .G h1 { font-size:30px; font-weight:800; letter-spacing:-0.03em; line-height:1.02; margin-top:6px; text-transform:uppercase; }
+  .G h1 mark { background:linear-gradient(transparent 58%, #D9F24C 58%); color:inherit; padding:0 2px; }
+  .G .ava { width:38px; height:38px; border-radius:12px; background:#111318; color:#D9F24C; display:grid; place-items:center; font-weight:800; font-size:12px; }
+  .G .hero { background:#111318; border-radius:4px 28px 28px 28px; padding:18px; color:#fff; }
+  .G .hero .k { color:#878d99; }
+  .G .hero .big { font-size:56px; font-weight:800; letter-spacing:-0.045em; line-height:1; margin-top:8px; }
+  .G .hero .big small { font-size:16px; color:#D9F24C; font-weight:800; }
+  .G .hero .status { display:inline-block; margin-top:10px; font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#111318; background:#D9F24C; border-radius:999px; padding:5px 10px; }
+  .G .hero .pmc { display:flex; gap:16px; margin-top:14px; padding-top:12px; border-top:1px solid #262933; }
+  .G .hero .pmc b { font-size:14px; }
+  .G .hero .pmc div { font-size:10px; color:#878d99; font-weight:700; letter-spacing:.04em; }
+  .G .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .G .stat { background:#fff; border:1px solid #e6e6de; border-radius:20px; padding:12px 14px; }
+  .G .stat .k { color:#9aa0a6; }
+  .G .stat .v { font-size:24px; font-weight:800; letter-spacing:-0.02em; margin-top:4px; }
+  .G .stat .v em { font-style:normal; font-size:12px; color:#65A30D; font-weight:800; }
+  .G .stat .s { font-size:10.5px; color:#9aa0a6; margin-top:2px; }
+  .G .stat.hot { background:#111318; color:#fff; border-color:#111318; }
+  .G .stat.hot .k { color:#878d99; }
+  .G .stat.hot .v { color:#D9F24C; }
+  .G .list { border-top:2px solid #111318; }
+  .G .row-item { display:flex; justify-content:space-between; align-items:center; padding:12px 2px; border-bottom:1px solid #e6e6de; }
+  .G .row-item .n { font-size:14px; font-weight:800; letter-spacing:-0.01em; }
+  .G .row-item .m { font-size:11px; color:#9aa0a6; margin-top:2px; }
+  .G .row-item .tss { font-size:16px; font-weight:800; }
+  .G .row-item .tss small { font-size:9px; color:#9aa0a6; }
+  .G .wear { display:flex; justify-content:space-between; align-items:center; }
+  .G .wear .n { font-size:13px; font-weight:800; }
+  .G .wear .m { font-size:11px; color:#9aa0a6; margin-top:2px; }
+  .G .wear .chip { font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:4px 10px; border-radius:6px; background:#111318; color:#FFD34D; }
+  .G .nav { flex:0 0 auto; margin-top:auto; display:flex; justify-content:space-between; padding: 12px 22px 16px; border-top:2px solid #111318; background:#FAFAF6; }
+  .G .nav span { color:#9aa0a6; font-size:9.5px; font-weight:800; letter-spacing:.08em; }
+  .G .nav span.on { color:#111318; background:#D9F24C; border-radius:999px; padding:4px 10px; }
+
+  /* ============================================================
+     H — PULSE POP  (brighter crimson #FF2E55, soft white cards,
+     tinted chips, ring hero — friendlier evolution of Studio)
+     ============================================================ */
+  .H .screen { background: #F4F4F8; }
+  .H .wrap { padding: 22px 18px 0; display:flex; flex-direction:column; gap:12px; height:100%; }
+  .H .greet { display:flex; justify-content:space-between; align-items:center; }
+  .H .greet .hello { font-size:12.5px; color:#8b8f9c; font-weight:600; }
+  .H .greet h1 { font-size:22px; font-weight:800; letter-spacing:-0.02em; margin-top:2px; }
+  .H .bell { width:38px; height:38px; border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(17,18,24,.08); display:grid; place-items:center; font-weight:800; color:#FF2E55; }
+  .H .hero {
+    border-radius:24px; padding:18px; color:#fff; position:relative; overflow:hidden;
+    background: linear-gradient(135deg, #FF2E55 0%, #E01040 100%);
+    box-shadow: 0 16px 32px -16px rgba(255,46,85,.55);
+  }
+  .H .hero::after { content:''; position:absolute; right:-30px; top:-46px; width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,.14); }
+  .H .hero .k { color:rgba(255,255,255,.75); }
+  .H .hero .rowtop { display:flex; justify-content:space-between; align-items:center; }
+  .H .ring { width:78px; height:78px; border-radius:50%; background: conic-gradient(#fff 0 119deg, rgba(255,255,255,.25) 119deg 360deg); display:grid; place-items:center; }
+  .H .ring i { width:60px; height:60px; border-radius:50%; background:#E01040; display:grid; place-items:center; font-style:normal; font-weight:800; font-size:16px; }
+  .H .hero .big { font-size:54px; font-weight:800; letter-spacing:-0.04em; line-height:1; margin-top:10px; }
+  .H .hero .big small { font-size:18px; font-weight:800; }
+  .H .hero .status { margin-top:6px; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#FFD3DC; }
+  .H .hero .pmc { display:flex; gap:16px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.25); }
+  .H .hero .pmc b { font-size:14px; }
+  .H .hero .pmc div { font-size:10px; color:rgba(255,255,255,.7); font-weight:700; letter-spacing:.04em; }
+  .H .tiles { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .H .tile { background:#fff; border-radius:18px; padding:12px 13px; box-shadow:0 1px 3px rgba(17,18,24,.06); }
+  .H .tile .k { color:#8b8f9c; }
+  .H .tile .v { font-size:19px; font-weight:800; margin-top:4px; }
+  .H .duo { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .H .tile2 { background:#fff; border-radius:18px; padding:12px 13px; box-shadow:0 1px 3px rgba(17,18,24,.06); }
+  .H .tile2 .k { color:#8b8f9c; }
+  .H .tile2 .v { font-size:22px; font-weight:800; margin-top:4px; }
+  .H .tile2 .s { font-size:10.5px; color:#8b8f9c; margin-top:2px; }
+  .H .tile2.hot .v { color:#FF2E55; }
+  .H .card { background:#fff; border-radius:18px; padding:14px; box-shadow:0 1px 3px rgba(17,18,24,.06); }
+  .H .card .t { display:flex; justify-content:space-between; font-size:11px; font-weight:800; letter-spacing:.04em; color:#8b8f9c; text-transform:uppercase; }
+  .H .card .t b { color:#16181c; }
+  .H .bars { display:flex; gap:8px; align-items:flex-end; height:56px; margin-top:12px; }
+  .H .bars i { flex:1; background:#ECECF2; border-radius:5px; display:block; }
+  .H .bars i.pk { background:linear-gradient(180deg,#FF2E55,#C1082E); }
+  .H .days { display:flex; gap:8px; margin-top:6px; }
+  .H .days span { flex:1; text-align:center; font-size:9px; font-weight:700; color:#a6aab5; }
+  .H .list { display:flex; flex-direction:column; gap:8px; }
+  .H .row-item { background:#fff; border-radius:16px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 1px 3px rgba(17,18,24,.06); }
+  .H .row-item .n { font-size:13.5px; font-weight:700; }
+  .H .row-item .m { font-size:11px; color:#8b8f9c; margin-top:2px; }
+  .H .row-item .tss { font-size:15px; font-weight:800; color:#FF2E55; }
+  .H .row-item .tss small { font-size:9px; color:#8b8f9c; margin-left:2px; }
+  .H .row-item .tss.neutral { color:#16181c; }
+  .H .nav { flex:0 0 auto; margin: 12px 18px 14px; height:56px; border-radius:20px; background:#fff; box-shadow:0 8px 24px -8px rgba(17,18,24,.18); display:flex; align-items:center; justify-content:space-around; }
+  .H .nav span { color:#a6aab5; font-size:9.5px; font-weight:800; letter-spacing:.08em; }
+  .H .nav span.on { color:#FF2E55; position:relative; }
+  .H .nav span.on::after { content:''; position:absolute; left:50%; transform:translateX(-50%); bottom:-6px; width:16px; height:3px; border-radius:2px; background:#FF2E55; }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>GowsLab — Restyle v4 · Round 2</h1>
+    <p>Empat arah baru sesuai masukan Anda: aksen <b>crimson lebih terang</b> (#FF3355 / #FF2E55). E &amp; F diambil langsung dari screenshot referensi Anda (gradien orange-dark &amp; cream monolith); G &amp; H eksplorasi editorial. Data identik di keempatnya.</p>
+  </div>
+
+  <div class="row">
+
+    <!-- ============ E — EMBER DARK ============ -->
+    <div class="variant ve">
+      <div class="variant-label ve"><span class="tag">E</span><h2>Ember Dark</h2></div>
+      <p class="variant-desc">Dari referensi Anda: app gelap dengan header gradasi hitam→oranye-merah, tipografi krem, aksen #F16001, nav pil mengambang dengan tombol + di tengah. Paling atmosferik.</p>
+      <div class="phone E"><div class="screen">
+        <div class="wrap">
+          <div class="head">
+            <div class="greet"><span class="hello num">Wednesday, 30 Sep</span><span class="ava">AN</span></div>
+            <h1>Welcome back, Andi</h1>
+            <div class="readiness num"><span class="big">33</span><span class="pct">%</span></div>
+            <div class="status">Recover first · TSB −16</div>
+            <div class="pmc num"><div><b>23</b> &nbsp;CTL fitness</div><div><b>39</b> &nbsp;ATL fatigue</div><div><b>313</b> &nbsp;7-day TSS</div></div>
+          </div>
+          <div class="body">
+            <div class="wk">
+              <div class="cell"><div class="k">Time</div><div class="v num">5.8h</div><div class="s">this week</div></div>
+              <div class="cell"><div class="k">Distance</div><div class="v num">124 km</div><div class="s">this week</div></div>
+              <div class="cell"><div class="k">Stress</div><div class="v num">313</div><div class="s">TSS · target 450</div></div>
+            </div>
+            <div class="duo">
+              <div class="stat"><div class="k">FTP</div><div class="v num">275 <em>W</em></div><div class="s">↑ +17 W vs 4 mo</div></div>
+              <div class="stat"><div class="k">W/kg</div><div class="v num">4.0</div><div class="s">at 68.2 kg</div></div>
+            </div>
+            <div class="chart">
+              <div class="t"><span>Daily TSS</span><b class="num">313 / 450</b></div>
+              <div class="bars num"><i style="height:22%"></i><i style="height:38%"></i><i style="height:12%"></i><i style="height:55%"></i><i style="height:18%"></i><i class="pk" style="height:88%"></i><i style="height:30%"></i></div>
+              <div class="days"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+            </div>
+            <div class="row-item"><div><div class="n">Sunday Long Ride</div><div class="m">Strava · 62 km · 1,842 m ↑</div></div><div class="tss num">182<small>TSS</small></div></div>
+            <div class="row-item wear"><div><div class="n">Chain wear</div><div class="m">3,850 / 4,000 km</div></div><span class="chip">Waspada 96%</span></div>
+          </div>
+        </div>
+        <div class="nav"><span class="on">TODAY</span><span>RIDES</span><span class="plus">+</span><span>ROUTES</span><span>RACE</span></div>
+      </div></div>
+    </div>
+
+    <!-- ============ F — CREAM MONOLITH ============ -->
+    <div class="variant vf">
+      <div class="variant-label vf"><span class="tag">F</span><h2>Cream Monolith</h2></div>
+      <p class="variant-desc">Dari referensi finance app: kanvas krem hangat, kartu "monolith" gelap untuk angka &amp; chart, aksen crimson terang #FF3355, nav pil gelap dengan + merah. Kontras editorial yang tenang.</p>
+      <div class="phone F"><div class="screen">
+        <div class="wrap">
+          <div class="greet"><div><div class="k">Wednesday, 30 Sep</div><h1>Welcome back, Andi</h1></div><span class="ava">AN</span></div>
+          <div class="mono">
+            <div class="k">Readiness today</div>
+            <div class="readiness"><div class="big num">33<small>%</small></div><div class="ring"><i>RECOVER</i></div></div>
+            <div class="status">TSB −16 · Easy day recommended</div>
+            <div class="pmc num"><div><b>23</b> &nbsp;CTL</div><div><b>39</b> &nbsp;ATL</div><div><b>313</b> &nbsp;TSS 7D</div></div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="k">Time</div><div class="v num">5.8h</div></div>
+            <div class="tile"><div class="k">Distance</div><div class="v num">124 km</div></div>
+            <div class="tile"><div class="k">Stress</div><div class="v num" style="color:#FF3355">313</div></div>
+          </div>
+          <div class="duo">
+            <div class="tile2"><div class="k">FTP</div><div class="v num">275 W</div><div class="s">↑ +17 W vs 4 mo</div></div>
+            <div class="tile2"><div class="k">W/kg</div><div class="v num">4.0</div><div class="s">at 68.2 kg</div></div>
+          </div>
+          <div class="chart">
+            <div class="t"><span>Daily TSS</span><b class="num">313 / 450</b></div>
+            <div class="bars num"><i style="height:22%"></i><i style="height:38%"></i><i style="height:12%"></i><i style="height:55%"></i><i style="height:18%"></i><i class="pk" style="height:88%"></i><i style="height:30%"></i></div>
+            <div class="days"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+          </div>
+          <div class="list">
+            <div class="row-item"><div><div class="n">Sunday Long Ride</div><div class="m">Strava · 62 km · 1,842 m ↑</div></div><div class="tss num">182<small> TSS</small></div></div>
+            <div class="row-item"><div><div class="n">Threshold Intervals</div><div class="m">GPX · 28 km · NP 232 W</div></div><div class="tss num">96<small> TSS</small></div></div>
+          </div>
+          <div class="wear"><div><div class="n">Chain wear</div><div class="m">3,850 / 4,000 km</div></div><span class="chip">WASPADA</span></div>
+        </div>
+        <div class="nav"><span class="on">TODAY</span><span>RIDES</span><span class="plus">+</span><span>ROUTES</span><span>COACH</span></div>
+      </div></div>
+    </div>
+
+    <!-- ============ G — VOLT EDITORIAL ============ -->
+    <div class="variant vg">
+      <div class="variant-label vg"><span class="tag">G</span><h2>Volt Editorial</h2></div>
+      <p class="variant-desc">Dari referensi sales app: tipografi editorial besar, highlight neon lime, kartu tinta gelap bersudut asimetris, list bergaris bukan berkartu. Paling berkarakter "majalah olahraga".</p>
+      <div class="phone G"><div class="screen">
+        <div class="wrap">
+          <div class="greet">
+            <div><div class="k">Wednesday, 30 Sep</div><h1>Ready to <mark>ride</mark><br/>harder.</h1></div>
+            <span class="ava">AN</span>
+          </div>
+          <div class="hero">
+            <div class="k">Readiness today</div>
+            <div class="big num">33<small>%</small></div>
+            <span class="status">Recover first · TSB −16</span>
+            <div class="pmc num"><div><b>23</b> &nbsp;CTL</div><div><b>39</b> &nbsp;ATL</div><div><b>313</b> &nbsp;TSS 7D</div></div>
+          </div>
+          <div class="grid">
+            <div class="stat"><div class="k">FTP</div><div class="v num">275 W</div><div class="s">↑ +17 W vs 4 mo</div></div>
+            <div class="stat"><div class="k">W/kg</div><div class="v num">4.0</div><div class="s">at 68.2 kg</div></div>
+            <div class="stat"><div class="k">CTL · ATL</div><div class="v num">23 · 39</div><div class="s">fitness · fatigue</div></div>
+            <div class="stat hot"><div class="k">This week</div><div class="v num">313</div><div class="s">TSS · target 450</div></div>
+          </div>
+          <div class="list">
+            <div class="row-item"><div><div class="n">Sunday Long Ride</div><div class="m">Strava · 62 km · 1,842 m ↑</div></div><div class="tss num">182<small> TSS</small></div></div>
+            <div class="row-item"><div><div class="n">Threshold Intervals</div><div class="m">GPX · 28 km · NP 232 W</div></div><div class="tss num">96<small> TSS</small></div></div>
+            <div class="row-item wear"><div><div class="n">Chain wear</div><div class="m">3,850 / 4,000 km</div></div><span class="chip">Waspada</span></div>
+          </div>
+        </div>
+        <div class="nav"><span class="on">TODAY</span><span>RIDES</span><span>ROUTES</span><span>RACE</span><span>COACH</span></div>
+      </div></div>
+    </div>
+
+    <!-- ============ H — PULSE POP ============ -->
+    <div class="variant vh">
+      <div class="variant-label vh"><span class="tag">H</span><h2>Pulse Pop</h2></div>
+      <p class="variant-desc">Evolusi "Studio" dengan crimson terang: hero gradasi #FF2E55→#E01040 dengan ring putih, kartu putih lembut, chip tinted, tab bar putih membulat. Energik tapi ramah.</p>
+      <div class="phone H"><div class="screen">
+        <div class="wrap">
+          <div class="greet"><div><div class="hello num">Wednesday, 30 Sep</div><h1>Welcome back, Andi</h1></div><span class="bell">●</span></div>
+          <div class="hero">
+            <div class="rowtop"><span class="k">Readiness today</span><div class="ring"><i class="num">33%</i></div></div>
+            <div class="big num">33<small>%</small></div>
+            <div class="status">TSB −16 · Easy day recommended</div>
+            <div class="pmc num"><div><b>23</b> &nbsp;CTL</div><div><b>39</b> &nbsp;ATL</div><div><b>313</b> &nbsp;TSS 7D</div></div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="k">Time</div><div class="v num">5.8h</div></div>
+            <div class="tile"><div class="k">Distance</div><div class="v num">124 km</div></div>
+            <div class="tile"><div class="k">Stress</div><div class="v num" style="color:#FF2E55">313</div></div>
+          </div>
+          <div class="duo">
+            <div class="tile2"><div class="k">FTP</div><div class="v num">275 W</div><div class="s">↑ +17 W vs 4 mo</div></div>
+            <div class="tile2 hot"><div class="k">TSB · form</div><div class="v num">−16</div><div class="s">recover first</div></div>
+          </div>
+          <div class="card">
+            <div class="t"><span>Daily TSS</span><b class="num">313 / 450</b></div>
+            <div class="bars num"><i style="height:22%"></i><i style="height:38%"></i><i style="height:12%"></i><i style="height:55%"></i><i style="height:18%"></i><i class="pk" style="height:88%"></i><i style="height:30%"></i></div>
+            <div class="days"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+          </div>
+          <div class="list">
+            <div class="row-item"><div><div class="n">Sunday Long Ride</div><div class="m">Strava · 62 km · 1,842 m ↑</div></div><div class="tss num">182<small>TSS</small></div></div>
+            <div class="row-item"><div><div class="n">Threshold Intervals</div><div class="m">GPX · 28 km · NP 232 W</div></div><div class="tss num neutral">96<small>TSS</small></div></div>
+          </div>
+        </div>
+        <div class="nav"><span class="on">TODAY</span><span>RIDES</span><span>ROUTES</span><span>RACE</span><span>COACH</span></div>
+      </div></div>
+    </div>
+
+  </div>
+
+  <p style="max-width:1720px;margin:18px auto 0;color:#6b7076;font-size:13px;line-height:1.6;">
+    Catatan: aksen utama crimson lebih terang sesuai permintaan (#FF3355 / #FF2E55); E memakai oranye referensi #F16001 sebagai opsi pembanding. Semua varian memakai data GowsLab identik: FTP 275 W, W/kg 4.0, CTL 23, ATL 39, TSB −16, minggu 5.8 h / 124 km / 313 TSS.
+  </p>
+</body>
+</html>

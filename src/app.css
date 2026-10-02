@@ -1,0 +1,194 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/plus-jakarta-sans';
+
+/*
+ * GowsLab — "Crimson Clean" design tokens (v5.1)
+ * Clean neutral canvas #F9F9F9 × white cards × dark monolith number cards
+ * × bright sporty red #E8102E × floating white pill nav with red +.
+ * Original system (no Stitch artifacts — removed 1 Oct 2026).
+ */
+@theme {
+  /* Clean neutral surfaces */
+  --color-canvas: #f9f9f9; /* app background — clean light gray */
+  --color-surface: #ffffff; /* cards */
+  --color-tile: #f1f2f4; /* inner tiles / inputs */
+  --color-raised: #ffffff; /* raised controls on cards */
+
+  /* Dark monolith (number cards, projected decks, live cockpit) */
+  --color-mono: #141519; /* hero black */
+  --color-mono-2: #1b1c22; /* gradient partner */
+  --color-on-mono: #f7f8fa; /* white text on dark */
+  --color-on-mono-dim: #9ba1aa; /* secondary on dark */
+
+  /* Lines & text */
+  --color-hairline: #e8eaed;
+  --color-hairline-strong: #d9dce0;
+  --color-ink: #17181c; /* near-black ink */
+  --color-ink-dim: #62656c; /* neutral gray — AA 4.5:1 on canvas & tile */
+
+  /* Bright red + family */
+  --color-crimson: #e8102e; /* primary accent — bright sporty red (fills, graphics, large numbers) */
+  --color-crimson-fill: #d50f26; /* AA-safe fill under white button text (5.3:1) */
+  --color-crimson-deep: #a80c21; /* deep red — small accent text on light (7.6:1) */
+  --color-rose: #ff4d5e; /* bright red tint (on dark) */
+  --color-aman: #0a7450; /* positive status on light — AA on tile */
+  --color-warn: #b8620a; /* warning on light */
+  --color-kritis: #c8102e; /* critical */
+
+  /* v2/v3/v4 compat aliases — legacy class names resolve to the v5.1 palette */
+  --color-signal: #e8102e;
+
+  /* Radii */
+  --radius-card: 24px;
+  --radius-control: 16px;
+  --radius-pill: 9999px;
+
+  /* Type scale (unchanged structure) */
+  --text-display: 1.875rem;
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 800;
+
+  --text-metric-hero: 2.5rem;
+  --text-metric-hero--line-height: 1;
+  --text-metric-hero--letter-spacing: -0.03em;
+  --text-metric-hero--font-weight: 800;
+
+  --text-metric-lg: 1.75rem;
+  --text-metric-lg--line-height: 1.1;
+  --text-metric-lg--letter-spacing: -0.02em;
+  --text-metric-lg--font-weight: 700;
+
+  --text-metric-md: 1.25rem;
+  --text-metric-md--line-height: 1.2;
+  --text-metric-md--letter-spacing: -0.01em;
+  --text-metric-md--font-weight: 700;
+
+  --text-kicker: 0.6875rem;
+  --text-kicker--line-height: 1.27;
+  --text-kicker--letter-spacing: 0.1em;
+  --text-kicker--font-weight: 700;
+}
+
+/* Signature red gradient — lit from the top-left so fills don't read flat.
+   White text stays AA: peak highlight keeps ≥4.6:1. */
+@utility bg-crimson-gradient {
+  background-image:
+    radial-gradient(130% 110% at 15% 0%, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 38%, transparent 58%),
+    linear-gradient(135deg, #d50f26 0%, #a80c21 100%);
+}
+
+/* Ember-lit monolith — graphite with a red glow rising from one corner.
+   Radial layer keeps it energik tanpa gaduh: terlihat di sudut, lalu hilang. */
+@utility bg-mono-gradient {
+  background-image:
+    radial-gradient(130% 110% at 88% 112%, rgba(232, 16, 46, 0.4) 0%, rgba(232, 16, 46, 0.14) 42%, transparent 68%),
+    linear-gradient(150deg, #17181d 0%, #141519 50%, #1a1218 100%);
+}
+
+/* v2 compat aliases */
+@utility bg-signature-gradient {
+  background-image: linear-gradient(135deg, #ff4d5e 0%, #e8102e 55%, #b00d24 100%);
+}
+@utility glow-signal {
+  box-shadow:
+    0 4px 14px -4px rgba(232, 16, 46, 0.5),
+    0 12px 36px -12px rgba(232, 16, 46, 0.35);
+}
+
+/* Hero monolith glow — dark depth + red ambient, two tight layers */
+@utility glow-mono {
+  box-shadow:
+    0 16px 40px -16px rgba(20, 21, 25, 0.55),
+    0 6px 28px -10px rgba(232, 16, 46, 0.24);
+}
+
+/* Glows — restrained */
+@utility glow-crimson {
+  box-shadow:
+    0 4px 14px -4px rgba(232, 16, 46, 0.5),
+    0 12px 36px -12px rgba(232, 16, 46, 0.35);
+}
+@utility glow-soft {
+  box-shadow: 0 10px 28px -14px rgba(20, 21, 25, 0.5);
+}
+@utility glow-peak {
+  box-shadow:
+    0 4px 14px -4px rgba(232, 16, 46, 0.5),
+    0 12px 36px -12px rgba(232, 16, 46, 0.35);
+}
+
+/* Light card shadow — airy, neutral */
+@utility elevation-card {
+  box-shadow: 0 1px 2px rgba(23, 24, 28, 0.04), 0 10px 28px -14px rgba(23, 24, 28, 0.14);
+}
+@utility elevation-raised {
+  box-shadow: 0 2px 4px rgba(23, 24, 28, 0.05), 0 16px 40px -16px rgba(23, 24, 28, 0.26);
+}
+
+@utility text-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Hatched progress (kept from v2, recolored to red) */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    #e8102e 0,
+    #e8102e 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas text-ink antialiased;
+  font-family: 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif;
+}
+
+/* App-like hidden scrollbars (ref VeloClub) — scrollbar klasik menyusutkan layout
+   viewport 17px di halaman panjang & membuat lebar capsule dock berubah antar rute. */
+::-webkit-scrollbar {
+  display: none;
+}
+html {
+  scrollbar-width: none;
+}
+
+.kicker {
+  @apply text-kicker uppercase text-ink-dim;
+}
+
+/* Editorial italic accent — deep red on light (7.6:1) */
+.accent-italic {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--color-crimson-deep);
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

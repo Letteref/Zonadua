@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dev-dist/
+*.local
+.DS_Store
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.vite/
+coverage/
+
+# Freebuff desktop app metadata (preview logs, thread ids) — not part of the project
+.freebuff/

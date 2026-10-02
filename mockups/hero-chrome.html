@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GowsLab — Hero Browser-Chrome & Stat Tiles</title>
+<style>
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:40px 16px 80px; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em;
+  }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 28px; line-height:1.55; }
+  .lede em { color:var(--deep); font-style:italic; font-weight:600; }
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px; padding:22px 20px 8px; margin-bottom:18px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 10px 28px -14px rgba(23,24,28,.14); overflow:hidden; }
+  .mock h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.5; margin-bottom:14px; }
+  .stage { background:var(--canvas); border-radius:18px; padding:22px 12px 24px; position:relative; margin-bottom:10px; }
+  .stcap { position:absolute; top:10px; left:14px; font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+           color:var(--ink-dim); background:var(--surface); border:1px solid var(--hairline); padding:3px 9px; border-radius:999px; z-index:3; }
+
+  /* ===== MONOLITH + BROWSER CHROME ===== */
+  .mono { border-radius:26px; background:var(--mono); color:#fff; border:1px solid rgba(255,255,255,.10);
+    overflow:hidden; box-shadow:0 10px 30px rgba(20,21,25,.25), 0 6px 28px -10px rgba(232,16,46,.18); }
+  .chrome { padding:9px 14px; background:rgba(0,0,0,.4); border-bottom:1px solid rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .lights { display:flex; gap:6px; }
+  .lights i { width:10px; height:10px; border-radius:999px; display:block; }
+  .lights i:nth-child(1) { background:var(--crimson); }
+  .lights i:nth-child(2) { background:#eab308; opacity:.85; }
+  .lights i:nth-child(3) { background:#22c55e; opacity:.85; }
+  .addr { padding:4px 12px; border-radius:999px; background:rgba(255,255,255,.1);
+    font-size:10px; font-weight:500; color:rgba(255,255,255,.72); display:flex; align-items:center; gap:5px; flex:1; justify-content:center; }
+  .addr svg { opacity:.55; }
+  .live { display:flex; align-items:center; gap:5px; }
+  .live i { width:6px; height:6px; border-radius:999px; background:var(--crimson); animation:pulse 1.6s infinite; }
+  .live b { font-size:9px; font-weight:800; letter-spacing:.14em; color:rgba(255,255,255,.5); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  /* V2: window tabs di chrome */
+  .wtabs { display:flex; gap:2px; flex:1; justify-content:center; }
+  .wtab { font-size:9.5px; font-weight:700; letter-spacing:.04em; padding:4px 11px; border-radius:999px; color:rgba(255,255,255,.55);
+          display:flex; align-items:center; gap:4px; }
+  .wtab.on { background:rgba(255,255,255,.12); color:var(--on-mono); }
+  .wtab.on i { width:5px; height:5px; border-radius:999px; background:var(--crimson); }
+
+  .monobody { padding:16px; display:flex; flex-direction:column; gap:14px; }
+  .hero { display:flex; align-items:center; gap:18px; }
+  .ringwrap { position:relative; flex:none; }
+  .ringtxt { position:absolute; inset:0; display:grid; place-items:center; text-align:center; }
+  .ringtxt b { font-size:26px; font-weight:800; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+  .ringtxt span { display:block; font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono-dim); margin-top:3px; }
+  .formlbl { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .formval { font-size:28px; font-weight:800; color:var(--rose); letter-spacing:-0.02em; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .formst { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono); margin-top:8px; }
+  .formsub { font-size:11px; color:var(--on-mono-dim); margin-top:2px; }
+  .trio { border-top:1px solid var(--hairline-dark); display:grid; grid-template-columns:1fr 1fr 1fr; text-align:center; padding-top:12px; }
+  .trio div:nth-child(2) { border-left:1px solid var(--hairline-dark); border-right:1px solid var(--hairline-dark); }
+  .trio p { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .trio b { display:block; font-size:16px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:3px; }
+  .trio .rose { color:var(--rose); }
+
+  /* ===== WHITE STAT TILES ===== */
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tile { background:var(--surface); border:1px solid var(--hairline); border-radius:20px; padding:14px;
+          box-shadow:0 2px 14px rgba(0,0,0,.03), 0 1px 3px rgba(0,0,0,.02); position:relative; }
+  .tile .lbl { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); }
+  .tile .val { font-size:26px; font-weight:800; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; margin-top:5px; line-height:1; }
+  .tile .val small { font-size:12px; font-weight:700; color:var(--ink-dim); margin-left:2px; letter-spacing:0; }
+  .tile .sub { font-size:10.5px; margin-top:6px; color:var(--ink-dim); font-weight:500; }
+  .tile .sub.up { color:var(--aman); font-weight:700; }
+  .tile.flare { background:linear-gradient(150deg,#d50f26,#a80c21); border:none; color:#fff; }
+  .tile.flare .lbl { color:rgba(255,255,255,.75); }
+  .tile.flare .val { color:#fff; }
+  /* S1: chrome dots */
+  .dots { position:absolute; top:14px; right:14px; display:flex; gap:4px; }
+  .dots i { width:6px; height:6px; border-radius:999px; display:block; }
+  .dots i:nth-child(1) { background:var(--crimson); }
+  .dots i:nth-child(2) { background:var(--hairline-strong); }
+  .dots i:nth-child(3) { background:var(--hairline); }
+  /* S2: url-pill label */
+  .urllbl { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px;
+            background:var(--tile); border:1px solid var(--hairline); font-size:8.5px; font-weight:700;
+            letter-spacing:.06em; text-transform:uppercase; color:var(--ink-dim); }
+  .urllbl svg { opacity:.6; }
+
+  .pros { display:flex; gap:8px; flex-wrap:wrap; padding:12px 0 16px; }
+  .pros span { font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:999px; background:var(--tile);
+    border:1px solid var(--hairline); color:var(--ink-dim); }
+  .pros span.plus { color:var(--deep); border-color:rgba(168,12,33,.35); background:rgba(232,16,46,.06); }
+  .how { font-size:11.5px; color:var(--ink-dim); line-height:1.6; border-top:1px dashed var(--hairline); padding-top:12px; margin-bottom:6px; }
+  .how b { color:var(--ink); }
+  .pick { text-align:center; background:var(--surface); border:1px dashed rgba(168,12,33,.4); border-radius:20px; padding:18px 20px; }
+  .pick h3 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+  .pick p { font-size:12.5px; color:var(--ink-dim); line-height:1.6; }
+  .pick b { color:var(--deep); }
+  footer { text-align:center; color:var(--ink-dim); font-size:11.5px; margin-top:22px; line-height:1.6; }
+  footer b { color:var(--deep); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Hero Browser-Chrome & Stat Tiles</h1>
+  <p class="lede">Monolith hero Dashboard diadaptasi ke bahasa <em>browser-chrome</em> kartu "Statistik Klub" dari referensimu — memakai data dashboard nyata app (readiness 40%, TSB −11, CTL 22 · ATL 33, pekan 5.8h · 124km · 313 TSS). Dua varian hero + dua opsi restyle kartu statistik putih.</p>
+
+  <!-- ========== HERO V1: ADDRESS BAR ========== -->
+  <div class="mock">
+    <h2><span class="num">H1</span>Hero chrome — address bar</h2>
+    <p class="desc">Kartu hero saat ini + chrome atas: lampu crimson/kuning/hijau, <b>address pill</b> `gowslab.app/today` (konteks kartu), dan dot LIVE. Isi hero tidak berubah — ring, form, trio pekan.</p>
+    <div class="stage">
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="addr">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            gowslab.app/today
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody">
+          <div class="hero">
+            <div class="ringwrap">
+              <svg width="112" height="112" viewBox="0 0 112 112">
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#23252c" stroke-width="10"/>
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#e8102e" stroke-width="10" stroke-linecap="round"
+                        stroke-dasharray="110.6 276.5" transform="rotate(-90 56 56)"
+                        style="filter: drop-shadow(0 2px 8px rgba(232,16,46,.55));"/>
+              </svg>
+              <div class="ringtxt"><div><b>40%</b><span>Readiness</span></div></div>
+            </div>
+            <div>
+              <p class="formlbl">Form (TSB)</p>
+              <p class="formval">−11</p>
+              <p class="formst">Recover first</p>
+              <p class="formsub">CTL 22 · ATL 33</p>
+            </div>
+          </div>
+          <div class="trio">
+            <div><p>Time</p><b>5.8h</b></div>
+            <div><p>Distance</p><b>124 km</b></div>
+            <div><p>Stress</p><b class="rose">313 TSS</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="how"><b>Perubahan minimal:</b> hanya menambah baris chrome 32px di atas kartu hero yang ada. Address pill = konteks ("today", bisa berganti "race/16d" di kartu lain). LIVE menyala saat race live.</div>
+    <div class="pros"><span class="plus">+ risiko terendah</span><span class="plus">+ identitas app tetap</span><span>− chrome murni dekoratif (tanpa fungsi)</span></div>
+  </div>
+
+  <!-- ========== HERO V2: WINDOW TABS ========== -->
+  <div class="mock">
+    <h2><span class="num">H2</span>Hero chrome — window tabs fungsional</h2>
+    <p class="desc">Chrome jadi <b>navigasi mini dalam kartu</b>: tab Today (aktif, dot crimson) · Form · Load — menyiratkan kartu bisa dipindah kontennya (M2). Info pekan pindah jadi address pill kecil.</p>
+    <div class="stage">
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span>
+            <span class="wtab">Form</span>
+            <span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody">
+          <div class="hero">
+            <div class="ringwrap">
+              <svg width="112" height="112" viewBox="0 0 112 112">
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#23252c" stroke-width="10"/>
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#e8102e" stroke-width="10" stroke-linecap="round"
+                        stroke-dasharray="110.6 276.5" transform="rotate(-90 56 56)"
+                        style="filter: drop-shadow(0 2px 8px rgba(232,16,46,.55));"/>
+              </svg>
+              <div class="ringtxt"><div><b>40%</b><span>Readiness</span></div></div>
+            </div>
+            <div>
+              <p class="formlbl">Form (TSB)</p>
+              <p class="formval">−11</p>
+              <p class="formst">Recover first</p>
+              <p class="formsub">CTL 22 · ATL 33</p>
+            </div>
+          </div>
+          <div class="trio">
+            <div><p>Time</p><b>5.8h</b></div>
+            <div><p>Distance</p><b>124 km</b></div>
+            <div><p>Stress</p><b class="rose">313 TSS</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="how"><b>Interaksi (jika dieksekusi):</b> tab mengganti isi body kartu (Today = ring+trio; Form = sparkline TSB; Load = TssBars). Chrome terasa "jendela telemetri", bukan hiasan.</div>
+    <div class="pros"><span class="plus">+ chrome berfungsi nyata</span><span class="plus">+ pintu ke konten lebih banyak tanpa kartu baru</span><span>− kerja lebih besar (state kartu)</span></div>
+  </div>
+
+  <!-- ========== STAT TILES ========== -->
+  <div class="mock">
+    <h2><span class="num">S</span>Kartu statistik putih — 3 perlakuan</h2>
+    <p class="desc">Menyelaraskan snapshot tiles dengan keluarga chrome. Baris 1 = baseline sekarang; S1 = <b>chrome dots</b> di sudut; S2 = <b>label jadi URL-pill</b>. Data sama dengan app.</p>
+    <div class="stage" style="display:flex; flex-direction:column; gap:12px;">
+      <span class="stcap">Baseline — sekarang</span>
+      <div class="tiles" style="margin-top:14px;">
+        <div class="tile"><p class="lbl">Threshold FTP</p><p class="val">275<small>W</small></p><p class="sub up">↗ +7W vs 122d ago</p></div>
+        <div class="tile"><p class="lbl">Power / weight</p><p class="val">4.0<small>W/kg</small></p><p class="sub">At 68.2 kg</p></div>
+        <div class="tile"><p class="lbl">Fitness (CTL)</p><p class="val">22</p><p class="sub">+0 pts form / 7d</p></div>
+        <div class="tile flare"><p class="lbl">Form (TSB)</p><p class="val">−11<small>TSB</small></p></div>
+      </div>
+
+      <span class="stcap" style="top:auto; position:static; align-self:flex-start;">S1 — chrome dots</span>
+      <div class="tiles">
+        <div class="tile"><span class="dots"><i></i><i></i><i></i></span><p class="lbl">Threshold FTP</p><p class="val">275<small>W</small></p><p class="sub up">↗ +7W vs 122d ago</p></div>
+        <div class="tile"><span class="dots"><i></i><i></i><i></i></span><p class="lbl">Power / weight</p><p class="val">4.0<small>W/kg</small></p><p class="sub">At 68.2 kg</p></div>
+        <div class="tile"><span class="dots"><i></i><i></i><i></i></span><p class="lbl">Fitness (CTL)</p><p class="val">22</p><p class="sub">+0 pts form / 7d</p></div>
+        <div class="tile flare"><span class="dots"><i style="background:#fff"></i><i style="background:rgba(255,255,255,.4)"></i><i style="background:rgba(255,255,255,.25)"></i></span><p class="lbl">Form (TSB)</p><p class="val">−11<small>TSB</small></p></div>
+      </div>
+
+      <span class="stcap" style="top:auto; position:static; align-self:flex-start;">S2 — label jadi URL-pill</span>
+      <div class="tiles">
+        <div class="tile"><span class="urllbl"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>ftp / threshold</span><p class="val" style="margin-top:8px;">275<small>W</small></p><p class="sub up">↗ +7W vs 122d ago</p></div>
+        <div class="tile"><span class="urllbl"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>power / kg</span><p class="val" style="margin-top:8px;">4.0<small>W/kg</small></p><p class="sub">At 68.2 kg</p></div>
+        <div class="tile"><span class="urllbl"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>fitness / ctl</span><p class="val" style="margin-top:8px;">22</p><p class="sub">+0 pts form / 7d</p></div>
+        <div class="tile flare"><span class="urllbl" style="background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.25); color:rgba(255,255,255,.8);"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>form / tsb</span><p class="val" style="margin-top:8px;">−11<small>TSB</small></p></div>
+      </div>
+    </div>
+    <div class="how"><b>S1</b> memanggil chrome dari hero di skala mikro (dots merah = "sinyal hidup"). <b>S2</b> mengangkat label jadi "alamat" kartu — paling kuat narasinya, sedikit lebih ramai.</div>
+    <div class="pros"><span class="plus">S1: halus, hampir gratis</span><span class="plus">S2: narasi browser paling kuat</span><span>− jangan pakai keduanya sekaligus</span></div>
+  </div>
+
+  <div class="pick">
+    <h3>Rekomendasi</h3>
+    <p><b>H1 + S1</b> untuk langkah ini: hero dapat chrome address-bar (identitas editorial referensi), tiles cukup diberi chrome dots halus.<br />
+    <b>H2</b> menarik saat M2 (metrics engine) — tab kartu jadi fungsional.<br />
+    <b>S2</b> bisa jadi upgrade naratif jika S1 terasa terlalu tipis.</p>
+  </div>
+
+  <footer>GowsLab · mockup statis — bukan build final.<br />Balas mis. <b>"H1 + S1"</b> untuk eksekusi di Dashboard.svelte / StatTile.svelte.</footer>
+</div>
+</body>
+</html>

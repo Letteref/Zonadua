@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GowsLab — Restyle v4 Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: #e9ebef;
+    padding: 40px 32px 64px;
+    color: #16181c;
+  }
+  .page-head { max-width: 1720px; margin: 0 auto 8px; }
+  .page-head h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+  .page-head p { color: #6b7076; font-size: 14px; margin-top: 6px; max-width: 720px; line-height: 1.6; }
+  .row {
+    display: flex; gap: 36px; padding: 28px 4px 12px;
+    overflow-x: auto; align-items: flex-start;
+    max-width: 1720px; margin: 0 auto;
+  }
+  .variant { flex: 0 0 auto; width: 372px; }
+  .variant-label { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .variant-label .tag {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    background: #16181c; color: #fff; border-radius: 999px; padding: 5px 12px;
+  }
+  .variant-label.vb .tag { background: #d7143a; }
+  .variant-label.vc .tag { background: #2f6bff; }
+  .variant-label.vd .tag { background: #101215; box-shadow: 0 0 0 2px #d7143a; }
+  .variant-label h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+  .variant-desc { font-size: 12.5px; color: #6b7076; line-height: 1.55; margin-bottom: 14px; min-height: 58px; }
+
+  .phone {
+    width: 372px; border-radius: 44px; padding: 12px;
+    background: #0d0e10;
+    box-shadow: 0 24px 60px -24px rgba(10,12,16,.45), 0 2px 6px rgba(10,12,16,.2);
+  }
+  .screen { border-radius: 34px; overflow: hidden; height: 760px; position: relative; display: flex; flex-direction: column; }
+  .screen-body { flex: 1; overflow: hidden; }
+  .tabbar { flex: 0 0 auto; }
+
+  .num { font-variant-numeric: tabular-nums; }
+  .k { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+
+  /* ============ A — APEX (sporty brutalist) ============ */
+  .A .screen { background: #f2f3f5; }
+  .A .wrap { padding: 22px 18px 16px; display: flex; flex-direction: column; gap: 14px; height: 100%; }
+  .A .greet { display: flex; justify-content: space-between; align-items: center; }
+  .A .ava { width: 38px; height: 38px; border-radius: 12px; background: #101215; color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 12px; }
+  .A .bell { width: 38px; height: 38px; border-radius: 12px; border: 1.5px solid #16181c; display: grid; place-items: center; background: #fff; font-weight: 800; }
+  .A h1 { font-size: 34px; line-height: 0.98; font-weight: 800; letter-spacing: -0.035em; text-transform: uppercase; }
+  .A h1 .it { font-style: italic; font-weight: 400; letter-spacing: -0.02em; }
+  .A .hero {
+    background: #101215; border-radius: 18px; padding: 18px; color: #fff;
+    background-image: linear-gradient(160deg, #16181c 0%, #101215 55%, #1d1013 100%);
+    position: relative; overflow: hidden;
+  }
+  .A .hero::after {
+    content: ''; position: absolute; right: -40px; top: -40px; width: 180px; height: 180px;
+    background: radial-gradient(closest-side, rgba(215,20,58,.35), transparent);
+  }
+  .A .hero .k { color: #8b9098; }
+  .A .big { font-size: 58px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+  .A .big small { font-size: 16px; font-weight: 700; color: #ff4d5f; letter-spacing: 0; }
+  .A .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid #262a30; margin-top: 14px; padding-top: 12px; }
+  .A .grid3 div + div { border-left: 1px solid #262a30; padding-left: 12px; }
+  .A .grid3 .v { font-size: 17px; font-weight: 800; margin-top: 2px; }
+  .A .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .A .tile { background: #fff; border: 1.5px solid #e2e4e9; border-radius: 16px; padding: 12px 14px; }
+  .A .tile .v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-top: 4px; }
+  .A .tile .s { font-size: 11px; color: #85898f; margin-top: 2px; }
+  .A .tile.hot { border-color: #16181c; box-shadow: 3px 3px 0 #d7143a; }
+  .A .sec { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
+  .A .bars { background: #fff; border: 1.5px solid #e2e4e9; border-radius: 16px; padding: 14px; display: flex; gap: 8px; align-items: flex-end; height: 110px; }
+  .A .bars i { flex: 1; background: #eceef1; border-radius: 4px 4px 0 0; display: block; }
+  .A .bars i.pk { background: linear-gradient(180deg,#ff4d5f,#a30f2c); }
+  .A .tab { display: flex; justify-content: space-around; background: #101215; border-radius: 16px; margin: 0 18px 14px; padding: 10px 6px; }
+  .A .tab span { color: #737a83; font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+  .A .tab span.on { color: #fff; border-bottom: 2px solid #ff4d5f; padding-bottom: 3px; }
+
+  /* ============ B — STUDIO (iOS editorial calm) ============ */
+  .B .screen { background: #f7f7f9; }
+  .B .wrap { padding: 24px 20px 16px; display: flex; flex-direction: column; gap: 16px; height: 100%; }
+  .B .greet { display: flex; justify-content: space-between; align-items: center; }
+  .B .greet .hello { font-size: 13px; color: #85898f; }
+  .B .greet .hello b { display: block; font-size: 17px; color: #16181c; letter-spacing: -0.01em; }
+  .B .ava { width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg,#d7143a,#a30f2c); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 12px; }
+  .B .hero { background: #fff; border-radius: 24px; padding: 20px; box-shadow: 0 1px 2px rgba(16,18,21,.04), 0 12px 32px -16px rgba(16,18,21,.14); }
+  .B .hero .k { color: #b6bac0; }
+  .B .rings { display: flex; gap: 18px; align-items: center; margin-top: 12px; }
+  .B .rnum { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; }
+  .B .rnum small { font-size: 14px; color: #85898f; font-weight: 700; }
+  .B .meta { font-size: 12px; color: #85898f; line-height: 1.7; }
+  .B .meta b { color: #16181c; }
+  .B .strip { display: flex; gap: 10px; }
+  .B .strip .cell { flex: 1; background: #fff; border-radius: 18px; padding: 14px; box-shadow: 0 1px 2px rgba(16,18,21,.04), 0 10px 26px -18px rgba(16,18,21,.12); }
+  .B .strip .v { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 6px; }
+  .B .strip .cell.cr { background: linear-gradient(150deg,#d7143a,#a30f2c); color: #fff; }
+  .B .strip .cell.cr .k { color: rgba(255,255,255,.75); }
+  .B .list { background: #fff; border-radius: 20px; box-shadow: 0 1px 2px rgba(16,18,21,.04); }
+  .B .rowi { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; }
+  .B .rowi + .rowi { border-top: 1px solid #f0f1f4; }
+  .B .rowi .t { font-size: 13.5px; font-weight: 700; }
+  .B .rowi .s { font-size: 11.5px; color: #85898f; margin-top: 1px; }
+  .B .rowi .r { font-size: 15px; font-weight: 800; }
+  .B .tab { display: flex; justify-content: space-around; background: #fff; border-top: 1px solid #ececef; padding: 12px 8px 20px; }
+  .B .tab span { color: #a2a6ad; font-size: 10.5px; font-weight: 700; }
+  .B .tab span.on { color: #d7143a; }
+
+  /* ============ C — BENTO PRO (data instrument) ============ */
+  .C .screen { background: #eef0f3; }
+  .C .wrap { padding: 18px 14px 14px; display: flex; flex-direction: column; gap: 10px; height: 100%; }
+  .C .top { display: flex; justify-content: space-between; align-items: center; }
+  .C .top .dt { font-size: 12px; font-weight: 800; letter-spacing: .02em; }
+  .C .top .dt span { color: #85898f; font-weight: 600; }
+  .C .sync { font-size: 10px; font-weight: 800; color: #0f9d6a; background: #e2f4ec; padding: 4px 9px; border-radius: 999px; }
+  .C .hero { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; }
+  .C .card { background: #fff; border-radius: 16px; padding: 14px; border: 1px solid #e4e6ea; }
+  .C .card.dark { background: #15171a; border-color: #15171a; color: #fff; }
+  .C .card .k { color: #85898f; }
+  .C .card.dark .k { color: #7f858d; }
+  .C .vbig { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; margin-top: 8px; }
+  .C .vsm { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 8px; }
+  .C .sub { font-size: 10.5px; color: #85898f; margin-top: 3px; }
+  .C .card.dark .sub { color: #7f858d; }
+  .C .bar { height: 6px; border-radius: 999px; background: #eceef1; margin-top: 10px; overflow: hidden; }
+  .C .bar i { display: block; height: 100%; width: 33%; background: linear-gradient(90deg,#ff4d5f,#a30f2c); border-radius: 999px; }
+  .C .b2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .C .edge { border-left: 3px solid #d7143a; }
+  .C .edge.g { border-left-color: #0f9d6a; }
+  .C .edge.b { border-left-color: #2f6bff; }
+  .C .wk { background: #fff; border: 1px solid #e4e6ea; border-radius: 16px; padding: 12px 14px; }
+  .C .wk .h { display: flex; justify-content: space-between; font-size: 11px; color: #85898f; font-weight: 700; margin-bottom: 8px; }
+  .C .wk .h b { color: #16181c; }
+  .C .dayrow { display: flex; gap: 6px; align-items: flex-end; height: 64px; }
+  .C .dayrow i { flex: 1; background: #e9ebef; border-radius: 4px; display: block; }
+  .C .dayrow i.pk { background: linear-gradient(180deg,#ff4d5f,#a30f2c); }
+  .C .dlabels { display: flex; gap: 6px; margin-top: 6px; }
+  .C .dlabels span { flex: 1; text-align: center; font-size: 9.5px; color: #a2a6ad; font-weight: 700; }
+  .C .rows { background: #fff; border: 1px solid #e4e6ea; border-radius: 16px; }
+  .C .rows .rowi { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; font-size: 12.5px; font-weight: 700; }
+  .C .rows .rowi + .rowi { border-top: 1px solid #f0f1f4; }
+  .C .rows .pill { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; }
+  .C .rows .pill.r { background: #fdeaee; color: #c8102e; }
+  .C .rows .pill.g { background: #e2f4ec; color: #0f9d6a; }
+  .C .tab { display: flex; justify-content: space-around; background: #fff; border-top: 1px solid #e4e6ea; padding: 10px 8px 18px; }
+  .C .tab span { color: #a2a6ad; font-size: 10px; font-weight: 700; }
+  .C .tab span.on { color: #d7143a; }
+
+  /* ============ D — NIGHT COCKPIT (dark-first) ============ */
+  .D .screen { background: #0f1114; color: #f5f6f8; }
+  .D .wrap { padding: 22px 18px 14px; display: flex; flex-direction: column; gap: 14px; height: 100%; }
+  .D .greet { display: flex; justify-content: space-between; align-items: center; }
+  .D .greet .hello { font-size: 13px; color: #9aa0a8; }
+  .D .greet .hello b { display: block; color: #f5f6f8; font-size: 16px; }
+  .D .ava { width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg,#ff4d5f,#a30f2c); display: grid; place-items: center; font-weight: 800; font-size: 12px; color: #fff; box-shadow: 0 0 18px rgba(215,20,58,.5); }
+  .D .hero {
+    border-radius: 22px; padding: 20px;
+    background:
+      radial-gradient(120% 90% at 85% -10%, rgba(215,20,58,.32), transparent 55%),
+      linear-gradient(150deg, #191c21, #121417);
+    border: 1px solid #23262c;
+  }
+  .D .hero .k { color: #9aa0a8; }
+  .D .big { font-size: 52px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; margin-top: 10px; }
+  .D .big small { font-size: 15px; font-weight: 700; color: #ff4d5f; }
+  .D .hero .foot { display: flex; gap: 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #23262c; }
+  .D .hero .foot div { font-size: 11px; color: #9aa0a8; font-weight: 700; }
+  .D .hero .foot b { display: block; color: #f5f6f8; font-size: 15px; margin-top: 2px; }
+  .D .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .D .tile { border-radius: 16px; padding: 13px 14px; background: #16181c; border: 1px solid #23262c; }
+  .D .tile .k { color: #9aa0a8; }
+  .D .tile .v { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 5px; }
+  .D .tile.hot { background: linear-gradient(150deg, rgba(215,20,58,.16), rgba(215,20,58,.05)), #16181c; border-color: rgba(255,77,95,.4); }
+  .D .tile.hot .v { color: #ff4d5f; text-shadow: 0 0 22px rgba(255,77,95,.45); }
+  .D .wk { border-radius: 18px; background: #16181c; border: 1px solid #23262c; padding: 15px; }
+  .D .wk .h { display: flex; justify-content: space-between; margin-bottom: 10px; }
+  .D .wk .h .t { font-size: 12px; font-weight: 800; letter-spacing: .06em; }
+  .D .wk .h .r { font-size: 11px; color: #9aa0a8; font-weight: 700; }
+  .D .bars { display: flex; gap: 8px; align-items: flex-end; height: 88px; }
+  .D .bars i { flex: 1; background: #22262b; border-radius: 4px 4px 0 0; display: block; }
+  .D .bars i.pk { background: linear-gradient(180deg,#ff4d5f,#a30f2c); box-shadow: 0 0 16px rgba(255,77,95,.35); }
+  .D .tab { display: flex; justify-content: space-around; background: #16181c; border: 1px solid #23262c; border-radius: 18px; margin: 0 14px 14px; padding: 11px 6px; }
+  .D .tab span { color: #737a83; font-size: 10px; font-weight: 700; }
+  .D .tab span.on { color: #ff4d5f; }
+
+  .note { max-width: 1720px; margin: 26px auto 0; font-size: 12.5px; color: #85898f; line-height: 1.7; }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>GowsLab · Restyle v4 — pilih arah</h1>
+    <p>Empat arah desain dengan data yang sama (FTP 275 W · W/kg 4.0 · CTL 23 · TSB −16 · minggu 5.8 h / 124 km / 313 TSS). Scroll horizontal untuk melihat semuanya, lalu pilih salah satu — atau minta gabungan elemen dari beberapa arah.</p>
+  </div>
+
+  <div class="row">
+    <!-- ================= A — APEX ================= -->
+    <div class="variant">
+      <div class="variant-label va"><span class="tag">A</span><h2>Apex — Sporty Brutalist</h2></div>
+      <p class="variant-desc">Paling dekat DNA Nike Run Club: headline raksasa uppercase, hero hitam monolitik dengan glow crimson, bayangan offset tegas, radius agak kotak (16px). Energi tinggi, tegas, maskulin.</p>
+      <div class="phone A"><div class="screen"><div class="screen-body"><div class="wrap">
+        <div class="greet">
+          <div class="ava">AN</div>
+          <div class="bell">🔔</div>
+        </div>
+        <h1>Ready to<br /><span class="it">ride</span> harder.</h1>
+        <div class="hero">
+          <span class="k">Readiness today</span>
+          <div class="big num">33<small>%</small></div>
+          <div class="k" style="margin-top:6px; color:#ff4d5f;">Recover first · TSB −16</div>
+          <div class="grid3">
+            <div><span class="k">Time</span><div class="v num">5.8h</div></div>
+            <div><span class="k">Dist</span><div class="v num">124km</div></div>
+            <div><span class="k">TSS</span><div class="v num" style="color:#ff4d5f">313</div></div>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><span class="k" style="color:#85898f">FTP</span><div class="v num">275 <small style="font-size:12px;color:#85898f">W</small></div><div class="s">↑ +17W vs 4 mo</div></div>
+          <div class="tile"><span class="k" style="color:#85898f">W/kg</span><div class="v num">4.0</div><div class="s">at 68.2 kg</div></div>
+          <div class="tile"><span class="k" style="color:#85898f">CTL</span><div class="v num">23</div><div class="s">fitness</div></div>
+          <div class="tile hot"><span class="k" style="color:#85898f">TSB</span><div class="v num" style="color:#c8102e">−16</div><div class="s">form</div></div>
+        </div>
+        <div class="sec"><span>Last 7 days</span><span style="color:#85898f">target 450</span></div>
+        <div class="bars">
+          <i style="height:35%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:78%"></i><i style="height:30%"></i><i class="pk" style="height:94%"></i><i style="height:48%"></i>
+        </div>
+      </div></div>
+      <div class="tabbar"><div class="tab"><span class="on">TODAY</span><span>RIDES</span><span>ROUTES</span><span>RACE</span><span>COACH</span></div></div>
+      </div></div>
+    </div>
+
+    <!-- ================= B — STUDIO ================= -->
+    <div class="variant">
+      <div class="variant-label vb"><span class="tag">B</span><h2>Studio — iOS Editorial</h2></div>
+      <p class="variant-desc">Apple Fitness × magazine: kartu putih lembut dengan shadow sangat halus, angka besar tapi tenang, crimson hanya di satu kartu & detail kecil. Paling clean dan ramah; energi datang dari tipografi, bukan warna.</p>
+      <div class="phone B"><div class="screen"><div class="screen-body"><div class="wrap">
+        <div class="greet">
+          <div class="hello">Wednesday, 30 Sep<b>Welcome back, Andi</b></div>
+          <div class="ava">AN</div>
+        </div>
+        <div class="hero">
+          <span class="k">Readiness</span>
+          <div class="rings">
+            <svg width="96" height="96" viewBox="0 0 96 96">
+              <circle cx="48" cy="48" r="40" fill="none" stroke="#f0f1f4" stroke-width="10"/>
+              <circle cx="48" cy="48" r="40" fill="none" stroke="#d7143a" stroke-width="10" stroke-linecap="round" stroke-dasharray="83 251" transform="rotate(-90 48 48)"/>
+              <text x="48" y="50" text-anchor="middle" font-size="20" font-weight="800" fill="#16181c">33%</text>
+              <text x="48" y="64" text-anchor="middle" font-size="8" font-weight="700" fill="#85898f">READY</text>
+            </svg>
+            <div class="meta">
+              <b>TSB −16 · Recover first</b><br />
+              CTL 23 · ATL 39<br />
+              <span style="color:#d7143a;font-weight:800">Easy day recommended</span>
+            </div>
+          </div>
+        </div>
+        <div class="strip">
+          <div class="cell"><span class="k" style="color:#85898f">Time</span><div class="v num">5.8h</div></div>
+          <div class="cell"><span class="k" style="color:#85898f">Distance</span><div class="v num">124 km</div></div>
+          <div class="cell cr"><span class="k">Stress</span><div class="v num">313</div></div>
+        </div>
+        <div class="strip">
+          <div class="cell"><span class="k" style="color:#85898f">FTP</span><div class="v num">275 W</div></div>
+          <div class="cell"><span class="k" style="color:#85898f">W/kg</span><div class="v num">4.0</div></div>
+          <div class="cell"><span class="k" style="color:#85898f">CTL</span><div class="v num">23</div></div>
+          <div class="cell"><span class="k" style="color:#85898f">TSB</span><div class="v num" style="color:#d7143a">−16</div></div>
+        </div>
+        <div class="list">
+          <div class="rowi"><div><div class="t">Sunday Long Ride</div><div class="s">Strava · 62 km · 1,842 m ↑</div></div><div class="r num">182 <span style="font-size:10px;color:#85898f">TSS</span></div></div>
+          <div class="rowi"><div><div class="t">Threshold Intervals</div><div class="s">GPX · 28 km · NP 232 W</div></div><div class="r num">96 <span style="font-size:10px;color:#85898f">TSS</span></div></div>
+          <div class="rowi"><div><div class="t">Chain wear</div><div class="s">3,850 / 4,000 km</div></div><div class="r" style="color:#c8102e;font-size:12px;font-weight:800">WASPADA</div></div>
+        </div>
+      </div></div>
+      <div class="tabbar"><div class="tab"><span class="on">Today</span><span>Rides</span><span>Routes</span><span>Race</span><span>Coach</span></div></div>
+      </div></div>
+    </div>
+
+    <!-- ================= C — BENTO PRO ================= -->
+    <div class="variant">
+      <div class="variant-label vc"><span class="tag">C</span><h2>Bento Pro — Instrument</h2></div>
+      <p class="variant-desc">Dashboard atlet serius: bento grid padat, border kiri berwarna sebagai kode status, angka kompak, sparkline di mana-mana. Garmin-connect meets Things 3. Efisien, semua info terlihat sekali pandang.</p>
+      <div class="phone C"><div class="screen"><div class="screen-body"><div class="wrap">
+        <div class="top">
+          <div class="dt">Wed 30 Sep <span>· Week 38</span></div>
+          <div class="sync">● SYNCED</div>
+        </div>
+        <div class="hero">
+          <div class="card dark">
+            <span class="k">Readiness</span>
+            <div class="vbig num">33%</div>
+            <div class="sub">TSB −16 · recover first</div>
+            <div class="bar" style="background:#26292e"><i></i></div>
+          </div>
+          <div class="card">
+            <span class="k">This week</span>
+            <div class="vsm num">5.8h</div>
+            <div class="sub">124 km · 313 TSS</div>
+            <div class="bar"><i style="width:70%"></i></div>
+          </div>
+        </div>
+        <div class="b2">
+          <div class="card edge"><span class="k">FTP</span><div class="vsm num">275 W</div><div class="sub">↑ +17W</div></div>
+          <div class="card edge g"><span class="k">W/kg</span><div class="vsm num">4.0</div><div class="sub">at 68.2 kg</div></div>
+          <div class="card edge b"><span class="k">CTL</span><div class="vsm num">23</div><div class="sub">fitness</div></div>
+          <div class="card edge"><span class="k">TSB</span><div class="vsm num" style="color:#c8102e">−16</div><div class="sub">form</div></div>
+        </div>
+        <div class="wk">
+          <div class="h"><span>DAILY TSS</span><b>313 / 450</b></div>
+          <div class="dayrow">
+            <i style="height:35%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:78%"></i><i style="height:30%"></i><i class="pk" style="height:94%"></i><i style="height:48%"></i>
+          </div>
+          <div class="dlabels"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+        </div>
+        <div class="rows">
+          <div class="rowi"><span>Chain · 3,850 km</span><span class="pill r">96%</span></div>
+          <div class="rowi"><span>Brake pads · 2,850 km</span><span class="pill g">OK</span></div>
+          <div class="rowi"><span>Bukit Barisan 200</span><span class="pill" style="background:#eef1ff;color:#2f6bff">42d</span></div>
+        </div>
+      </div></div>
+      <div class="tabbar"><div class="tab"><span class="on">Today</span><span>Rides</span><span>Routes</span><span>Race</span><span>Coach</span></div></div>
+      </div></div>
+    </div>
+
+    <!-- ================= D — NIGHT COCKPIT ================= -->
+    <div class="variant">
+      <div class="variant-label vd"><span class="tag">D</span><h2>Night Cockpit — Dark-first</h2></div>
+      <p class="variant-desc">Balik ke dark, tapi versi matang: grafit dalam (bukan hitam pekat), border halus, glow crimson hanya di elemen penting, ring readiness besar. WHOOP/Zwift vibe — cocok untuk race cockpit dan mandi angka malam.</p>
+      <div class="phone D"><div class="screen"><div class="screen-body"><div class="wrap">
+        <div class="greet">
+          <div class="hello">Welcome back<b>Andi</b></div>
+          <div class="ava">AN</div>
+        </div>
+        <div class="hero">
+          <span class="k">Readiness today</span>
+          <div class="big num">33<small>%</small></div>
+          <div class="k" style="margin-top:8px; color:#ff4d5f">RECOVER FIRST · TSB −16</div>
+          <div class="foot">
+            <div>CTL<b class="num">23</b></div>
+            <div>ATL<b class="num">39</b></div>
+            <div>7-DAY TSS<b class="num" style="color:#ff4d5f">313</b></div>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><span class="k">FTP</span><div class="v num">275 W</div></div>
+          <div class="tile"><span class="k">W/kg</span><div class="v num">4.0</div></div>
+          <div class="tile"><span class="k">Distance</span><div class="v num">124 km</div></div>
+          <div class="tile hot"><span class="k">Form</span><div class="v num">−16</div></div>
+        </div>
+        <div class="wk">
+          <div class="h"><span class="t">LAST 7 DAYS</span><span class="r">target 450</span></div>
+          <div class="bars">
+            <i style="height:35%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:78%"></i><i style="height:30%"></i><i class="pk" style="height:94%"></i><i style="height:48%"></i>
+          </div>
+        </div>
+      </div></div>
+      <div class="tabbar"><div class="tab"><span class="on">TODAY</span><span>RIDES</span><span>ROUTES</span><span>RACE</span><span>COACH</span></div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <p class="note">
+    Catatan: keempatnya memakai Plus Jakarta Sans & bahasa visual GowsLab (kicker uppercase, angka tabular, status AMAN/WASPADA/KRITIS).
+    <b>A</b> paling sporty-aggressive · <b>B</b> paling clean-friendly · <b>C</b> paling padat-instrumental · <b>D</b> paling imersif-gelap.
+    Setelah arah dipilih, seluruh 5 halaman (Dashboard, Rides, Routes, Race, Coach) akan di-rombak mengikuti sistem terpilih — termasuk komponen dasar, chart, dan status chip.
+  </p>
+</body>
+</html>

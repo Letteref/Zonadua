@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GowsLab — Mockup FAB Navigasi</title>
+<style>
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:40px 16px 80px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { font-size:26px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 28px; line-height:1.55; }
+  .lede em { color:var(--deep); font-style:italic; font-weight:600; }
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px; padding:22px 20px 8px; margin-bottom:18px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 10px 28px -14px rgba(23,24,28,.14); overflow:hidden; }
+  .mock h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.5; margin-bottom:16px; }
+  .stage { background:var(--canvas); border-radius:18px; padding:34px 12px 26px; position:relative; }
+  /* nav pill (all variants) */
+  .nav { position:relative; height:64px; border-radius:999px; display:flex; align-items:center; padding:0 8px;
+         background:linear-gradient(150deg,#17181d 0%,#141519 50%,#1a1218 100%); border:1px solid var(--hairline-dark);
+         box-shadow:0 16px 40px -16px rgba(20,21,25,.55), 0 6px 28px -10px rgba(232,16,46,.24); }
+  .tab { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--on-mono-dim); font-size:9.5px;
+         font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+  .tab.active { color:var(--rose); }
+  .tab svg { width:21px; height:21px; }
+  .fabslot { width:64px; flex:none; position:relative; }
+  .fab { position:absolute; left:50%; top:50%; transform:translate(-50%,-58%); border-radius:999px; display:grid; place-items:center;
+         cursor:pointer; }
+  .fab svg { width:24px; height:24px; }
+  /* ============ 0. CURRENT ============ */
+  .fab-current { width:56px; height:56px; color:#fff;
+    background:linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 38%, transparent 58%), linear-gradient(135deg,#d50f26,#a80c21);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35);
+    border:1px solid rgba(255,255,255,.28); }
+  /* ============ 1. SPLIT CRESCENT ============ */
+  .fab-crescent { width:56px; height:56px; color:#fff;
+    background:linear-gradient(135deg,#d50f26 0%,#a80c21 100%);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35);
+    border:1px solid rgba(255,255,255,.28);
+    display:grid; grid-template-columns:1fr 1fr; overflow:hidden; padding:0; }
+  .fab-crescent span { display:grid; place-items:center; height:100%; }
+  .fab-crescent span:first-child { border-right:1px solid rgba(255,255,255,.25); }
+  .fab-crescent svg { width:19px; height:19px; }
+  /* ============ 2. NOTCH MONOLITH ============ */
+  .stage.notch { padding-bottom:0; }
+  .stage.notch .nav { border-radius:26px 26px 0 0; border-bottom:none; height:70px; }
+  .notchcut { position:absolute; left:50%; top:-2px; transform:translateX(-50%); width:84px; height:30px;
+    background:var(--canvas); border-radius:0 0 22px 22px; border:1px solid var(--hairline-dark); border-top:none; }
+  .fab-notch { width:62px; height:62px; top:6px; color:#fff;
+    background:linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 38%, transparent 58%), linear-gradient(135deg,#d50f26,#a80c21);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35);
+    border:1px solid rgba(255,255,255,.28); }
+  /* ============ 3. SQUARE HERO ============ */
+  .fab-square { width:60px; height:60px; border-radius:20px; color:#fff;
+    background:linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 38%, transparent 58%), linear-gradient(135deg,#d50f26,#a80c21);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35);
+    border:1px solid rgba(255,255,255,.28); transform:translate(-50%,-62%); }
+  /* ============ 4. MONO INK + PULSE ============ */
+  .fab-ink { width:56px; height:56px; color:var(--rose); background:var(--mono); border:1px solid var(--hairline-dark);
+    box-shadow:0 16px 40px -16px rgba(20,21,25,.55); }
+  .fab-ink::after { content:''; position:absolute; inset:-7px; border-radius:999px; border:1.5px solid rgba(232,16,46,.45);
+    animation:pulse 2.4s ease-out infinite; }
+  @keyframes pulse { 0%{ transform:scale(.82); opacity:0;} 45%{opacity:1;} 100%{ transform:scale(1.12); opacity:0;} }
+  /* ============ 5. STACKED LABEL ============ */
+  .fab-stack { width:56px; height:56px; color:#fff; flex-direction:column; gap:2px;
+    background:linear-gradient(135deg,#d50f26 0%,#a80c21 100%);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35);
+    border:1px solid rgba(255,255,255,.28); font-size:8.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
+  .fab-stack svg { width:20px; height:20px; }
+  .pros { display:flex; gap:8px; flex-wrap:wrap; padding:14px 0 18px; }
+  .pros span { font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:999px; background:var(--tile);
+    border:1px solid var(--hairline); color:var(--ink-dim); }
+  .pros span.plus { color:var(--deep); border-color:rgba(168,12,33,.35); background:rgba(232,16,46,.06); }
+  .how { font-size:11.5px; color:var(--ink-dim); line-height:1.6; border-top:1px dashed var(--hairline); padding-top:12px; margin-bottom:6px; }
+  .how b { color:var(--ink); }
+  footer { text-align:center; color:var(--ink-dim); font-size:11.5px; margin-top:26px; line-height:1.6; }
+  footer b { color:var(--deep); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mockup FAB Navigasi</h1>
+  <p class="lede">Lima varian tombol tengah (Routes + Race) di atas pill nav gelap GowsLab — token v5.1 <em>Crimson Clean</em>. Semua tetap speed-dial: ketuk → dua pill "Routes" dan "Race" melayang di atasnya.</p>
+
+  <div class="mock">
+    <h2><span class="num">0</span>Sekarang — pill gradien +</h2>
+    <p class="desc">Referensi baseline: bulat, gradien crimson, ikon plus, border putih tipis.</p>
+    <div class="stage">
+      <div class="nav">
+        <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Home</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m12 17.5 3-9 3 5.5"/></svg></div>
+        <div class="fabslot"><div class="fab fab-current"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+      </div>
+    </div>
+    <div class="pros"><span class="plus">+ sudah konsisten token</span><span>− generik, mirip semua app</span></div>
+  </div>
+
+  <div class="mock">
+    <h2><span class="num">1</span>Split Crescent — dua fungsi terlihat</h2>
+    <p class="desc">Tombol dibagi dua: ikon <b>Map</b> (Routes) dan <b>Timer</b> (Race) bersebelahan dengan garis pemisah. Langsung dieksekusi tanpa buka dial — dial tetap tersedia via long-press.</p>
+    <div class="stage">
+      <div class="nav">
+        <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Home</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m12 17.5 3-9 3 5.5"/></svg></div>
+        <div class="fabslot"><div class="fab fab-crescent"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 4 6v14l5-2 6 2 5-2V4l-5 2-6-2z"/><circle cx="12" cy="11" r="2"/></svg></span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="7"/><path d="M12 10v3l2 2M9 2h6"/></svg></span></div></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+      </div>
+    </div>
+    <div class="how"><b>Interaksi:</b> kiri → Routes, kanan → Race (haptic split). Long-press → speed-dial seperti sekarang.</div>
+    <div class="pros"><span class="plus">+ nol friksi, 1-tap ke tujuan</span><span class="plus">+ cerita "dua fitur" jujur</span><span>− target sentuh per sisi ±28px (batas bawah 44px UI)</span></div>
+  </div>
+
+  <div class="mock">
+    <h2><span class="num">2</span>Notch Monolith — FAB "duduk" di lekukan</h2>
+    <p class="desc">Nav bar berubah jadi monolith dengan sudut atas membulat; FAB duduk di <i>notch</i> setengah tenggelam — terikat visual kuat, terasa seperti cockpit.</p>
+    <div class="stage notch">
+      <div class="nav">
+        <div class="notchcut"></div>
+        <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Home</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m12 17.5 3-9 3 5.5"/></svg></div>
+        <div class="fabslot"><div class="fab fab-notch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+      </div>
+    </div>
+    <div class="how"><b>Interaksi:</b> sama seperti sekarang (tap → dial), hanya bentuk & kedalaman berubah.</div>
+    <div class="pros"><span class="plus">+ paling khas & premium</span><span class="plus">+ hemat ruang vertikal</span><span>− perlu rework bentuk nav (bukan cuma FAB)</span></div>
+  </div>
+
+  <div class="mock">
+    <h2><span class="num">3</span>Square Hero — superellipse 20px</h2>
+    <p class="desc">Bulat pill → rounded square 20px, sedikit lebih besar dan mengangkat (−62%). Bahasa visual "kartu monolith" di nav; kontras kuat dengan tab bulat.</p>
+    <div class="stage">
+      <div class="nav">
+        <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Home</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m12 17.5 3-9 3 5.5"/></svg></div>
+        <div class="fabslot"><div class="fab fab-square"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+      </div>
+    </div>
+    <div class="how"><b>Interaksi:</b> sama seperti sekarang. Rotasi + → × saat dial terbuka tetap berlaku.</div>
+    <div class="pros"><span class="plus">+ perubahan kecil, efek besar</span><span class="plus">+ sejajar bahasa rounded-2xl/card</span><span>− paling subtle di antara semua opsi</span></div>
+  </div>
+
+  <div class="mock">
+    <h2><span class="num">4</span>Ink Pulse — monokrom gelap, detak crimson</h2>
+    <p class="desc">FAB jadi monokrom hitam menyatu dengan nav; identitas crimson pindah ke <i>pulse ring</i> yang berdenyut halus. Sangat restrained — crimson jadi sinyal, bukan dekorasi.</p>
+    <div class="stage">
+      <div class="nav">
+        <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Home</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m12 17.5 3-9 3 5.5"/></svg></div>
+        <div class="fabslot"><div class="fab fab-ink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 4 4 6v14l5-2 6 2 5-2V4l-5 2-6-2z"/><circle cx="12" cy="11" r="2"/></svg></div></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+      </div>
+    </div>
+    <div class="how"><b>Interaksi:</b> ikon = Map (bukan plus), tap langsung ke Routes; dial via long-press. Pulse berhenti saat halaman Routes/Race aktif (jangan ganggu saat sudah di tujuan).</div>
+    <div class="pros"><span class="plus">+ paling elegan, AA aman</span><span class="plus">+ 1-tap ke Routes (jalur paling sering)</span><span>− crimson jadi sekunder, less sporty</span></div>
+  </div>
+
+  <div class="mock">
+    <h2><span class="num">5</span>Stacked Label — berlabel "Plan"</h2>
+    <p class="desc">Ikon Map + label micro "PLAN" bertumpuk di dalam FAB — self-explanatory untuk user baru; plus terbaca apa fungsinya tanpa dibuka.</p>
+    <div class="stage">
+      <div class="nav">
+        <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>Home</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m12 17.5 3-9 3 5.5"/></svg></div>
+        <div class="fabslot"><div class="fab fab-stack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4 4 6v14l5-2 6 2 5-2V4l-5 2-6-2z"/><circle cx="12" cy="11" r="2"/></svg>Plan</div></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="m15 6-3 11.5"/><path d="m9 6 6 0"/></svg></div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l1.9 4.6L19 9.4l-4 3.5.9 5.1L12 15.6 8.1 18l.9-5.1-4-3.5 5.1-1.8z"/></svg></div>
+      </div>
+    </div>
+    <div class="how"><b>Interaksi:</b> tap → speed-dial Routes/Race (perilaku tidak berubah dari sekarang).</div>
+    <div class="pros"><span class="plus">+ jelas fungsinya</span><span class="plus">+ risiko terendah</span><span>− teks 8.5px di gradien merah = kontras micro-copy terbatas</span></div>
+  </div>
+
+  <footer>GowsLab · mockup statis — bukan build final.<br />Balas dengan <b>nomor varian</b> (mis. "pakai 2") untuk eksekusi di AppNav.svelte.</footer>
+</div>
+</body>
+</html>

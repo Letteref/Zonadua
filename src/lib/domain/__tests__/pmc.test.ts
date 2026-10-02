@@ -1,0 +1,117 @@
+import { describe, expect, it } from 'vitest';
+import { ATL_TAU, CTL_TAU, computePmc, dailyTss, formState } from '../pmc';
+
+/** Fixed clock so every assertion is reproducible. */
+const NOW = new Date('2026-10-02T12:00:00.000Z');
+const iso = (offsetDays: number): string => {
+  const d = new Date(NOW);
+  d.setDate(d.getDate() - offsetDays);
+  return d.toISOString().slice(0, 10);
+};
+
+describe('dailyTss', () => {
+  it('sums several activities on the same day', () => {
+    const map = dailyTss([
+      { date: '2026-10-01T06:00:00Z', tss: 40 },
+      { date: '2026-10-01T18:30:00Z', tss: 35 }
+    ]);
+    expect(map.get('2026-10-01')).toBeCloseTo(75, 6);
+    expect(map.size).toBe(1);
+  });
+
+  it('treats a missing TSS as zero load', () => {
+    const map = dailyTss([{ date: '2026-10-01T06:00:00Z' }]);
+    expect(map.get('2026-10-01')).toBe(0);
+  });
+});
+
+describe('computePmc', () => {
+  it('matches hand-computed EMA values for three 100-TSS days', () => {
+    // ctl₀=0, atl₀=0; each day: x += (load − x) / τ
+    // day1 ctl 2.381  atl 14.286  tsb −11.9
+    // day2 ctl 4.707  atl 26.531  tsb −21.8
+    // day3 ctl 6.976  atl 37.026  tsb −30.1
+    const items = [0, 1, 2].map((back) => ({ date: iso(back), tss: 100 }));
+    const points = computePmc(items, 2, NOW);
+
+    expect(points).toHaveLength(3);
+    expect(points.map((p) => p.ctl)).toEqual([2.4, 4.7, 7]);
+    expect(points.map((p) => p.atl)).toEqual([14.3, 26.5, 37]);
+    expect(points.map((p) => p.tsb)).toEqual([-11.9, -21.8, -30.1]);
+  });
+
+  it('converges to the closed form under constant load', () => {
+    // after n days of a constant daily load L starting from 0:
+    //   ema_n = L × (1 − (1 − 1/τ)^n)
+    const load = 100;
+    const span = 60;
+    const items = Array.from({ length: span }, (_, i) => ({ date: iso(span - 1 - i), tss: load }));
+    const points = computePmc(items, span, NOW);
+
+    // the loop starts one day before the first load, so 60 loaded steps run
+    const closedForm = load * (1 - (1 - 1 / CTL_TAU) ** span);
+    const last = points.at(-1)!;
+    expect(last.ctl).toBeCloseTo(closedForm, 1);
+  });
+
+  it('keeps TSB equal to CTL − ATL on every day', () => {
+    const items = [0, 1, 2, 3, 4].map((back, i) => ({ date: iso(back), tss: 40 + i * 20 }));
+    for (const p of computePmc(items, 5, NOW)) {
+      // TSB is derived from the unrounded EMAs, so the published 1-decimal values
+      // can disagree by up to 0.1 — never more.
+      expect(Math.abs(p.tsb - (p.ctl - p.atl))).toBeLessThanOrEqual(0.15);
+    }
+  });
+
+  it('decays toward zero when training stops', () => {
+    const items = Array.from({ length: 40 }, (_, i) => ({ date: iso(40 - i), tss: 100 }));
+    const points = computePmc(items, 90, NOW);
+    const loaded = points.find((p) => p.date === iso(1))!; // last day that carried load
+    const rested = points.at(-1)!; // today, one day into a rest block
+    expect(rested.ctl).toBeLessThan(loaded.ctl);
+    expect(rested.atl).toBeLessThan(loaded.atl);
+    expect(rested.tsb).toBeGreaterThan(loaded.tsb);
+  });
+
+  it('ATL reacts faster than CTL to a fresh load spike', () => {
+    const items = Array.from({ length: 60 }, (_, i) => ({ date: iso(60 - i), tss: 50 }));
+    items.push({ date: iso(0), tss: 300 });
+    const points = computePmc(items, 60, NOW);
+    const last = points.at(-1)!;
+    // one day of 300 TSS moves ATL far more than CTL
+    expect(last.atl).toBeGreaterThan(30);
+    expect(last.ctl).toBeLessThan(70);
+  });
+
+  it('starts from zero fitness with no history', () => {
+    const points = computePmc([], 7, NOW);
+    expect(points).toHaveLength(8);
+    expect(points.every((p) => p.ctl === 0 && p.atl === 0 && p.tsb === 0)).toBe(true);
+  });
+
+  it('is deterministic for identical input', () => {
+    const items = [{ date: iso(1), tss: 70 }, { date: iso(0), tss: 90 }];
+    expect(computePmc(items, 30, NOW)).toEqual(computePmc(items, 30, NOW));
+  });
+
+  it('emits one point per day including both endpoints', () => {
+    const points = computePmc([], 30, NOW);
+    expect(points[0].date).toBe(iso(30));
+    expect(points.at(-1)!.date).toBe(iso(0));
+  });
+
+  it('exposes the documented time constants', () => {
+    expect(CTL_TAU).toBe(42);
+    expect(ATL_TAU).toBe(7);
+  });
+});
+
+describe('formState', () => {
+  it('maps TSB bands to training-state labels', () => {
+    expect(formState(-40)).toBe('fresh');
+    expect(formState(-20)).toBe('detraining');
+    expect(formState(0)).toBe('balanced');
+    expect(formState(15)).toBe('productive');
+    expect(formState(30)).toBe('peaking');
+  });
+});
