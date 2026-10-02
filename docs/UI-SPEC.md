@@ -1104,3 +1104,63 @@ alih-alih mengukur wrap.
 **Bukti menangkap regresi:** markup `flex-wrap` + `whitespace-nowrap` dilepas dan font
 dinaikkan ke 16 px — keempat lebar gagal dengan `the strip is 61px tall for 24px of text — it
 wrapped`. Dikembalikan: 30/30 hijau.
+
+## §32 — Hierarki hero Routes: satu komponen, bukan dua (v7.1)
+
+Tindak lanjut §31. Memindahkan `MOVING` ke tile `EST FINISH` memperbaiki satu masalah dan
+menciptakan dua baru, keduanya karena perubahan itu sendiri.
+
+### 32.1 Strip statistik mendadak tidak center
+
+`justify-between` dipakai saat strip masih punya dua anak. Setelah `MOVING` pindah ke tile,
+strip hanya menyisakan satu anak — dan `justify-between` dengan satu anak **menempelkan baris itu ke
+kiri**. Di bawah dua tile yang rata-rata tengah, baris yang nyempil ke kiri itu terbaca
+sebagai label nyasar, bukan sebagai bagian dari hierarki.
+
+Diganti `justify-center`. Diukur: simpul baris terhadap kotak konten hero = **0 px** di
+320 px maupun 420 px.
+
+### 32.2 Dua tile yang sebelumnya bukan satu komponen
+
+| | EST FINISH | TARGET ARRIVE |
+|---|---|---|
+| Latar | `#23252c` | `#1b1c22` |
+| Border | `#2b2d33` | `#2b2d33` |
+| Isi | 3 baris | 2 baris |
+| Suffix | — | `WIB` inline di baseline 26 px |
+
+Empat perbedaan sekaligus. Yang membuat keduanya terasa "tidak harmonis" bukan satu pun
+perbedaan tunggal, melainkan gabungan: satu primary dan satu secondary, tapi perbedaan itu
+disampaikan lewat bentuk, bukan lewat hierarki.
+
+**Keputusan: kotaknya harus identik; hierarki dibawa warna angka saja.** Latar, border,
+padding, radius, tinggi, dan ritme baris dalam kini sama persis pada keduanya
+(terukur `rgb(35,37,44)` / `rgb(43,45,51)` / `10px 12px` / `16px` / tinggi sama).
+Yang berbeda hanya warna: `EST FINISH` rose (primer), `TARGET ARRIVE` putih (sekunder).
+
+Membuat kotaknya berbeda untuk menyatakan hierarki justru akan membangun kembali masalah
+yang sama — bentuk yang berbeda akan terbaca sebagai komponen yang berbeda.
+
+### 32.3 Keduanya tiga baris
+
+`EST FINISH` mendapat baris ketiga saat `MOVING` pindah, dan membiarkan tetangganya dua
+baris membuat satu kotak terlihat lebih dalam dari pasangannya. Karena itu `WIB` —
+yang tadinya menempel inline di ujung angka 26 px dan ikut memenuhi baseline itu —
+dipindah ke baris sendiri dengan style yang sama persis dengan baris `MOVING`.
+
+Tiap tile kini juga koheren secara internal: satu pasang **durasi** (`estFinish` termasuk
+berhenti, `MOVING` tidak) dan satu pasang **jam** (`12:17` + `WIB`).
+
+### 32.4 Tes
+
+Dua tes E2E baru, `routes hero hierarchy`:
+
+- **Satu komponen** — setiap properti permukaan kedua tile harus sama, jumlah baris harus
+  sama, tinggi tiap baris harus sama, dan warna angka harus tetap **berbeda**. Itu
+  Kombinasi yang benar: kotak identik, hierarki tetap ada.
+- **Strip terpusat** — `justify-content` harus `center` dan simpul baris harus dalam 1 px
+  dari pusat kotak konten hero, diuji di 320 px.
+
+**Bukti menangkap regresi:** `justify-between` dikembalikan → gagal dengan `strip sits
+-104px off centre`. Latar/border tile kedua dikembalikan → gagal dengan `tiles disagree on
+borderColor: rgb(43, 45, 51) vs rgb(51, 51, 56)`. Dipulihkan: 32/32 hijau.

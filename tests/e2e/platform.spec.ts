@@ -641,3 +641,89 @@ test.describe('routes hero stat strip', () => {
     expect(strip!.stripText, 'MOVING crept back into the strip').not.toMatch(/MOVING/i);
   });
 });
+
+test.describe('routes hero hierarchy', () => {
+  /** The EST FINISH / TARGET ARRIVE pair, located by the labels rather than by index. */
+  const tiles = (page: Page) =>
+    page.evaluate(() => {
+      const hero = [...document.querySelectorAll('section')].find((s) =>
+        /PROJECTED RIDE TIME/i.test(s.innerText)
+      );
+      if (!hero) return null;
+      const row = [...hero.querySelectorAll('div')].find(
+        (d) =>
+          [...d.children].length === 2 &&
+          [...d.children].every((c) => /EST FINISH|TARGET ARRIVE/i.test(c.innerText))
+      );
+      if (!row) return null;
+      return [...row.children].map((t) => {
+        const cs = getComputedStyle(t);
+        const r = t.getBoundingClientRect();
+        return {
+          label: t.firstElementChild?.textContent?.trim(),
+          bg: cs.backgroundColor,
+          borderColor: cs.borderColor,
+          borderWidth: cs.borderWidth,
+          padding: cs.padding,
+          radius: cs.borderRadius,
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          // three lines of equal rhythm in both, or one box looks deeper than its twin
+          lineCount: t.children.length,
+          lineHeights: [...t.children].map((c) => Math.round(c.getBoundingClientRect().height)),
+          valueColor: getComputedStyle(t.children[1]).color
+        };
+      });
+    });
+
+  test('the two hero tiles are one component, not two', async ({ page }) => {
+    await openApp(page, '#/routes');
+    await page.getByText('PROJECTED RIDE TIME').waitFor({ timeout: 20_000 });
+
+    const t = await tiles(page);
+    expect(t, 'hero tiles not found').not.toBeNull();
+    expect(t!.map((x) => x.label?.toLowerCase())).toEqual(['est finish', 'target arrive']);
+
+    const [a, b] = t!;
+    // Every surface property must match. They used to differ in background shade *and*
+    // border tone, which made one primary and one secondary read as two unrelated cards.
+    for (const prop of ['bg', 'borderColor', 'borderWidth', 'padding', 'radius', 'height'] as const) {
+      expect(b[prop], `tiles disagree on ${prop}: ${a[prop]} vs ${b[prop]}`).toEqual(a[prop]);
+    }
+    // Same internal rhythm too: label, figure, subline.
+    expect(a.lineCount, 'EST FINISH is not three lines').toBe(3);
+    expect(b.lineCount, 'TARGET ARRIVE is not three lines').toBe(3);
+    expect(a.lineHeights, 'the two tiles stack their lines differently').toEqual(b.lineHeights);
+
+    // Hierarchy survives through colour alone — that is the point of matching the boxes.
+    expect(a.valueColor).not.toBe(b.valueColor);
+  });
+
+  test('the stat strip is centred under the hero, not left-aligned', async ({ page }) => {
+    await openApp(page, '#/routes');
+    await page.getByText('PROJECTED RIDE TIME').waitFor({ timeout: 20_000 });
+    await page.setViewportSize({ width: 320, height: 900 });
+
+    const m = await page.evaluate(() => {
+      const hero = [...document.querySelectorAll('section')].find((s) =>
+        /PROJECTED RIDE TIME/i.test(s.innerText)
+      )!;
+      const strip = [...hero.querySelectorAll('div')].find((d) =>
+        [...d.children].some((k) => /^AVG\b/i.test(k.textContent?.trim() ?? ''))
+      )!;
+      const s = strip.getBoundingClientRect();
+      const h = hero.getBoundingClientRect();
+      const pad = parseFloat(getComputedStyle(hero).paddingLeft);
+      return {
+        justify: getComputedStyle(strip).justifyContent,
+        // midpoint of the strip against the midpoint of the hero's content box
+        offset: Math.round((s.left + s.right) / 2 - (h.left + pad + (h.right - pad)) / 2)
+      };
+    });
+
+    // `justify-between` with a single child pins the row hard left, which is what the strip
+    // did once MOVING left it — it then read as a stray label under a centred hero.
+    expect(m.justify).toBe('center');
+    expect(Math.abs(m.offset), `strip sits ${m.offset}px off centre`).toBeLessThanOrEqual(1);
+  });
+});

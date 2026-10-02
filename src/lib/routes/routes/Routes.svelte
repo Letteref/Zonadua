@@ -328,25 +328,34 @@
       </span>
       <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-pill bg-[#23252c] text-rose border border-[#2b2d33]">{hasRoute ? 'Preview' : 'Sample plan'}</span>
     </div>
+    <!--
+      Two tiles, one component.
+
+      They used to differ in every visible way — background shade, border tone, and content
+      depth — so the pair read as two unrelated cards rather than one idea at two levels of
+      emphasis. Now the boxes are identical and only the *figure colour* carries the
+      hierarchy: EST FINISH is the primary number, TARGET ARRIVE the secondary one. Making
+      the boxes differ to express hierarchy would have re-created the problem.
+
+      Both tiles also have three lines. EST FINISH gained its third line when MOVING moved
+      out of the stat strip below, and leaving the other tile at two would have left one box
+      visually taller than its twin — hence WIB moving off the end of the number and onto a
+      line of its own, where it stops crowding the 26 px baseline.
+    -->
     <div class="grid grid-cols-2 gap-2.5">
       <div class="rounded-2xl px-3 py-2.5 flex flex-col items-center justify-center text-center bg-[#23252c] border border-[#2b2d33] min-h-16">
         <span class="text-[10px] font-extrabold uppercase tracking-wider text-on-mono-dim">Est finish</span>
         <span class="text-[26px] font-extrabold text-rose text-tabular tracking-tight leading-none mt-0.5">{estFinish}</span>
-        <!--
-          Moving time rides with the finish estimate rather than in the stat strip below.
-
-          It is the same number in different clothes: `estFinish` is elapsed time *including*
-          stops, `movingSec` is the same ride *excluding* them, so the pair reads as one
-          figure with its allowance broken out. That also happens to be what makes the strip
-          fit — see below.
-        -->
-        <span class="text-[9px] font-bold uppercase tracking-wider text-on-mono-dim text-tabular whitespace-nowrap mt-1">
+        <span class="text-[9px] font-bold uppercase tracking-[0.1em] text-on-mono-dim text-tabular whitespace-nowrap mt-1.5">
           Moving {durationOf(movingSec)}
         </span>
       </div>
-      <div class="bg-[#1b1c22] border border-[#2b2d33] rounded-2xl px-3 py-2.5 flex flex-col items-center justify-center text-center min-h-16">
+      <div class="rounded-2xl px-3 py-2.5 flex flex-col items-center justify-center text-center bg-[#23252c] border border-[#2b2d33] min-h-16">
         <span class="text-[10px] font-extrabold uppercase tracking-wider text-on-mono-dim">Target arrive</span>
-        <span class="text-[26px] font-extrabold text-on-mono text-tabular tracking-tight leading-none mt-0.5">{etaFinish} <span class="text-[10px] text-on-mono-dim font-normal">WIB</span></span>
+        <span class="text-[26px] font-extrabold text-on-mono text-tabular tracking-tight leading-none mt-0.5">{etaFinish}</span>
+        <span class="text-[9px] font-bold uppercase tracking-[0.1em] text-on-mono-dim text-tabular whitespace-nowrap mt-1.5">
+          WIB
+        </span>
       </div>
     </div>
     <!--
@@ -364,7 +373,7 @@
       now fits at every phone width.
     -->
     <div
-      class="flex items-center justify-between gap-2 pt-1 border-t border-[#2b2d33] text-[11px] font-bold uppercase tracking-[0.06em] whitespace-nowrap"
+      class="flex items-center justify-center gap-2 pt-1 border-t border-[#2b2d33] text-[11px] font-bold uppercase tracking-[0.06em] whitespace-nowrap"
     >
       <div class="flex items-center gap-2 min-w-0 text-tabular">
         <span class="text-on-mono-dim">AVG <span class="text-on-mono">{avgKph.toFixed(1)} KM/H</span></span>
