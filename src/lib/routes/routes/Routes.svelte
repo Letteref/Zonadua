@@ -332,21 +332,52 @@
       <div class="rounded-2xl px-3 py-2.5 flex flex-col items-center justify-center text-center bg-[#23252c] border border-[#2b2d33] min-h-16">
         <span class="text-[10px] font-extrabold uppercase tracking-wider text-on-mono-dim">Est finish</span>
         <span class="text-[26px] font-extrabold text-rose text-tabular tracking-tight leading-none mt-0.5">{estFinish}</span>
+        <!--
+          Moving time rides with the finish estimate rather than in the stat strip below.
+
+          It is the same number in different clothes: `estFinish` is elapsed time *including*
+          stops, `movingSec` is the same ride *excluding* them, so the pair reads as one
+          figure with its allowance broken out. That also happens to be what makes the strip
+          fit — see below.
+        -->
+        <span class="text-[9px] font-bold uppercase tracking-wider text-on-mono-dim text-tabular whitespace-nowrap mt-1">
+          Moving {durationOf(movingSec)}
+        </span>
       </div>
       <div class="bg-[#1b1c22] border border-[#2b2d33] rounded-2xl px-3 py-2.5 flex flex-col items-center justify-center text-center min-h-16">
         <span class="text-[10px] font-extrabold uppercase tracking-wider text-on-mono-dim">Target arrive</span>
         <span class="text-[26px] font-extrabold text-on-mono text-tabular tracking-tight leading-none mt-0.5">{etaFinish} <span class="text-[10px] text-on-mono-dim font-normal">WIB</span></span>
       </div>
     </div>
-    <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-[#2b2d33] text-[11px] font-bold uppercase tracking-[0.08em]">
-      <div class="flex items-center gap-2 text-tabular">
+    <!--
+      One line, always — and 11 px, always.
+
+      The previous version used `flex-wrap` with loose inline text ("AVG" then
+      "31.9 KM/H"), so a long value split the stat across two lines *and* the strip itself
+      could wrap, growing the card a row on the screen where the rider is planning.
+
+      `whitespace-nowrap` stops a label splitting from its number, but that alone is not
+      enough: the strip is ~30 px wide per px of font size, so keeping MOVING here meant a
+      one-line strip only fitted at 11 px on a 420 px screen and needed ~8 px on a 320 px
+      one — unreadable. Moving MOVING up into the EST FINISH tile, where it belongs next to
+      the elapsed time it is a subset of, buys back ~24 % of the width and the full 11 px
+      now fits at every phone width.
+    -->
+    <div
+      class="flex items-center justify-between gap-2 pt-1 border-t border-[#2b2d33] text-[11px] font-bold uppercase tracking-[0.06em] whitespace-nowrap"
+    >
+      <div class="flex items-center gap-2 min-w-0 text-tabular">
         <span class="text-on-mono-dim">AVG <span class="text-on-mono">{avgKph.toFixed(1)} KM/H</span></span>
-        <span class="text-[#3f434b]">•</span>
+        <!-- Separators give way first on the narrowest phones. They are the only part of the
+             strip that carries no information, and dropping them recovers ~28 px, which is
+             exactly the margin a pathological plan (five-digit kcal, a 40 h estimate) needs
+             to stay on one line. Each metric keeps its own label, so nothing becomes
+             ambiguous without them. -->
+        <span class="text-[#3f434b] shrink-0 hidden min-[340px]:inline">•</span>
         <span class="text-on-mono-dim"><span class="text-on-mono">{kcal.toLocaleString()}</span> KCAL</span>
-        <span class="text-[#3f434b]">•</span>
+        <span class="text-[#3f434b] shrink-0 hidden min-[340px]:inline">•</span>
         <span class="text-rose">{npTarget} W NP</span>
       </div>
-      <span class="text-on-mono-dim">MOVING <span class="text-on-mono">{durationOf(movingSec)}</span></span>
     </div>
     <div class="grid grid-cols-4 gap-1.5 pt-0.5">
       <div class="flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl bg-[#1b1c22] border border-[#2b2d33] text-on-mono">
