@@ -51,6 +51,24 @@ dicentang. Keduanya kini punya tes yang gagal bila bugnya dikembalikan:
 `table "power_curves" did not round-trip`. Kedua guard seed dimatikan → tes gagal dengan
 `the wipe left activities behind … Received: 24`. Dipulihkan: 25/25 hijau.
 
+### Temuan ketiga: impor membuang power (2 Okt 2026)
+
+Ketemu bukan dari DoD, tapi dari satu pertanyaan sederhana saat membangun harness §33: dari mana
+Crr/CdA akan datang kalau akurasinya mau benar? Jawabannya harus dari GPS + power pembalap sendiri.
+
+`parseCourse()` membaca posisi, ketinggian, dan waktu saja — padahal TCX dari head unit membawa
+`<ns3:Watts>` di **setiap** trackpoint, dan GPX Garmin membawa `<gpxtpx:Watts>`. Keduanya
+dibuang, sehingga setiap ride impor tiba tanpa NP/IF/TSS dan `kcal` diisi `distanceKm × 26`.
+Tidak pernah kelihatan karena `ActivityDetail.svelte` menampilkan empty state yang jujur
+(*"This ride has no power stream"*) — **dan empty state itulah yang menutupi bug-nya.** Impor
+rusak dan pembalap tanpa meter menghasilkan layar yang persis sama.
+
+Bug pendamping: parser mencari `<name>` huruf kecil, TCX menulis `<Name>` → setiap ride TCX
+selalu bernama berkas, bukan nama ride.
+
+Perbaikan + tes di `UI-SPEC §34`. **Bukti menangkap regresi:** `Object.assign(p, readSensors(n))`
+dikomentari → gagal di `the imported ride has no normalized power`. Dipulihkan: 38/38 E2E hijau.
+
 > **Peringatan jebakan:** Lighthouse **12 menghapus kategori PWA** sama sekali, sehingga DoD ini
 > tidak bisa diukur (bukan lulus, dan bukan gagal). Dependensi dipin ke `11.x` selagi baris ini ada
 > di papan, dan `audit:lighthouse` **menolak keras** bila sebuah kategori tidak dilaporkan — melacak

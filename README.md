@@ -36,7 +36,7 @@ Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
 > mean-max curve + CP/W' fit, time in zones), `course.ts` (GPX/TCX), `units.ts`, `trend.ts`,
 > and the M3 solver pair `physics.ts` + `pacing.ts` (power→speed → finish time → checkpoints →
-interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **310 unit tests** (308 passing, 2 waiting on a real device ride) and **37 Playwright E2E tests**.
+interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **315 unit tests** (313 passing, 2 waiting on a real device ride) and **38 Playwright E2E tests**.
 Still missing: everything in M5 — the AI Coach has no LLM call, and Strava sync has no backend.
 
 ## Commands
@@ -85,7 +85,7 @@ status table in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/PRD.md](docs/PRD.md) — features F1–F8, acceptance criteria, MVP scope
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, data model, physics, Strava integration, compliance
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phase status + the recommended execution order
-- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §33
+- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §34
 - [docs/STITCH-PROMPTS-v5.md](docs/STITCH-PROMPTS-v5.md) — Google Stitch prompt source (historical reference)
 
 ## Deploy (zero-cost)
@@ -98,7 +98,12 @@ Cloudflare Pages: build `npm run build`, output `dist/`. Hash routing means no r
 Definition-of-Done line verified. M0–M2 were marked Done while carrying nine unticked DoD lines; those
 were run for real, and **two turned out to be genuine bugs** the boxes had been hiding — the JSON
 backup silently dropped the power-curve table, and "Delete all data" was undone by the seed on the
-next boot. Both now have regression tests. What remains open needs something this repo cannot
+next boot. Both now have regression tests. A third surfaced while building the prediction-accuracy
+harness: the GPX/TCX importer read position, altitude and time and **threw away the power data that
+was in the file** — a head-unit TCX carries `<Watts>` at every trackpoint — so every imported ride
+arrived without NP/IF/TSS. It stayed invisible because the honest "no power stream" empty state
+rendered in its place, making a broken import indistinguishable from a rider with no meter. What
+remains open needs something this repo cannot
 provide: Cloudflare credentials for the preview deploy, a phone for the Android install check, and a
 real device on the same route for the ±7 % golden test. That last one now has its instrument in
 place — drop a ride into `validation/rides/` and `npm test` projects it through the app's own

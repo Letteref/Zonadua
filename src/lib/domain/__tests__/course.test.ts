@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { PAUSE_GAP_SEC, decimateTrack, haversineM, parseCourse } from '../course';
+import { extractPower } from '../../data/streams';
 
 /** Minimal GPX with N points on a straight line, optional elevation and timestamps. */
 function gpx(opts: {
@@ -144,6 +145,98 @@ describe('parseCourse — TCX', () => {
 
   it('falls back to the filename when TCX carries no name element', () => {
     expect(parseCourse(tcx, 'Hill Reps.tcx').name).toBe('Hill Reps');
+  });
+
+  it('reads a TCX <Name>, which is capitalised, unlike GPX <name>', () => {
+    // Asking only for lowercase `name` meant every TCX ride was filed under its
+    // filename — "e2e-power" instead of the ride the rider actually named.
+    const named = tcx.replace('<Id>', '<Name>Tuesday Threshold</Name><Id>');
+    expect(parseCourse(named, 'whatever.tcx').name).toBe('Tuesday Threshold');
+  });
+
+  it('reads watts, heart rate and cadence out of the trackpoint', () => {
+    // The whole reason this test exists: the parser used to read position, altitude and
+    // time and silently drop the sensor block, even though a TCX from a head unit puts
+    // watts at every single trackpoint. Because the app then showed an honest empty
+    // state for a ride with no power, the data loss looked like a rider with no meter.
+    const withSensors = `<?xml version="1.0"?>
+<TrainingCenterDatabase xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2"><Activities><Activity Sport="Biking">
+  <Id>2026-09-02T07:00:00Z</Id>
+  <Lap StartTime="2026-09-02T07:00:00Z"><Track>
+    ${Array.from({ length: 6 }, (_, i) => {
+      const watts = 210 + i * 10;
+      return `<Trackpoint>
+      <Time>${new Date(Date.parse('2026-09-02T07:00:00Z') + i * 10_000).toISOString()}</Time>
+      <Position><LatitudeDegrees>-6.2</LatitudeDegrees><LongitudeDegrees>${106.8 + i * 0.001}</LongitudeDegrees></Position>
+      <AltitudeMeters>${50 + i * 5}</AltitudeMeters>
+      <HeartRateBpm><Value>${130 + i}</Value></HeartRateBpm>
+      <Cadence>${85 + i}</Cadence>
+      <Extensions><ns3:TPX><ns3:Watts>${watts}</ns3:Watts></ns3:TPX></Extensions>
+    </Trackpoint>`;
+    }).join('\n    ')}
+  </Track></Lap>
+</Activity></Activities></TrainingCenterDatabase>`;
+
+    const ride = parseCourse(withSensors, 'sensor.tcx');
+    expect(ride.points).toHaveLength(6);
+    expect(ride.points.map((p) => p.watts)).toEqual([210, 220, 230, 240, 250, 260]);
+    expect(ride.points.map((p) => p.hr)).toEqual([130, 131, 132, 133, 134, 135]);
+    expect(ride.points.map((p) => p.cad)).toEqual([85, 86, 87, 88, 89, 90]);
+
+    // And the decoded stream must actually yield a power series, which is the whole
+    // point — this is the call the importer makes.
+    expect(extractPower(ride.points)?.watts).toEqual([210, 220, 230, 240, 250, 260]);
+  });
+
+  it('leaves watts absent when the sensor paired mid-ride, rather than writing zero', () => {
+    // Zero watts means "coasting"; missing means "no reading". A meter that connects at
+    // kilometre 20 must not look like a rider who coasted the first 20 km.
+    const halfSensors = `<?xml version="1.0"?>
+<TrainingCenterDatabase><Activities><Activity Sport="Biking">
+  <Lap StartTime="2026-09-02T07:00:00Z"><Track>
+    ${Array.from({ length: 4 }, (_, i) => {
+      const watts = i < 2 ? '' : `<Watts>${250 + i}</Watts>`;
+      return `<Trackpoint>
+      <Time>${new Date(Date.parse('2026-09-02T07:00:00Z') + i * 10_000).toISOString()}</Time>
+      <Position><LatitudeDegrees>-6.2</LatitudeDegrees><LongitudeDegrees>${106.8 + i * 0.001}</LongitudeDegrees></Position>
+      ${watts}
+    </Trackpoint>`;
+    }).join('\n    ')}
+  </Track></Lap>
+</Activity></Activities></TrainingCenterDatabase>`;
+
+    const ride = parseCourse(halfSensors, 'late.tcx');
+    expect(ride.points[0].watts).toBeUndefined();
+    expect(ride.points[1].watts).toBeUndefined();
+    expect(ride.points[2].watts).toBe(252);
+    // The decoder must still find the samples that do exist.
+    expect(extractPower(ride.points)?.watts).toEqual([252, 253]);
+  });
+
+  it('reads a GPX TrackPointExtension, which is how a Garmin writes power', () => {
+    // GPX has no <Watts> of its own; the sensor data lives in a vendor extension under
+    // the same local name, so the same selector catches it without knowing the prefix.
+    const garmin = `<?xml version="1.0"?>
+<gpx xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" version="1.1"><trk><trkseg>
+${Array.from({ length: 4 }, (_, i) => {
+  return `  <trkpt lat="-6.2" lon="${106.8 + i * 0.001}"><ele>${10 + i}</ele><time>${new Date(Date.parse('2026-09-01T06:00:00Z') + i * 10_000).toISOString()}</time>
+    <extensions><gpxtpx:TrackPointExtension><gpxtpx:Watts>${300 + i * 5}</gpxtpx:Watts><gpxtpx:hr>${140 + i}</gpxtpx:hr><gpxtpx:cad>90</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions>
+  </trkpt>`;
+}).join('\n')}
+</trkseg></trk></gpx>`;
+
+    const ride = parseCourse(garmin, 'garmin.gpx');
+    expect(ride.source).toBe('gpx');
+    expect(ride.points.map((p) => p.watts)).toEqual([300, 305, 310, 315]);
+    expect(ride.points.map((p) => p.hr)).toEqual([140, 141, 142, 143]);
+    expect(ride.points.every((p) => p.cad === 90)).toBe(true);
+  });
+
+  it('leaves a plain GPX without extensions exactly as it was', () => {
+    // No sensor fields invented, no NaN written — the no-meter case must stay a
+    // no-meter case so the honest empty state still fires.
+    const plain = parseCourse(gpx({ points: 5, startAlt: 20 }), 'plain.gpx');
+    expect(plain.points.every((p) => p.watts === undefined && p.hr === undefined && p.cad === undefined)).toBe(true);
   });
 });
 

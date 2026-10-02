@@ -8,7 +8,8 @@
   import { db, type Activity } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { decimateTrack, parseCourse } from '$lib/domain/course';
-  import { deflateJson } from '$lib/data/streams';
+  import { deflateJson, extractPower } from '$lib/data/streams';
+  import { ftpOnDate, rideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
   import { distanceUnit, formatDistance, formatElevation, type UnitSystem } from '$lib/domain/units';
   import { appSettings } from '$lib/data/queries.svelte';
   import { CheckCircle2, LoaderCircle, X } from '@lucide/svelte';
@@ -79,8 +80,20 @@
       for (const file of files) {
         try {
           const ride = parseCourse(await file.text(), file.name);
-          const points = decimateTrack(ride.points, 6000); // bound stream storage
+          // Decimation bounds storage, and now also thins the power trace: a 4 h ride
+          // lands at roughly 3 s sampling, still well inside the 30 s NP window.
+          const points = decimateTrack(ride.points, 6000);
           const id = newId();
+
+          // A TCX from a head unit carries watts at every trackpoint, and a Garmin GPX
+          // carries the same as a TrackPointExtension. `parseCourse` used to discard
+          // both, so every imported ride arrived with no power and no NP/TSS — and the
+          // honest empty state covered for it so convincingly that the loss was
+          // invisible. Score the ride from its own trace instead (ARCHITECTURE §5.1).
+          const trace = extractPower(points);
+          const ftp = ftpOnDate(await db.ftp_history.orderBy('date').toArray(), ride.dateIso);
+          const m = trace ? rideMetrics(trace.watts, ftp, trace.sampleSec, ride.movingSec) : null;
+
           const act: Activity = {
             id,
             date: ride.dateIso,
@@ -91,7 +104,16 @@
             movingSec: ride.movingSec,
             elapsedSec: ride.movingSec,
             elevGainM: ride.elevGainM,
-            kcal: Math.round(ride.distanceKm * 26), // coarse fallback until power streams are parsed
+            avgPower: m?.avgPower,
+            np: m ? Math.round(m.np) : undefined,
+            // IF and TSS need an FTP to divide by. Without one they are left absent
+            // rather than written as 0, which would read as "rode at zero intensity".
+            if: ftp > 0 && m ? Math.round(m.if * 100) / 100 : undefined,
+            tss: ftp > 0 && m ? Math.round(m.tss) : undefined,
+            // Real energy from the trace when we have one; the crude per-km estimate
+            // is only for files that genuinely carry no meter.
+            kcal: m ? Math.round(m.kcal) : Math.round(ride.distanceKm * 26),
+            mVersion: m ? METRICS_VERSION : undefined,
             updatedAt: Date.now()
           };
           const compressed = await deflateJson(points);
@@ -100,7 +122,10 @@
             await db.activity_streams.put({
               id,
               compressed,
-              fields: Object.keys(points[0] ?? {}),
+              // Union, not the first sample's keys: a sensor paired halfway through the
+              // ride leaves the opening points without watts, and trusting point[0]
+              // would hide the field the decoder needs to find.
+              fields: [...new Set(points.flatMap((p) => Object.keys(p)))],
               source: ride.source,
               updatedAt: Date.now()
             });

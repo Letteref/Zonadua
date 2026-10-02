@@ -21,6 +21,12 @@ export interface TrackPoint {
   lng?: number;
   /** metres above sea level */
   alt?: number;
+  /** rider power, watts — from TCX `<Watts>` or GPX `<gpxtpx:Watts>` */
+  watts?: number;
+  /** heart rate, bpm — TCX `<HeartRateBpm><Value>` or GPX `<gpxtpx:hr>` */
+  hr?: number;
+  /** cadence, rpm — TCX `<Cadence>` or GPX `<gpxtpx:cad>` */
+  cad?: number;
 }
 
 export interface ParsedCourse {
@@ -67,6 +73,41 @@ export function parseCourse(text: string, fileName: string): ParsedCourse {
   const nodes = isTcx ? [...doc.querySelectorAll('Trackpoint')] : [...doc.querySelectorAll('trkpt')];
   if (nodes.length < 2) throw new Error('No trackpoints found');
 
+  // Power, heart rate and cadence ride along inside the file and used to be dropped on
+  // the floor: a TCX from a head unit carries `<ns3:Watts>` at every trackpoint, and a
+  // Garmin GPX carries the same value as `<gpxtpx:Watts>` inside a TrackPointExtension.
+  //
+  // These are matched by *local name* rather than by CSS selector, because the vendor
+  // prefix varies (`ns3:`, `gpxtpx:`) and a type selector that ignores namespaces is
+  // not reliably implemented. XML is case-sensitive, so an exact local-name comparison
+  // is both correct and vendor-agnostic.
+  //
+  // This mattered because the app looked correct while throwing the data away: the
+  // honest empty state rendered in place of NP/TSS, so a broken import read as a rider
+  // who simply has no power meter.
+  const readSensors = (n: Element): Pick<TrackPoint, 'watts' | 'hr' | 'cad'> => {
+    const out: { watts?: number; hr?: number; cad?: number } = {};
+    for (const el of n.getElementsByTagName('*')) {
+      const v = num(el.textContent);
+      if (!Number.isFinite(v)) continue;
+      switch (el.localName) {
+        case 'Watts':
+        case 'power':
+          if (out.watts === undefined) out.watts = v;
+          break;
+        case 'HeartRateBpm':
+        case 'hr':
+          if (out.hr === undefined) out.hr = v;
+          break;
+        case 'Cadence':
+        case 'cad':
+          if (out.cad === undefined) out.cad = v;
+          break;
+      }
+    }
+    return out;
+  };
+
   const points: TrackPoint[] = [];
   let distM = 0;
   let elevGain = 0;
@@ -101,6 +142,10 @@ export function parseCourse(text: string, fileName: string): ParsedCourse {
     if (Number.isFinite(lat)) p.lat = lat;
     if (Number.isFinite(lng)) p.lng = lng;
     if (Number.isFinite(alt)) p.alt = alt;
+    // Sensor fields are only written when present. A sensor paired halfway through a
+    // ride means the first points have no watts at all — emitting `watts: NaN` there
+    // would make the stream look like a meter that read zero for the first hour.
+    Object.assign(p, readSensors(n));
     points.push(p);
   }
 
@@ -114,7 +159,13 @@ export function parseCourse(text: string, fileName: string): ParsedCourse {
   const distanceKm = distM / 1000;
   if (movingSec === 0) movingSec = Math.round((distanceKm / NOMINAL_SPEED_KMH) * 3600);
 
-  const name = doc.querySelector('name')?.textContent?.trim() || fileName.replace(/\.(gpx|tcx)$/i, '');
+  // XML is case-sensitive and the two formats disagree: GPX writes `<name>`, TCX writes
+  // `<Name>`. Asking only for the lowercase one meant every TCX ride was named after its
+  // file instead of after the ride, which is how this bug stayed invisible.
+  const name =
+    doc.querySelector('name')?.textContent?.trim() ||
+    doc.querySelector('Name')?.textContent?.trim() ||
+    fileName.replace(/\.(gpx|tcx)$/i, '');
   const dateIso = times.length > 0 ? new Date(times[0]).toISOString() : new Date().toISOString();
 
   return {

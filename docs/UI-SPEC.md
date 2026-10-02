@@ -1254,3 +1254,78 @@ membuat tes gagal karena alasan yang salah, persis seperti di §31.
 **Bukti menangkap regresi:** `justify-between` dikembalikan → gagal dengan `"CTL 23 ATL 39"
 sits 220px from the right edge`. Kolom Time dikembalikan menjadi string run-on → gagal di
 assertion label. Dipulihkan: 37/37 hijau.
+---
+
+## §34 — Impor membuang power yang sudah ada di dalam file
+
+**Trigger.** Membangun harness validasi (§33) memunculkan pertanyaan sederhana: dari mana
+Crr dan CdA akan datang kalau akurasinya mau benar? Jawabannya — dari GPS + power milik
+pembalap sendiri. Menelusuri jalurnya, ternyata power itu **tidak pernah masuk ke aplikasi**.
+
+### Temuan
+
+`parseCourse()` di `domain/course.ts` membaca tiga hal dari tiap trackpoint: posisi,
+ketinggian, dan waktu. Itu semua. Sementara berkas yang diimpor justru membawa:
+
+- **TCX** — `<ns3:Watts>`, `<ns3:HeartRateBpm>`, `<ns3:Cadence>` di **setiap** trackpoint;
+- **GPX Garmin** — `<gpxtpx:Watts>`, `<gpxtpx:hr>`, `<gpxtpx:cad>` di dalam
+  `<gpxtpx:TrackPointExtension>`.
+
+Keduanya dibuang. Akibatnya setiap ride hasil impor tiba tanpa power: NP, IF, dan TSS
+kosong, dan `kcal` diisi karangan `distanceKm × 26` yang dikomentari sendiri sebagai
+"coarse fallback until power streams are parsed".
+
+### Kenapa tidak pernah kelihatan
+
+Karena aplikasi **tampil benar**. `ActivityDetail.svelte` punya empty state yang jujur —
+*"This ride has no power stream"* — dan empty state itulah yang menutupi bug-nya.
+Importer rusak dan pembalap tanpa power meter menghasilkan layar yang **persis sama**.
+
+Ini pola kedua di proyek ini setelah `power_curves` hilang dari backup JSON: kemampuan
+yang didokumentasikan diam-diam tidak melakukan apa-apa, dan custodinya sendiri
+menutupi bug-nya. Bedanya, di §30 yang ditemukan dengan menjalankan DoD; yang ini
+ditemukan dengan menelusuri satu pertanyaan "datanya bisa datang dari mana".
+
+Bug ketiga yang menyertainya, ketemu karena tes E2E pertama gagal mencari nama ride yang
+saya karang sendiri: parser mencari elemen `<name>` huruf kecil, sedangkan TCX menulis
+**`<Name>`**. XML bersifat case-sensitive, jadi setiap ride TCX selalu tercatat di bawah
+nama berkasnya — bukan nama ride-nya.
+
+### Perbaikan
+
+1. **`domain/course.ts`** membaca sensor berdasarkan **local name**, satu kali penyapuan
+   per trackpoint. Local name dipilih karena prefiks vendor vary (`ns3:`, `gpxtpx:`), dan
+   type selector yang mengabaikan namespace tidak diimplementasikan konsisten — happy-dom
+   menolaknya, dan satu yang bisa relied on di browser saja tidak cukup untuk parser yang
+   jadi tempat data hilang. Pencocokan `localName` bersifat case-sensitive dengan benar
+   dan tidak peduli vendor.
+2. **Sensor hanya ditulis bila ada.** Meter yang terpasang di kilometer 20 menghasilkan
+   trackpoint awal tanpa `watts` — bukan `0`. `0` berarti "mengayun", tidak ada berarti
+   "tidak terbaca".
+3. **`rides/Rides.svelte`** menurunkan NP/IF/TSS dari trace-nya sendiri saat impor
+   (ARCHITECTURE §5.1), dan `kcal` dihitung dari energy trace — bukan dari jarak.
+   `fields` pada `activity_streams` kini **union** kunci seluruh trackpoint, bukan kunci
+   trackpoint pertama: sensor yang menyala di tengah ride membuat trackpoint pertama tidak
+   punya `watts`, dan kunci pertama akan menyembunyikan field yang justru dicari decoder.
+4. **IF dan TSS tidak ditulis sebagai 0** saat FTP belum ada. `0` dibaca sebagai
+   "mengebut intensitas nol"; tidak ada clarté lebih jujur.
+5. **Nama TCX** kini dibaca dari `<Name>`.
+
+### Tes
+
+- **Unit** (`course.test.ts`, 5 tes baru): sensor TCX terbaca; sensor GPX extension
+  terbaca; sensor yang menyala di tengah ride menghasilkan `undefined`, bukan nol; GPX
+  polos tetap tanpa field sensor; `<Name>` kapital dibaca.
+- **E2E** (`platform.spec.ts`, 1 tes baru): impor TCX 24 km dengan power, lalu memeriksa
+  baris di IndexedDB **dan** isi layar — NP dan TSS harus muncul sebagai angka, dan tile
+  tidak boleh lagi berbunyi "Needs power".
+
+**Bukti menangkap regresi:** baris `Object.assign(p, readSensors(n))` dikomentari →
+gagal di `the imported ride has no normalized power`. Dipulihkan.
+
+### Yang belum selesai
+
+Sekarang data power **masuk**, tapi belum dipakai untuk apa pun yang besar: kalibrasi
+`Crr`/`CdA` per-pembalap masih belum ada, dan harness ±7 % (§33) masih kosong. Yang
+perubahan ini lakukan adalah menghapus satu alasan kenapa keduanya tidak bisa.keyword —
+dulu, bekanya tidak ada di mana pun.

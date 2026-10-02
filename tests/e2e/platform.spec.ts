@@ -106,6 +106,43 @@ function gpxFor(km: number, name: string): string {
 <trk><name>${name}</name><trkseg>${pts.join('')}</trkseg></trk></gpx>`;
 }
 
+/**
+ * A TCX the way a head unit actually writes one: position, altitude, time, and a sensor
+ * block carrying watts at every single trackpoint.
+ *
+ * The parser used to read only the first three and drop the rest, which is invisible
+ * from the outside because the app then rendered an honest "this ride has no power
+ * stream" state. A broken import and a rider with no meter looked identical.
+ */
+function tcxWithPower(km: number, name: string, baseWatts = 240): string {
+  const pts: string[] = [];
+  const stepM = 20;
+  const start = Date.parse('2026-09-20T06:00:00Z');
+  for (let d = 0; d <= km * 1000; d += stepM) {
+    const lat = (-0.5 + d / 111_320).toFixed(6);
+    const ele = (120 + d * 0.004).toFixed(1);
+    // A steady 240 W ride with a gentle sinusoidal variation, so NP is not equal to the
+    // average and the metric has something real to compute.
+    const watts = Math.round(baseWatts + Math.sin(d / 300) * 45);
+    const t = new Date(start + d * 1000).toISOString();
+    pts.push(
+      `<Trackpoint><Time>${t}</Time>` +
+        `<Position><LatitudeDegrees>${lat}</LatitudeDegrees><LongitudeDegrees>100.3</LongitudeDegrees></Position>` +
+        `<AltitudeMeters>${ele}</AltitudeMeters>` +
+        `<HeartRateBpm><Value>${140 + (d % 30)}</Value></HeartRateBpm>` +
+        `<Cadence>88</Cadence>` +
+        `<Extensions><ns3:TPX><ns3:Watts>${watts}</ns3:Watts></ns3:TPX></Extensions>` +
+        `</Trackpoint>`
+    );
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2" version="1.0">
+<Activities><Activity Sport="Biking"><Id>2026-09-20T06:00:00Z</Id>
+<Name>${name}</Name>
+<Lap StartTime="2026-09-20T06:00:00Z"><Track>${pts.join('')}</Track></Lap>
+</Activity></Activities></TrainingCenterDatabase>`;
+}
+
 test.describe('M0 — installable and offline', () => {
   test('the manifest carries everything Chrome needs to offer an install', async ({ page }) => {
     await openApp(page);
@@ -256,6 +293,75 @@ test.describe('M1 — data in', () => {
     });
     expect(stored, 'ride was never written to IndexedDB').toBeTruthy();
     expect(Math.abs(stored!.distanceKm - 200)).toBeLessThan(2);
+  });
+
+  test('a TCX with a power meter imports as a scored ride, not a powerless one', async ({
+    page
+  }) => {
+    await openApp(page, '#/rides');
+    await page.getByText('YOUR RIDES').first().waitFor({ timeout: 20_000 });
+
+    await page.evaluate(async (xml) => {
+      const input = document.querySelector(
+        'input[aria-label="Import GPX or TCX files"]'
+      ) as HTMLInputElement;
+      const file = new File([xml], 'e2e-power.tcx', { type: 'application/vnd.garmin.tcx+xml' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise<void>((resolve) => {
+        const tick = () =>
+          document.body.innerText.includes('E2E Power TCX')
+            ? resolve()
+            : requestAnimationFrame(tick);
+        if (performance.now() > 10_000) resolve();
+        else requestAnimationFrame(tick);
+      });
+    }, tcxWithPower(24, 'E2E Power TCX'));
+
+    const stored = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const req = indexedDB.open('gowslab');
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+      const rows = await new Promise<Array<Record<string, unknown>>>((res, rej) => {
+        const req = db.transaction('activities', 'readonly').objectStore('activities').getAll();
+        req.onsuccess = () => res(req.result as never);
+        req.onerror = () => rej(req.error);
+      });
+      db.close();
+      return rows.find((r) => String(r.name).includes('E2E Power TCX')) as
+        | { id: string; np?: number; tss?: number; if?: number; avgPower?: number; kcal: number }
+        | undefined;
+    });
+
+    expect(stored, 'the TCX ride was never written to IndexedDB').toBeTruthy();
+    // The file carried watts at every trackpoint. Dropping them produced a ride with no
+    // NP, no IF and no TSS — indistinguishable, on screen, from a rider with no meter.
+    expect(stored!.np, 'the imported ride has no normalized power').toBeGreaterThan(150);
+    expect(stored!.tss, 'the imported ride has no training stress score').toBeGreaterThan(0);
+    expect(stored!.avgPower).toBeGreaterThan(0);
+    expect(stored!.kcal).toBeGreaterThan(100);
+
+    // And it must reach the screen: the ride detail shows a number instead of the
+    // "no power stream" state that was quietly covering for the parser.
+    await page.goto(`/?r=${Date.now()}#/rides/${encodeURIComponent(stored!.id)}`);
+    await page.waitForTimeout(1200);
+    const text = await page.evaluate(() => document.body.innerText);
+
+    // The empty state is what made the parser bug invisible: a dropped power trace and
+    // a rider without a meter rendered identically. Assert the numbers are on screen,
+    // not merely in the database.
+    expect(text, 'the detail page still claims the ride has no power').not.toContain(
+      'Needs power'
+    );
+    expect(text, 'the detail page still shows the no-power empty state').not.toContain(
+      'no power stream'
+    );
+    expect(text, 'the computed NP is not on the detail page').toContain(String(stored!.np));
+    expect(text, 'the computed TSS is not on the detail page').toContain(String(stored!.tss));
   });
 
   test('importing adds the distance to the active bike odometer', async ({ page }) => {
