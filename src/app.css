@@ -109,6 +109,14 @@
     0 4px 14px -4px rgba(232, 16, 46, 0.5),
     0 12px 36px -12px rgba(232, 16, 46, 0.35);
 }
+/* Glow that follows the glyphs, not the element's box.
+   `glow-crimson` on a block of text renders its box-shadow as a rectangle the size of the
+   whole line — including the empty space beside a short number — which reads as a stray
+   panel. `drop-shadow` traces the alpha of the painted glyphs instead, so only the type
+   blooms. Apply to the text itself, never to a container. */
+@utility glow-crimson-text {
+  filter: drop-shadow(0 0 6px rgba(232, 16, 46, 0.45)) drop-shadow(0 2px 14px rgba(232, 16, 46, 0.3));
+}
 @utility glow-soft {
   box-shadow: 0 10px 28px -14px rgba(20, 21, 25, 0.5);
 }

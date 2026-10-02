@@ -741,7 +741,11 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           onDark
         />
       {/snippet}
-      <p class="text-metric-hero text-tabular font-extrabold glow-crimson" style="color:#ff4d5e">
+      <!-- glow-crimson-text, not glow-crimson: a box-shadow on this <p> renders as a
+           rectangle the width of the whole line (including the empty space after the
+           number), which reads as a stray grey panel behind the figure. drop-shadow
+           follows the glyphs instead. -->
+      <p class="text-metric-hero text-tabular font-extrabold glow-crimson-text" style="color:#ff4d5e">
         {bufferLabel}<span class="text-xl font-bold text-on-mono-dim ml-2">{buffer == null ? 'NO PLAN' : buffer >= 0 ? 'BUFFER' : 'BEHIND'}</span>
       </p>
       <div class="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-on-mono-dim">
