@@ -108,8 +108,15 @@ async function seedFixture(page: Page): Promise<void> {
  * measure wall-clock time instead. The `?r=` query forces a fresh document, because the
  * router is hash-based and a hash swap would keep stale module state.
  */
-export async function openRaceCockpit(page: Page, iso: string = FROZEN_MORNING): Promise<void> {
-  await page.clock.install({ time: new Date(iso) });
+export async function openRaceCockpit(
+  page: Page,
+  iso: string = FROZEN_MORNING,
+  opts: { realClock?: boolean } = {}
+): Promise<void> {
+  // `realClock` exists for the latency measurement only: Playwright's clock also stubs
+  // `performance.now`, so a frozen clock would report a repaint that never happened. Timing
+  // has to run on the real thing.
+  if (!opts.realClock) await page.clock.install({ time: new Date(iso) });
   await page.goto(`/?r=${Date.now()}#/race`);
   // first paint creates the schema; wait for the app shell before touching the stores
   await page.locator('#app').waitFor({ timeout: 15_000 });

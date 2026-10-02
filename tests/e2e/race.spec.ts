@@ -198,6 +198,52 @@ test.describe('race cockpit projection', () => {
     const behind = await readHero(page);
     expect(durationOf(behind.bufferClock)).toBeLessThan(durationOf(onPlan.bufferClock));
   });
+
+  test('logging a checkpoint repaints the cockpit inside the 100 ms budget', async ({ page }) => {
+    // PRD §5.3 "Snappy" / ROADMAP M4 DoD: input checkpoint → result < 100 ms. This was the
+    // one M4 DoD line that had never actually been measured, so it stayed unticked rather
+    // than ticked on hope.
+    //
+    // The measurement is taken **inside the page** — one `evaluate` that dispatches the
+    // click and polls `requestAnimationFrame` until the hero repaints. Timing it from the
+    // test side would fold in CDP round-trips and measure the harness, not the app.
+    await openRaceCockpit(page, FROZEN_MORNING, { realClock: true });
+    await startRace(page);
+
+    // Fill first, outside the timed region: the number has to be bound before the click is
+    // a valid "input checkpoint", but parsing `40` is not the cost under test.
+    await page.getByLabel('Current kilometers').fill('40');
+
+    const sample = await page.evaluate(async () => {
+      const kmDone = () =>
+        [...document.querySelectorAll('span')].find((s) => /km done$/i.test(s.textContent ?? ''))
+          ?.textContent ?? '';
+      // Poll the timeline entry, not the hero: "KM 40" cannot exist before the write, so
+      // the wait always terminates. Waiting for the hero's number alone would hang if the
+      // plan happened to sit at 40.0 km at this instant.
+      const logged = () =>
+        [...document.querySelectorAll('span')].some((s) => /^\s*KM 40\s*$/.test(s.textContent ?? ''));
+      const before = kmDone();
+      const logBtn = [...document.querySelectorAll('button')].find(
+        (b) => /^\s*log\s*$/i.test(b.textContent ?? '')
+      );
+      if (!logBtn) return null;
+
+      const t0 = performance.now();
+      logBtn.click();
+      await new Promise<void>((resolve) => {
+        const tick = () => (logged() ? resolve() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+      });
+      return { ms: performance.now() - t0, before, after: kmDone() };
+    });
+
+    expect(sample, 'Log button not found').not.toBeNull();
+    // The repaint must be the *new* figure, so this cannot pass on a stale first paint.
+    expect(sample!.after).not.toBe(sample!.before);
+    expect(sample!.after).toMatch(/^40\.0 km done$/);
+    expect(sample!.ms, `checkpoint → repaint took ${sample!.ms?.toFixed(1)} ms`).toBeLessThan(100);
+  });
 });
 
 test.describe('race cockpit without a network', () => {
