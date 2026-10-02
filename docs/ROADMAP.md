@@ -254,6 +254,27 @@ dinding yang memuat start 07:00. Tiga kegagalan ini justru bukti bahwa harness b
 Golden test ±7 % (butuh device), deploy preview (butuh kredensial Cloudflare), pemasangan
 Android (butuh ponsel). Tujuh kotak lain tetap tertutup.
 
+#### Kalibrasi Crr/CdA (2 Okt 2026)
+
+`domain/calibrate.ts` — regressions linier dua parameter yang mengukur `Crr` dan `CdA`
+milik pembalap dari ride-nya sendiri. Detail: `UI-SPEC §35`.
+
+Alasannya: `crr = 0.005` / `cda = 0.32` di [Bike](src/lib/data/db.ts) adalah titik
+tengah textbook, dan hampir tidak tepat untuk siapa pun. Modularnya:
+
+```
+P_wheel − m·g·sinθ·v  =  Crr · (m·g·cosθ·v)  +  CdA · (½ρ·v³)
+```
+
+Linear, jadi satu sistem 2×2 — tanpa gradient descent. Test recovering the constants
+within 0,0005 (Crr) and 0,005 m² (CdA) at RMS < 6 W; separability check
+(`det/(aa·bb)`) menolak ride yang mempertahankan satu kecepatan, karena di sana gesekan
+dan aero adalah pengukuran yang sama dalam satuan berbeda.
+
+**Belum ada tombolnya** — `calibrateFromTrack` siap, tapi belum ada layar yang
+menawarkannya. Angka hasil ukur tidak boleh pernah menimpa nilaiumbent secara diam-diam;
+harus selalu tampil bersama RMS, rentang kecepatan, jumlah sample, dan peringatan.
+
 ---
 
 ## M4 — Race Mode (F7) ⭐

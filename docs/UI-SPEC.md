@@ -1328,4 +1328,92 @@ gagal di `the imported ride has no normalized power`. Dipulihkan.
 Sekarang data power **masuk**, tapi belum dipakai untuk apa pun yang besar: kalibrasi
 `Crr`/`CdA` per-pembalap masih belum ada, dan harness ±7 % (§33) masih kosong. Yang
 perubahan ini lakukan adalah menghapus satu alasan kenapa keduanya tidak bisa.keyword —
-dulu, bekanya tidak ada di mana pun.
+dulu, bekanya tidak ada di mana pun.---
+
+## §35 — Mengukur Crr dan CdA milik pembalap sendiri
+
+**Trigger.** §33 membangun gerbang akurasi prediksi dan summarised honestly: modelnya
+benar, parameternya asumsi. `crr = 0.005` dan `cda = 0.32` di [Bike](src/lib/data/db.ts)
+adalah titik tengah textbook, dan hampir tidak tepat untuk siapa pun. tekanan ban, kedalaman
+pelek, dan postur tubuh memindahkan `CdA` ±10 %; jenis ban memindahkan `Crr` sampai
+sepertiga. Kotak ±7 % tidak bisa ditutup selama model berjalan di konstanta yang tidak
+ pernah diukur.
+
+§34 menghapus alasan why data itu tidak ada. Sekarang jalurnya ada.
+
+### Matematika, dan kenapa ia mudah
+
+Pada keadaan tunak, daya di roda adalah jumlah dua suku yang berkuasa di rezim berbeda:
+
+```
+P_wheel = Crr·m·g·cosθ·v  +  m·g·sinθ·v  +  ½ρ·CdA·(v+w)³
+             gesekan, lambat        gravitasi, sudah diketahui dari profil     aero, cepat
+```
+
+Suku gravitasi dikurangi karena profil sudah mengetahuinya. Yang tersisa:
+
+```
+P_wheel − m·g·sinθ·v  =  Crr · (m·g·cosθ·v)  +  CdA · (½ρ·v³)
+```
+
+**Linear terhadap Crr dan CdA.** Jadi seluruh kalibrasi adalah regresi linier dua
+parameter — tanpa gradient descent, tanpa tebakan awal, satu sistem 2×2.
+
+### `domain/calibrate.ts`
+
+1. **`buildCalibSamples`** mengubah track tersimpan menjadi sample siap-fit. Ini hanya
+   mungkin sekarang karena §34: track harus membawa `lat`/`lng`/`alt`/`t` **dan** `watts`.
+   Power dihaluskan rata-rata bergerak 30 s — trace mentah menghasilkan `CdA` yang
+   terlihat buruk untuk orang yang sama.
+2. **Filter keadaan tunak** membuang start dari diam, menuruni, dan zona perubahan gradien.
+   Semua punya power yang tidak sesuai kecepatan yang dipegang; fit yang menelan semuanya
+   mengembalikan koefisien untuk ride yang tidak pernah Permalink.
+3. **Least squares** dengan pembetulan roda: watt diukur di pedal, model bekerja di roda.
+4. **Penolakan yang jujur.** Ini bagian yang menentukan. Empat hal mengembalikan
+   kegagalan, bukan angka:
+   - **terlalu sedikit sample** (< 20 keadaan tunak);
+   - **tidak bisa dipisahkan** — `det/(aa·bb)` adalah cos² sudut antara dua regressor.
+     Pada ride yang mempertahankan satu kecepatan, gesekan dan aero adalah pengukuran
+     yang sama dalam satuan berbeda, dan pembagiannya sembarang>;
+   - **tidak mungkin secara fisis** — `Crr` di luar 0,002–0,012, `CdA` di luar 0,15–0,60.
+     Ini yang menangkap stream power yang salah sinkron dengan track>;
+   - **sisa besar** — di atas 25 W RMS, hasilnya dilaporkan dengan peringatan, bukan
+    presented sebagai ukuran.
+
+   Setiap penolakan membawa **alasan yang bisa ditindaklanjuti**, karena "kalibrasi gagal"
+   bukan sesuatu yang bisa ditindaklanjuti pembalap.
+
+5. **`calibrateFromTrack`** adalah pintu masuk satu baris: sample dari `activity_streams`
+   plus angka pembalap, keluarannya pengukuran atau alasannya.
+
+### Yang dibuktikan tes, dan yang tidak
+
+**Membuktikan:** [calibrate.test.ts](src/lib/domain/__tests__/calibrate.test.ts) membangun
+ride dari model yang sama secara terbalik, lalu memastikan fit mengembalikan konstanta
+pembuatnya — `Crr` dalam 0,0005, `CdA` dalam 0,005 m², RMS < 6 W. Ini membuktikan
+**penyelesai least squares-nya benar**: pengurangan gravitasi dan pembetulan roda benar
+saling meniadakan dan mengembalikan apa yang masuk.
+
+**Tidak membuktikan:** fisika dasarnya benar. Itu tetap milik `validation.test.ts` §33
+terhadap angka dari luar. Keduanya klaim terpisah — penyelesai yang salah rusak apa pun
+modelnya, dan penyelesai yang benar di atas model yang salah tetap mengembalikan angka
+yang salah dengan yakin. Karena itulah separuh dari file ini adalah penolakan.
+
+### Status: mesin siap, belum ada tombolnya
+
+`calibrate.ts` dipanggil dari mana saja lewat `calibrateFromTrack`, tetapi **belum ada
+layar yang menawarkannya**. Itu disengaja untuk commit ini:logika-nya teruji, dan
+menyambungkannya ke UI adalah pekerjaan tersendiri dengan konsekuensi E2E sendiri.
+
+Yang **tidak boleh** terjadi saat disambungkan: menimpa `Crr`/`CdA` milik pembalap
+secara diam-diam. Angka hasil ukur harus selalu disertai RMS, rentang
+kecepatan, jumlah sample, dan peringatan — persis seperti yang dikembalikan fungsi ini.
+
+### Yang ini tidak memperbaiki
+
+Kotak golden test ±7 % **tetap kosong**. Kalibrasi menghapus asumsi yang paling kabur,
+tetapi masih ada yang tidak bisa diukur dari satu ride:ftp orang berubah, cuaca berubah,
+dan'"
+Constant Power adalah model yang tidak pernah tepat untuk manusia. Harness di
+[validation/rides](validation/rides/README.md) sekarang punya alasan yang jauh lebih baik
+untuk menyimpan `rider.crr`/`rider.cda` hasil ukur — dan itu sebabnya.
