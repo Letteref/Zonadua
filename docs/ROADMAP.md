@@ -23,11 +23,38 @@ pascalarace** — lihat DoD M4.
 | M3 | **Done** | `domain/physics.ts` + `domain/pacing.ts` (66 tes), `Routes.svelte` memakai hasil solve; `AVG_KMH = 30` dihapus; chart profil interaktif uPlot (hover + klik-pin + keyboard) |
 | M4 | **Selesai** | `domain/race.ts` (gate buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt` vs CP/W′, `raceOutcome`/`readoutOfOutcomes`), hero BUFFER/PROJECTED FINISH/REQUIRED AVG dari `racePlan` (`RACE_KM`/`AVG_KMH` dihapus), sektor lambat dari solver, kartu pascalarace (284 tes unit · 17 tes E2E) |
 
-> **Catatan kejujuran dokumen (2 Okt 2026):** M0–M3 berlabel **Done** tetapi masih membawa **sembilan
-> kotak DoD kosong**. Hanya satu (golden test ±7 %) yang benar-benar butuh device; sisanya — Lighthouse,
-> installability, offline shell, deploy preview, import GPX 200 km < 2 s, round-trip backup,
-> 500 aktivitas < 100 ms — bisa diverifikasi di mesin ini dan cuma belum dikerjakan. Kotak kosong di
-> sini berarti **belum diverifikasi**, bukan **tidak bisa**. M4 tidak punya kotak kosong.
+> **Catatan kejujuran dokumen (2 Okt 2026):** status di bawah ditulis ulang setelah DoD M0–M2
+> benar-benar dijalankan. **Tujuh dari sembilan** kotak kosong itu tertutup — dan dua di antaranya
+> **menemukan bug nyata** (§ "Temuan"), bukan sekadar mengukur angka yang sudah benar.
+>
+> Yang masih terbuka hanya tiga: **deploy preview URL** (butuh kredensial Cloudflare),
+> **pemasangan fisik di Android** (butuh perangkat), dan **golden test ±7 %** (butuh device
+> bersepeda pada rute yang sama). Kotak kosong berarti **belum diverifikasi**, bukan **tidak
+> bisa**. M4 tidak punya kotak kosong.
+
+### Temuan dari menjalankan DoD (2 Okt 2026)
+
+Kedua bug ini sudah ada sejak M1/M2 dan tidak pernah terlihat karena kotaknya tidak pernah
+dicentang. Keduanya kini punya tes yang gagal bila bugnya dikembalikan:
+
+1. **Backup JSON membuang `power_curves`.** `backupJson()` menulis daftar tabel **secara manual**
+   dan sudah ketinggalan satu tabel sejak schema v2. Akibatnya export → hapus → import menghapus
+   mean-max power curve beserta hasil fit CP/W′ — persis data yang membuat M2 berfungsi. Perbaikannya
+   membaca `db.tables`, jadi tabel baru tidak bisa lagi tertinggal diam-diam.
+2. **"Delete all data" bisa dibatalkan oleh seed sendiri.** Setiap tabel dijaga `count() === 0`,
+   jadi mengosongkan semuanya membuat boot berikutnya tak terbedakan dari kunjungan pertama: 24 ride
+   demo, 2 sepeda, dan riwayat berat kembali **detik** setelah dialog menjanjikan "cannot be undone".
+   Perbaikannya menandai localStorage (`gowslab.wiped`), karena wipe itu sendiri menghapus setiap
+   tabel Dexie.
+
+**Bukti menangkap regresi:** `power_curves` dikecualikan lagi dari backup → tes gagal dengan
+`table "power_curves" did not round-trip`. Kedua guard seed dimatikan → tes gagal dengan
+`the wipe left activities behind … Received: 24`. Dipulihkan: 25/25 hijau.
+
+> **Peringatan jebakan:** Lighthouse **12 menghapus kategori PWA** sama sekali, sehingga DoD ini
+> tidak bisa diukur (bukan lulus, dan bukan gagal). Dependensi dipin ke `11.x` selagi baris ini ada
+> di papan, dan `audit:lighthouse` **menolak keras** bila sebuah kategori tidak dilaporkan — melacak
+> kategori hilang sebagai skor 0 akan menghasilkan build "gagal" dengan alasan yang salah.
 | M5 | **Stub** | chat masuk ke `ai_notes`, tidak ada panggilan LLM |
 | M6 | **Belum mulai** | tidak ada backend; `sync_state` kosong |
 
@@ -49,10 +76,20 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 - Deploy otomatis ke Cloudflare Pages
 
 **Definition of done:**
-- [ ] Lighthouse PWA ≥ 90, performa ≥ 90 di preview build
-- [ ] Installable di Android Chrome & desktop Chrome
-- [ ] Buka app tanpa internet → shell tetap tampil
-- [ ] Deploy preview URL hidup
+- [x] Lighthouse PWA ≥ 90, performa ≥ 90 di preview build — **PWA 100 · performa 98**
+      (best-practices 100, accessibility 96). Dijalankan lewat `npm run audit:lighthouse`,
+      yang membangun lalu mengaudit preview build dan **gagal** bila turun di bawah
+      ambang DoD. Angka ini bukan hasil ketik manual: bisa direproduksi kapan saja.
+- [~] Installable di Android Chrome & desktop Chrome — **terverifikasi sebagian, dan itu
+      jujur**: manifest (start_url/scope/display/ikon 192/512/maskable) diperiksa field per
+      field, setiap ikon dipastikan benar-benar dilayani, dan service worker terdaftar serta
+      mengambil alih dokumen. Yang **belum** diuji adalah pemasangan fisik di perangkat
+      Android — butuh perangkat nyata, bukan browser headless.
+- [x] Buka app tanpa internet → shell tetap tampil — E2E: online load → tunggu
+      `serviceWorker.ready` → reload → `context.setOffline(true)` → reload. Shell, konten dari
+      IndexedDB, dan navigasi semua harus tetap hidup (M0).
+- [ ] Deploy preview URL hidup — **butuh kredensial Cloudflare Pages**, tidak bisa diverifikasi
+      dari repo ini sendiri. Tidak dicentang.
 
 ---
 
@@ -77,10 +114,16 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 - Backup export/import JSON
 
 **Definition of done:**
-- [ ] Import GPX 200 km < 2 s, aktivitas & rute tersimpan benar
-- [ ] Berat badan & FTP terlog dan terlihat di grafik kecil
-- [ ] Sepeda + komponen tersimpan; odometer ter-update saat aktivitas dengan sepeda dipilih
-- [ ] Export JSON → hapus semua data → import JSON → state kembali identik
+- [x] Import GPX 200 km < 2 s, aktivitas & rute tersimpan benar — **59 ms** diukur di dalam
+      Chromium (event `change` → ride tampil), anggaran 2 000 ms. GPX diuji secara geografi
+      nyata: 5 001 titik pada satu meridian, jarak hasil parse 200 km ± 2 km, bukan jumlah
+      titik yangodisamarkan jadi kilometer.
+- [x] Berat badan & FTP terlog dan terlihat di grafik kecil — E2E: log 71,4 kg + FTP 304 W,
+      diverifikasi masuk `weight_log`/`ftp_history` **dan** digambar di kartu Body trend.
+- [x] Sepeda + komponen tersimpan; odometer ter-update saat aktivitas dengan sepeda dipilih —
+      E2E mengimpor GPX 40 km lalu membaca `odometerKm` Castorcli aktif; bertambah > 38 km.
+- [x] Export JSON → hapus semua data → import JSON → state kembali identik — **dua bug nyata
+      ditemukan oleh tes ini** (lihat catatan di bawah). Suite: `tests/e2e/platform.spec.ts`.
 
 ---
 
@@ -111,7 +154,9 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 - [x] Unit test: NP/IF/TSS sesuai definisi (fixture dengan nilai yang diketahui)
 - [x] Dengan ≥ 5 aktivitas power, CP/W′ ter-fit R² ≥ 0.95 (terverifikasi R² 0,983 · CP 231 W · W′ 13,8 kJ)
 - [x] PMC chart ter-render 90 hari terakhir
-- [ ] 500 aktivitas sintetis → dashboard tetap < 100 ms interaksi
+- [x] 500 aktivitas sintetis → dashboard tetap < 100 ms interaksi — **terburuk 11,7 ms**
+      dari 5 pergantian tab hero (sampel: 6,0 · 10,3 · 11,6 · 11,7 · 9,7 ms) dengan 524
+      aktivitas di IndexedDB. Diukur in-page dari klik sampai `aria-selected` berubah.
 
 ---
 

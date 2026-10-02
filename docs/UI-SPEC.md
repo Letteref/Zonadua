@@ -964,3 +964,71 @@ hijau.
 **Jebakan yang ditemukan:** `StatusChip` meng-uppercase label via CSS, jadi `innerText`
 membaca `+26M`, bukan `+26m`. Assertion teks harus mengikuti apa yang benar-benar
 dirender.
+## §30 — Menjalankan DoD yang tidak pernah dijalankan (v6.9)
+
+Bukan perubahan visual, tapi mengubah apa yang boleh diklaim aplikasi.
+
+### 30.1 Tujuh dari sembilan kotak DoD M0–M2 ditutup — dua di antaranya menemukan bug
+
+Sembilan kotak M0–M2 sudah kosong sejak fase itu ditandai *Done*. Menjalankannya bukan
+ritual: dua di antaranya **rusak**.
+
+| Kotak | Hasil |
+|---|---|
+| Lighthouse PWA ≥ 90 · performa ≥ 90 | **PWA 100 · performa 98** |
+| Shell tetap tampil offline | ✅ E2E |
+| Import GPX 200 km < 2 s | **59 ms** |
+| Berat & FTP terlog + terlihat di grafik | ✅ E2E |
+| Sepeda/komponen + odometer bertambah | ✅ E2E |
+| Export → hapus → import identik | ✅ E2E — **menemukan 2 bug** |
+| 500 aktivitas → dashboard < 100 ms | **terburuk 11,7 ms** |
+
+### 30.2 Bug 1 — backup membuang `power_curves`
+
+`backupJson()` menulis daftar tabel **secara manual** (14 nama) dan sudah ketinggalan
+`power_curves` sejak schema v2. Jadi export → hapus → import menghapus mean-max power curve
+beserta fit CP/W′ — datanya sendiri yang membuat M2 berfungsi.
+
+Daftar ditulis tangan gagal **tepat saat ada yang diperluas**, dan itulah occasion-nya: v2
+datang, seseorang menambah tabel, tidak ada yang Thinking perlu menambah nama tabel itu juga.
+Sekarang daftar diambil dari `db.tables`, sehingga tabel baru tidak bisa lagi tertinggal.
+
+### 30.3 Bug 2 — "Delete all data" dibatalkan oleh seed sendiri
+
+Setiap tabel dijaga `count() === 0`, jadi mengosongkan semuanya membuat boot berikutnya tak
+terbedakan dari kunjungan pertama. Hasilnya: 24 ride demo, 2 sepeda, dan riwayat berat
+kembali **detik** setelah dialog menjanjikan *"this cannot be undone"*.
+
+Perbaikannya adalah penanda `localStorage` (`gowslab.wiped`), **bukan** di Dexie — karena wipe
+itu sendiri menghapus setiap tabel, termasuk tempat penandanya akan tinggal. `localStorage`
+bertahan, jadi "hapus semua" sekarang benar-benar berarti semua.
+
+Penanda `gowslab.seeded` ditambahkan sekaligus: boot berikutnya melewati `ensureSeeded()` dan
+`backfillMetrics()` sepenuhnya, yang juga menghapus pekerjaan startup yang berulang.
+
+### 30.4 Lighthouse 12 menghapus kategori PWA
+
+DoD ini menulis "Lighthouse PWA ≥ 90". Di Lighthouse 12 kategori PWA **sudah tidak ada**,
+sehingga baris itu berubah dari *belum diverifikasi* menjadi *tidak bisa diukur* — dan jalan
+paling murah untuk "menutupnya" adalah melaporkan 0, yang sama sekali berbeda artinya.
+
+Dependensi dipin ke `11.x` selagi baris ini ada di papan, dan `scripts/audit-lighthouse.mjs`
+**menolak keras** bila sebuah kategori tidak dilaporkan. Ambang di skrip itu menyalin kata-kata
+DoD apa adanya; menurunkannya agar build hijau akan menggeser gawang tanpa menggeser aplikasi.
+
+Audit berjalan di atas build produksi (`vite preview`), bukan dev server — apa pun yang
+diklaim tentang PWA tidak ada di `vite dev`.
+
+### 30.5 Tiga jebakan saat menulis tes ini
+
+1. **Toast di-uppercase lewat CSS.** `getByText(/weight 71\.4 kg logged/i)` gagal karena
+   `innerText` membaca `WEIGHT 71.4 KG LOGGED`. Assertion harus mengikuti apa yang benar-benar
+   dirender.
+2. **IndexedDB accept 5000 baris.** Di menu Settings, `input[type=number]` berurutan
+   Height, Weight, FTP — mengisi `nth(0)` dengan 71,4 diam-diam menulis **tinggi** dan
+   memunculkan toast "Weight 68.2 kg logged".
+3. **Lintasan GPX diagonal.** Majukan latitude *dan* longitude sebesar nilai yang sama dan
+   jaraknya jadi ~1,41× yang dimaksud — 200 km terukur 283 km. Longitude harus dikunci.
+
+Ditambah satu jebakan non-obvious: `navigator.serviceWorker.ready` harus ditunggu **sebelum**
+reload. Tanpa itu, reload terjadi sebelum worker selesai dipasang, sehingga tesnya lulus sendiri tapi gagal di dalam suite.
