@@ -894,3 +894,73 @@ menyentuh koordinat yang tidak ada di layar, sehingga crosshair tidak pernah ber
 gagal untuk alasan yang sama sekali tidak terkait. Hover karena itu di-*dispatch* langsung ke
 `.u-over` dengan koordinat yang sama — persis cara komponen berperilaku di bawah touch, di
 mana hover memang tidak ada.
+
+---
+## §29 — Pascalarace: hasil aktual vs estimasi (v6.8)
+
+DoD terakhir M4, dan yang paling sering dianggap "tinggal tampilkan angka".
+
+### 29.1 Akar masalahnya bukan display
+
+`planJson` menyimpan **pengaturan** rider (`ifTarget`, `cargoKg`, `stopsMin`, `bikeId`) —
+bukan **jawaban solver**. `Finish & save` menulis `actualFinishMin`/`actualKm`/
+`actualBufferMin`, tapi tidak ada pernah ada sisi lain untuk dibandingkan. Jadi item DoD
+ini bukan sekadar belum ditampilkan: secara harfiah **tidak bisa diukur** oleh data yang
+tersimpan.
+
+Perbaikannya di dua tempat:
+
+- `saveAndStart()` menulis `plannedFinishMin` (jam selesai yang disetujui) **sebelum
+  start**, Plus `plannedKm` untuk konteks. Inilah satu-satunya baseline yang sah.
+- `raceOutcome()` di `domain/race.ts` membandingkan `plannedFinishMin − startMin` dengan
+  `actualFinishMin`, mengembalikan `deltaMin` dan `deltaPct`.
+
+### 29.2 Keputusan: ditampilkan, **tidak** diterapkan
+
+`readoutOfOutcomes` melaporkan median antar-balapan, tapi **tidak ada faktor yang
+kembali ke `buildPlan`**. Alasannya bukan conservatism belaka:
+
+1. Satu balapan bukan sampel. Menerapkan faktor dari satu finish akan membengkokkan
+   setiap proyeksi berikutnya berdasarkan satu hari yang bisa sajacket, mechanically, atau
+   cacat.
+2. Menyembunyikan angka mentah menghapus bahan yang justru dibutuhkan M5 untuk
+   mengkalibrasi dengan benar.
+3. Proyeksi yang sudah hijau dan teruji E2E tidak boleh dirusak oleh kalibrasi yang belum
+   terbukti.
+
+Jadi median dibacakan sebagai **laporan**, dengan kalimat yang menyatakannya eksplisit di
+kartu: *"reported, not applied — your next plan still uses the same solver."*
+
+### 29.3 `null` berarti tidak terukur, bukan tepat sasaran
+
+`raceOutcome()` mengembalikan `null` bila salah satu sisi tidak ada, atau bila plan
+bernilai ≤ 0 (persentase jadi 0/0). Balaman yang selesai **sebelum** fitur ini ada punya
+aktual tanpa baseline — persis keadaan semua entri lama. Baris itu tetap tampil dengan
+chip netral **`NOT MEASURED`**, bukan disembunyikan dan bukan diberi skor.
+
+Menyembunyikannya akan membuat celah data tampak seperti ruang kosong, yaitu persis
+tampilan yang membuat checkbox kosong kehilangan makna.
+
+### 29.4 Kartu dan tes
+
+Kartu **Past races · estimate vs actual** muncul di halaman setup, sebelum CTA. Badge
+`MEDIAN +6%` di kanan kicker; tiap baris menampilkan `plan 7h 19m → actual 7h 45m` dan
+chip delta bertanda._netral|aman|waspada sesuai arah.
+
+Tiga tes E2E (`post-race record`): perbandingan terhadap baseline tersimpan, race yang
+baru saja di-*finish* mendarat dengan waktu tempuh yang benar, dan **koreksi tidak pernah
+dilipat balik** ke kartu plan berikutnya.
+
+Fixture menyemai **dua** balapan lampau — satu ber-baseline, satu legacy tanpa baseline —
+supaya fallback `NOT MEASURED` diuji oleh data tersimpan sungguhan, bukan nilai yang
+dijejikkan saat test berjalan. Keduanya disemai lewat IndexedDB mentah **sebelum** app
+memuatnya: `liveQuery` Dexie hanyaariah melihat mutasi pada koneksi itself, jadi tulis
+mentah dari koneksi kedua tidak akan pernah sampai ke UI.
+
+**Bukti menangkap regresi:** `plannedFinishMin` di `saveAndStart` diganti `null` lalu
+suite dijalankan — tes *"a race finished now lands on the card"* gagal. Dikembalikan: 17/17
+hijau.
+
+**Jebakan yang ditemukan:** `StatusChip` meng-uppercase label via CSS, jadi `innerText`
+membaca `+26M`, bukan `+26m`. Assertion teks harus mengikuti apa yang benar-benar
+dirender.

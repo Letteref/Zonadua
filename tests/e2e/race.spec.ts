@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { FROZEN_MORNING, RACE, openRaceCockpit, startRace } from './fixtures/raceFixture';
+import { FROZEN_MORNING, PAST_RACES, RACE, openRaceCockpit, startRace } from './fixtures/raceFixture';
 
 /**
  * Race cockpit E2E — UI-SPEC §27, and the last open Definition-of-Done item for M4.
@@ -405,6 +405,89 @@ test.describe('readout never covers the chart', () => {
     });
     expect(inside, 'clear button missing or outside the card').not.toBeNull();
     expect(inside).toBe(true);
+  });
+});
+
+
+test.describe('post-race record', () => {
+  /**
+   * M4 DoD: the estimate-vs-actual comparison.
+   *
+   * This item could not honestly be built before, because nothing was ever written down to
+   * compare *against*: `planJson` recorded the rider's settings, not the solver's answer, so
+   * every finished race held an actual time with no estimate beside it. Storing
+   * `plannedFinishMin` at the gun is what makes the comparison possible at all.
+   *
+   * The card must also survive the legacy case — a race finished before this existed has an
+   * actual and no baseline, and reading that as "on target" would be the worst possible
+   * outcome: a confident green that no evidence supports.
+   */
+  test('compares a finished race against its own recorded estimate', async ({ page }) => {
+    await openRaceCockpit(page);
+
+    const card = page.locator('section', { hasText: 'PAST RACES · ESTIMATE VS ACTUAL' }).first();
+    await card.waitFor({ timeout: 15_000 });
+    // liveQuery resolves after first paint, so the card exists a beat before its rows do.
+    // Waiting on the section alone would read the empty state and pass a broken query.
+    await card.getByText('Bukittinggi 150').waitFor({ timeout: 15_000 });
+    const body = await card.innerText();
+
+    // The measured race: 7h19m promised, 7h45m taken, so +26m and a "slower" verdict.
+    // StatusChip uppercases its label in CSS, so innerText reads "+26M".
+    expect(body).toContain('Bukittinggi 150');
+    expect(body).toContain('plan 7h 19m → actual 7h 45m');
+    expect(body).toContain('+26M');
+    expect(body).toContain('slower than estimated');
+
+    // The legacy race: an actual exists, the estimate does not, and the card says so
+    // instead of quietly scoring it.
+    expect(body).toContain('Karo Loop (old entry)');
+    expect(body).toContain('NOT MEASURED');
+  });
+
+  test('a race finished now lands on the card with its elapsed time', async ({ page }) => {
+    await openRaceCockpit(page);
+    await startRace(page);
+
+    // The promised finish the rider was just shown is the baseline that must survive.
+    const before = await readHero(page);
+
+    await page.getByRole('button', { name: /finish & save result/i }).click();
+    await page.getByText('RACE SETUP').waitFor({ timeout: 15_000 });
+
+    const card = page.locator('section', { hasText: 'PAST RACES · ESTIMATE VS ACTUAL' }).first();
+    await card.waitFor({ timeout: 15_000 });
+    await card.getByText(RACE.name).waitFor({ timeout: 15_000 });
+    const body = await card.innerText();
+
+    expect(body).toContain(RACE.name);
+    // The clock was frozen at 10:00 and the gun was 05:30, so the elapsed is 4h30.
+    expect(body).toContain('actual 4h 30m');
+    expect(body).toContain('plan 7h 19m');
+
+    // The delta must be signed and non-zero: the race was abandoned at the frozen clock,
+    // so it landed nowhere near the promised finish.
+    const delta = /([+−])(\d+)m/i.exec(body);
+    expect(delta, `no signed delta in card: ${body}`).not.toBeNull();
+    expect(Number(delta![2])).toBeGreaterThan(0);
+    expect(before.projectedClock).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  test('never folds the correction back into the next plan', async ({ page }) => {
+    await openRaceCockpit(page);
+
+    // The seeded history says the rider finishes 26 min slower than promised. The plan
+    // card must still quote the solver's own figure — if a calibration factor were being
+    // applied here, the estimate would silently move and this pair would stop agreeing.
+    const plan = await page
+      .locator('section', { hasText: 'YOUR PLAN · OPTIMIZED' })
+      .first()
+      .innerText();
+    expect(plan).toMatch(/7h 19m/);
+
+    const card = page.locator('section', { hasText: 'PAST RACES · ESTIMATE VS ACTUAL' }).first();
+    await card.getByText('Bukittinggi 150').waitFor({ timeout: 15_000 });
+    expect(await card.innerText()).toContain('reported, not applied');
   });
 });
 

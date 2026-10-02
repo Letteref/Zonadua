@@ -130,6 +130,19 @@ export const nextRace = wrap(
   })
 );
 
+/**
+ * Finished races, most recently finished first — the post-race estimate-vs-actual record (M4).
+ *
+ * Ordered by `updatedAt` rather than `startTime` because `Finish & save` stamps `updatedAt`,
+ * and that is the moment the result was recorded.
+ */
+export const finishedRaces = wrap(
+  liveQuery(async () => {
+    const rows = await db.races.where('status').equals('finished').toArray();
+    return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  })
+);
+
 export interface WeekTotals {
   tss: number;
   hours: number;

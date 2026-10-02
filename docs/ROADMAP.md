@@ -21,7 +21,7 @@ pascalarace** — lihat DoD M4.
 | M1 | **Done** | parser GPX/TCX di `domain/course.ts` (16 tes fixture), `domain/units.ts` (imperial dipakai di 4 tampilan), `domain/trend.ts` + kartu Body trend, editor zona F2-AC4 di Settings, `domain/zones.ts` dengan template |
 | M2 | **Done** | `domain/metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (109 tes hijau), `data/streams.ts` + `synthetic.ts` + `recompute.ts`, tabel `power_curves`, kartu Power curve + route `#/rides/:id` |
 | M3 | **Done** | `domain/physics.ts` + `domain/pacing.ts` (66 tes), `Routes.svelte` memakai hasil solve; `AVG_KMH = 30` dihapus; chart profil interaktif uPlot (hover + klik-pin + keyboard) |
-| M4 | **Selesai** | `domain/race.ts` (gate buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt` vs CP/W′), hero BUFFER/PROJECTED FINISH/REQUIRED AVG dari `racePlan` (`RACE_KM`/`AVG_KMH` dihapus), sektor lambat dari solver (275 tes) |
+| M4 | **Selesai** | `domain/race.ts` (gate buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt` vs CP/W′, `raceOutcome`/`readoutOfOutcomes`), hero BUFFER/PROJECTED FINISH/REQUIRED AVG dari `racePlan` (`RACE_KM`/`AVG_KMH` dihapus), sektor lambat dari solver, kartu pascalarace (284 tes unit · 17 tes E2E) |
 | M5 | **Stub** | chat masuk ke `ai_notes`, tidak ada panggilan LLM |
 | M6 | **Belum mulai** | tidak ada backend; `sync_state` kosong |
 
@@ -163,7 +163,9 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 > (14 tes) mengendarai cockpit dengan `page.clock`, memeriksa konsistensi buffer, memverifikasi
 > aplikasi tetap mem-*project* saat offline, menjaga pita readout tetap di atas plot (§28), dan
 > mengukur latensi input checkpoint. Detail: `UI-SPEC §27`.
-> **Sisa:** pascalarace belum menyimpan koreksi hasil aktual (masuk sebagai bahan kalibrasi M5).
+> **Sisa M4:** tidak ada — seluruh DoD terverifikasi (284 tes unit · 17 tes E2E). Kodeksi
+> pascalarace sengaja hanya dilaporkan, belum diterapkan ke plan berikutnya (lihat catatan di
+> bawah); itu keputusan produk, bukan kekurangan M4.
 
 **Tujuan:** tracker race-day yang bekerja penuh offline dan menjawab "apakah saya aman?" dalam 1 detik.
 
@@ -178,7 +180,16 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
       `page.clock`, 14 tes di `tests/e2e/race.spec.ts`)
 - [x] Semua fitur race jalan dengan network offline (Playwright `context.setOffline` — proyeksi
       tetap koheren, dan checkpoint yang di-*log* offline bertahan setelah reload)
-- [ ] Pasca-race: simpan hasil aktual vs estimasi (data kalibrasi M5) — belum dikerjakan
+- [x] Pasca-race: simpan hasil aktual vs estimasi — kartu **Past races · estimate vs
+      actual**. Akar masalahnya bukan display: `planJson` hanya menyimpan *pengaturan* rider,
+      bukan jawaban solver, jadi setiap balapan lama punya waktu aktual tanpa baseline —
+      tidak ada yang bisa dibandingkan. `saveAndStart` kini menulis `plannedFinishMin`
+      sebelum start, dan `raceOutcome()` di `domain/race.ts` membandingkan kedua sisi.
+      **Ditampilkan, tidak diterapkan** (keputusan 2 Okt 2026): `readoutOfOutcomes` melaporkan
+      median, tapi tidak ada faktor yang kembali ke `buildPlan` — satu balapan belum cukup
+      bukti untuk membengkokkan solver, dan menyembunyikan angka mentah justru menghapus
+      bahan kalibrasi M5. Balapan tanpa baseline (semua entri lama) tetap tampil sebagai
+      `NOT MEASURED`, bukan dianggap tepat sasaran. 3 tes E2E + 9 tes unit.
 - [x] Input checkpoint → hasil < 100 ms — **terukur 3,7 ms** di Chromium (klik Log → hero
       repaint, diukur in-page lewat `requestAnimationFrame`; `race.spec.ts` "repaints the
       cockpit inside the 100 ms budget"). Angka ini tidak di-*mock*: ia mencakup tulis Dexie,

@@ -7,6 +7,8 @@ import {
   kmAtClock,
   lastGatePassed,
   planMinutesBetween,
+  raceOutcome,
+  readoutOfOutcomes,
   sustainAt,
   wPrimeSpentAt
 } from '../race';
@@ -364,3 +366,81 @@ function steepRows(): PlanSeriesPoint[] {
     powerLimited: true
   }));
 }
+
+describe('raceOutcome', () => {
+  // 05:30 gun (330) planning a 6h47m finish -> 11:17 (677).
+  const IN = { startMin: 330, plannedFinishMin: 677, actualFinishMin: 407 };
+
+  it('reports how far the actual landed from the estimate', () => {
+    const o = raceOutcome(IN)!;
+    expect(o.planMin).toBe(347);
+    expect(o.actualMin).toBe(407);
+    expect(o.deltaMin).toBe(60);
+    expect(o.deltaPct).toBeCloseTo(60 / 347, 6);
+  });
+
+  it('signs the delta so slower than promised reads positive', () => {
+    // finished in 287 min against a 347 min plan
+    expect(raceOutcome({ ...IN, actualFinishMin: 287 })!.deltaMin).toBe(-60);
+    expect(raceOutcome(IN)!.deltaMin).toBeGreaterThan(0);
+  });
+
+  it('is null when either half was never recorded', () => {
+    // A race finished before this existed: the rider pressed "Finish & save", so an actual
+    // exists, but no baseline was ever written down.
+    expect(raceOutcome({ ...IN, plannedFinishMin: null })).toBeNull();
+    expect(raceOutcome({ ...IN, actualFinishMin: null })).toBeNull();
+    expect(raceOutcome({ ...IN, plannedFinishMin: undefined })).toBeNull();
+  });
+
+  it('refuses a degenerate plan instead of dividing by zero', () => {
+    expect(raceOutcome({ ...IN, plannedFinishMin: 330 })).toBeNull(); // 0 min plan
+    expect(raceOutcome({ ...IN, plannedFinishMin: 200 })).toBeNull(); // finish before the gun
+  });
+
+  it('rejects non-finite values rather than propagating NaN', () => {
+    expect(raceOutcome({ ...IN, actualFinishMin: NaN })).toBeNull();
+    expect(raceOutcome({ ...IN, plannedFinishMin: Infinity })).toBeNull();
+  });
+});
+
+describe('readoutOfOutcomes', () => {
+  const at = (pct: number) => {
+    const planMin = 100;
+    return { planMin, actualMin: planMin * (1 + pct), deltaMin: planMin * pct, deltaPct: pct };
+  };
+
+  it('says nothing when no race carries a baseline', () => {
+    const r = readoutOfOutcomes([{ name: 'a', at: 1, outcome: null }]);
+    expect(r).toEqual({ compared: 0, medianDeltaPct: null, latest: null });
+  });
+
+  it('takes the median, so one wrecked race cannot swing the read', () => {
+    const r = readoutOfOutcomes([
+      { name: 'a', at: 1, outcome: at(0.02) },
+      { name: 'b', at: 2, outcome: at(0.03) },
+      { name: 'c', at: 3, outcome: at(0.04) },
+      { name: 'flat', at: 4, outcome: at(1.5) } // wrecked halfway: a 150 % overrun
+    ]);
+    // median of [.02,.03,.04,1.5] is the mean of the two middle values
+    expect(r.medianDeltaPct).toBeCloseTo(0.035, 6);
+    expect(r.compared).toBe(4);
+  });
+
+  it('counts only races that can actually be compared', () => {
+    const r = readoutOfOutcomes([
+      { name: 'a', at: 1, outcome: at(0.05) },
+      { name: 'b', at: 2, outcome: null }
+    ]);
+    expect(r.compared).toBe(1);
+  });
+
+  it('picks the newest comparable race, not the newest row', () => {
+    const r = readoutOfOutcomes([
+      { name: 'older', at: 10, outcome: at(0.05) },
+      { name: 'newer', at: 20, outcome: at(0.09) },
+      { name: 'newest but unmeasured', at: 30, outcome: null }
+    ]);
+    expect(r.latest!.name).toBe('newer');
+  });
+});

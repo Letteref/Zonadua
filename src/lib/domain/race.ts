@@ -313,3 +313,85 @@ export function planMinutesBetween(
   if (a == null || b == null) return null;
   return Math.max(0, b - a);
 }
+/**
+ * Post-race: what the plan promised against what the rider actually did (M4 DoD).
+ *
+ * ## Why this returns null so eagerly
+ *
+ * A correction factor is only meaningful against a baseline that was written down *before*
+ * the start. `planJson` records the rider's settings, not the solver's answer, so a race
+ * finished today has no estimate to compare against at all — and the honest reading of
+ * that is "not measured", not "on target". Anything else would fabricate a calibration
+ * factor out of nothing, which is worse than having none: the factor would then look
+ * evidence-based to everything downstream, including M5's context builder.
+ */
+export interface RaceOutcome {
+  /** the estimate the rider agreed to, in minutes */
+  planMin: number;
+  /** what it took, in minutes */
+  actualMin: number;
+  /** actual − plan; positive means slower than promised */
+  deltaMin: number;
+  /** deltaMin as a fraction of planMin */
+  deltaPct: number;
+}
+
+export interface RaceOutcomeInput {
+  /** minutes past midnight of the start gun */
+  startMin: number;
+  /** the planned finish, in minutes past midnight — null if never recorded */
+  plannedFinishMin: number | null | undefined;
+  /** elapsed ride time at "Finish & save", in minutes — null if the race was never finished */
+  actualFinishMin: number | null | undefined;
+}
+
+/**
+ * Compare a finished race against its own estimate.
+ *
+ * Both halves must be present and the plan must be longer than zero. A zero-length plan
+ * makes the percentage meaningless (0/0), so it is refused rather than reported as 0 %.
+ */
+export function raceOutcome(input: RaceOutcomeInput): RaceOutcome | null {
+  const { startMin, plannedFinishMin, actualFinishMin } = input;
+  if (plannedFinishMin == null || actualFinishMin == null) return null;
+  if (!Number.isFinite(plannedFinishMin) || !Number.isFinite(actualFinishMin)) return null;
+  const planMin = plannedFinishMin - startMin;
+  const actualMin = actualFinishMin;
+  if (planMin <= 0) return null;
+  const deltaMin = actualMin - planMin;
+  return { planMin, actualMin, deltaMin, deltaPct: deltaMin / planMin };
+}
+
+/**
+ * How to read a set of outcomes.
+ *
+ * Deliberately a *report*, not a multiplier: nothing here feeds back into `buildPlan`.
+ * A single race is too small a sample to correct a solver with, and applying the factor
+ * would hide the very evidence M5 needs to calibrate on. `medianDeltaPct` is the robust
+ * statistic — one bad day (a crash, a mechanical) should not drag the read on the others.
+ */
+export interface OutcomeReadout {
+  /** races where both an estimate and an actual were recorded */
+  compared: number;
+  /** median (actual − plan)/plan across those races, null when there are none */
+  medianDeltaPct: number | null;
+  /** the most recent compared race, null when there are none */
+  latest: { name: string; at: number; outcome: RaceOutcome } | null;
+}
+
+export function readoutOfOutcomes(
+  items: ReadonlyArray<{ name: string; at: number; outcome: RaceOutcome | null }>
+): OutcomeReadout {
+  const compared = items.filter((i): i is { name: string; at: number; outcome: RaceOutcome } =>
+    i.outcome != null
+  );
+  if (compared.length === 0) return { compared: 0, medianDeltaPct: null, latest: null };
+
+  const pcts = compared.map((i) => i.outcome.deltaPct).sort((a, b) => a - b);
+  const mid = Math.floor(pcts.length / 2);
+  const medianDeltaPct =
+    pcts.length % 2 === 1 ? pcts[mid] : (pcts[mid - 1] + pcts[mid]) / 2;
+
+  const latest = compared.reduce((a, b) => (b.at >= a.at ? b : a));
+  return { compared: compared.length, medianDeltaPct, latest };
+}

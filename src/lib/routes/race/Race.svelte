@@ -3,7 +3,7 @@
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
-  import { allBikes, fetchRouteProfile, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
+  import { allBikes, fetchRouteProfile, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
   import { db, type Race, type RaceCheckpoint, type RaceLog } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { liveQuery } from 'dexie';
@@ -13,6 +13,8 @@ import {
   gateBufferAt,
   kmAtClock as kmAtClockAt,
   planMinutesBetween,
+  raceOutcome,
+  readoutOfOutcomes,
   sustainAt,
   wPrimeSpentAt,
   type CutoffGate
@@ -211,6 +213,33 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
     }))
   );
 
+  // ---------- post-race: what the plan promised vs what happened ----------
+  /**
+   * Every finished race, paired with the outcome it can actually support.
+   *
+   * `raceOutcome` returns null for a race with no recorded baseline — which includes every
+   * race finished before this existed. Those rows are kept in the list and rendered as
+   * "not measured" rather than filtered out, so the gap stays visible instead of quietly
+   * shrinking the sample.
+   */
+  const pastRaces = $derived.by(() =>
+    (finishedRaces.current ?? []).map((r) => {
+      const d = new Date(r.startTime);
+      const plan = r.planJson ? (JSON.parse(r.planJson) as Record<string, unknown>) : {};
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      return {
+        name: r.name,
+        at: r.updatedAt,
+        outcome: raceOutcome({
+          startMin: d.getHours() * 60 + d.getMinutes(),
+          plannedFinishMin: num(plan.plannedFinishMin),
+          actualFinishMin: num(plan.actualFinishMin)
+        })
+      };
+    })
+  );
+  const outcomeReadout = $derived(readoutOfOutcomes(pastRaces));
+
   async function saveAndStart() {
     try {
       const routeStub = await db.routes.toArray();
@@ -218,6 +247,23 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       routeId = routeIdRef;
       // plain objects only: Dexie/IndexedDB cannot structured-clone $state proxies
       const plainCheckpoints: RaceCheckpoint[] = JSON.parse(JSON.stringify(checkpoints));
+      /**
+       * The estimate the rider is agreeing to, written down *before* the gun.
+       *
+       * `planJson` used to hold only the rider's settings, so a finished race carried an
+       * actual with nothing to compare it against — the post-race DoD was not merely
+       * un-displayed, it was un-measurable. Recording the promised finish clock here is
+       * what makes `raceOutcome` able to tell "slower than predicted" from "no prediction".
+       * Null when there is no plan yet, which `raceOutcome` reads as "not measured".
+       */
+      const planJson = JSON.stringify({
+        ifTarget,
+        cargoKg,
+        stopsMin,
+        bikeId: selectedBikeId,
+        plannedFinishMin: planMin == null ? null : Math.round(startMin + planMin),
+        plannedKm: hasPlan ? Math.round(raceKm * 100) / 100 : null
+      });
       if (!raceId) {
         raceId = newId();
         const race: Race = {
@@ -227,7 +273,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           startTime: new Date(new Date().setHours(0, 0, 0, 0) + startMin * 60000).toISOString(),
           cutoffFinishMin: cutoffMin,
           checkpoints: plainCheckpoints,
-          planJson: JSON.stringify({ ifTarget, cargoKg, stopsMin, bikeId: selectedBikeId }),
+          planJson,
           status: 'live',
           updatedAt: Date.now()
         };
@@ -240,7 +286,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           status: 'live',
           routeId: routeIdRef,
           checkpoints: plainCheckpoints,
-          planJson: JSON.stringify({ ifTarget, cargoKg, stopsMin, bikeId: selectedBikeId }),
+          planJson,
           updatedAt: Date.now()
         });
       }
@@ -697,6 +743,67 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           </div>
         {/each}
       </div>
+    </SectionCard>
+
+    <!-- POST-RACE: estimate vs actual — shown, never fed back into the plan (M4 DoD) -->
+    <SectionCard kicker="Past races · estimate vs actual">
+      {#snippet right()}
+        {#if outcomeReadout.compared > 0}
+          <span
+            class="text-[10px] font-extrabold text-tabular uppercase tracking-wide {outcomeReadout
+              .medianDeltaPct! > 0.02
+              ? 'text-crimson-deep'
+              : outcomeReadout.medianDeltaPct! < -0.02
+                ? 'text-aman'
+                : 'text-ink-dim'}"
+          >
+            median {outcomeReadout.medianDeltaPct! > 0 ? '+' : ''}{Math.round(outcomeReadout.medianDeltaPct! * 100)}%
+          </span>
+        {/if}
+      {/snippet}
+
+      {#if pastRaces.length === 0}
+        <p class="text-sm text-ink-dim">
+          No finished races yet. Once you press <span class="font-bold text-ink">Finish &amp; save result</span>,
+          the time you actually took is kept here next to the estimate you were given.
+        </p>
+      {:else}
+        <div class="flex flex-col gap-2">
+          {#each pastRaces as r (r.at + r.name)}
+            <div class="bg-raised border border-hairline p-3 rounded-2xl flex items-center justify-between gap-3">
+              <div class="flex flex-col min-w-0">
+                <span class="text-xs font-bold text-ink truncate">{r.name}</span>
+                <span class="text-[10px] text-ink-dim text-tabular">
+                  {new Date(r.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  {#if r.outcome}
+                    · plan {fmtDur(r.outcome.planMin)} → actual {fmtDur(r.outcome.actualMin)}
+                  {/if}
+                </span>
+              </div>
+              {#if r.outcome}
+                <StatusChip
+                  label="{r.outcome.deltaMin > 0 ? '+' : r.outcome.deltaMin < 0 ? '−' : ''}{Math.abs(Math.round(r.outcome.deltaMin))}m"
+                  status={r.outcome.deltaMin > 0 ? 'waspada' : r.outcome.deltaMin < 0 ? 'aman' : 'neutral'}
+                />
+              {:else}
+                <StatusChip label="not measured" status="neutral" />
+              {/if}
+            </div>
+          {/each}
+        </div>
+        <p class="mt-2 text-[11px] font-medium text-ink-dim">
+          {#if outcomeReadout.compared === 0}
+            None of these races recorded a planned finish, so there is nothing to compare them
+            against — the estimate is only written to the record from now on.
+          {:else}
+            The median across {outcomeReadout.compared} measured race{outcomeReadout.compared === 1 ? '' : 's'}
+            is <span class="font-bold text-ink">{outcomeReadout.medianDeltaPct! > 0 ? 'slower' : 'faster'} than estimated</span>.
+            This is reported, not applied — your next plan still uses the same solver, because one
+            race is not enough evidence to bend it and hiding the raw numbers would destroy the
+            evidence itself.
+          {/if}
+        </p>
+      {/if}
     </SectionCard>
 
     <!-- CTA (solid signal — the plan card holds the gradient moment) -->

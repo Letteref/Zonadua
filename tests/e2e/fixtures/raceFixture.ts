@@ -29,6 +29,38 @@ export const RACE = {
   checkpoints: [{ km: 120, cutoffMin: 570, label: 'CP2 Payakumah' }]
 } as const;
 
+/**
+ * Races that were already finished before the cockpit opened.
+ *
+ * Two of them, deliberately unequal. `withBaseline` carries the estimate the rider was
+ * given alongside the time it took, so it can be compared. `withoutBaseline` carries only
+ * the actual — which is exactly what every race finished before this feature existed looks
+ * like. Seeding both means the card's honest fallback is exercised by real stored data
+ * rather than by a value poked in at runtime.
+ *
+ * They are seeded as raw IndexedDB rows before the app reads them, rather than written
+ * through Dexie mid-test: liveQuery only observes mutations made on its own connection, so
+ * a raw write from a second connection would silently never reach the UI.
+ */
+export const PAST_RACES = [
+  {
+    id: 'race-past-measured',
+    name: 'Bukittinggi 150',
+    startMin: 5 * 60 + 30,
+    /** 7h19m promised */
+    plannedFinishMin: 330 + 439,
+    /** took 7h45m: 26 min slower than the plan */
+    actualFinishMin: 465
+  },
+  {
+    id: 'race-past-unmeasured',
+    name: 'Karo Loop (old entry)',
+    startMin: 5 * 60 + 30,
+    plannedFinishMin: null,
+    actualFinishMin: 400
+  }
+] as const;
+
 /** 10:00 WIB — 4h30 into an 05:30 start. */
 export const FROZEN_MORNING = '2026-10-02T10:00:00+07:00';
 
@@ -40,7 +72,7 @@ export const FROZEN_MORNING = '2026-10-02T10:00:00+07:00';
  * its next open. The app therefore always navigates first, and this only inserts rows.
  */
 async function seedFixture(page: Page): Promise<void> {
-  await page.evaluate(async (race) => {
+  await page.evaluate(async ({ PAST, ...race }) => {
     // 200 km of rolling terrain: a long climb, a descent and a second ramp, sampled every
     // 100 m so the solver sees real gradients instead of one averaged slope.
     const points: Array<[number, number]> = [];
@@ -78,6 +110,24 @@ async function seedFixture(page: Page): Promise<void> {
           createdAt: Date.now(),
           updatedAt: Date.now()
         });
+        for (const past of PAST) {
+          const plan: Record<string, unknown> = { ifTarget: 0.7, cargoKg: 0, stopsMin: 30 };
+          if (past.plannedFinishMin != null) plan.plannedFinishMin = past.plannedFinishMin;
+          plan.actualFinishMin = past.actualFinishMin;
+          tx.objectStore('races').put({
+            id: past.id,
+            routeId: race.routeId,
+            name: past.name,
+            startTime: new Date(
+              new Date().setHours(0, 0, 0, 0) + past.startMin * 60000
+            ).toISOString(),
+            cutoffFinishMin: race.cutoffMin,
+            checkpoints: [],
+            planJson: JSON.stringify(plan),
+            status: 'finished',
+            updatedAt: Date.now() - (PAST.length - PAST.indexOf(past)) * 86_400_000
+          });
+        }
         tx.objectStore('races').put({
           id: race.id,
           routeId: race.routeId,
@@ -96,7 +146,7 @@ async function seedFixture(page: Page): Promise<void> {
     } finally {
       db.close();
     }
-  }, RACE);
+  }, { ...RACE, PAST: PAST_RACES });
 }
 
 /**
