@@ -23,7 +23,40 @@ const dayIso = (offsetDays: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
+/**
+ * LocalStorage markers, deliberately outside Dexie.
+ *
+ * The wipe in Settings clears every table, so anything written inside the database would be
+ * destroyed by the very action that needs to remember the wipe happened.
+ */
+const SEED_FLAG = 'gowslab.seeded';
+const WIPE_FLAG = 'gowslab.wiped';
+
+/**
+ * Whether the demo data has already been offered on this device.
+ *
+ * The wipe was previously undone by the seed itself. Every table is guarded by its own
+ * `count() === 0`, so clearing them all made the next boot indistinguishable from a first
+ * launch: the app reloaded and handed back 24 demo rides, two bikes and a weight history,
+ * seconds after telling the user it "cannot be undone". A localStorage marker survives the
+ * wipe, so "Delete all data" now actually means all of it.
+ */
+export function isSeedingSuppressed(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  return localStorage.getItem(WIPE_FLAG) === '1';
+}
+
+/** Mark this device as deliberately emptied, so the demo data never comes back. */
+export function markWiped(): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(WIPE_FLAG, '1');
+}
+
 export async function ensureSeeded(): Promise<void> {
+  if (typeof localStorage !== 'undefined') {
+    if (localStorage.getItem(WIPE_FLAG) === '1') return;
+    if (localStorage.getItem(SEED_FLAG) === '1') return;
+  }
   await db.open();
 
   const athlete = await db.athlete.get('me');
@@ -220,4 +253,6 @@ export async function ensureSeeded(): Promise<void> {
   // M2: upgrade any stored np/if/tss that predates the metrics pipeline — including the
   // fabricated demo rows written before NP became computable (see lib/data/recompute.ts).
   await backfillMetrics();
+
+  if (typeof localStorage !== 'undefined') localStorage.setItem(SEED_FLAG, '1');
 }

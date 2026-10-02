@@ -9,7 +9,7 @@
     powerZones
   } from '$lib/data/queries.svelte';
   import { db, type Settings as SettingsRec, type WeightLog, type FtpHistory, type Athlete } from '$lib/data/db';
-  import { newId } from '$lib/data/seed';
+  import { markWiped, newId } from '$lib/data/seed';
   import { recomputeSince } from '$lib/data/recompute';
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
@@ -230,16 +230,14 @@
   // ---------- backup / restore (PRD F8) ----------
   async function backupJson(): Promise<void> {
     try {
-      const tables = [
-        'athlete', 'settings', 'bikes', 'components', 'weight_log', 'ftp_history',
-        'activities', 'activity_streams', 'routes', 'races', 'race_logs', 'ai_notes', 'zones', 'sync_state'
-      ] as const;
+      // Derived from the live schema, not hand-listed. The previous version enumerated
+      // fourteen table names by hand and silently missed `power_curves`, which arrived with
+      // schema v2 — so a backup-and-restore cycle quietly dropped the mean-max power curves,
+      // and with them the CP/W' fit. A hand-written list fails at exactly the moment it is
+      // extended; reading it off `db.tables` cannot.
       const dump: Record<string, unknown[]> = {};
-      for (const t of tables) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        dump[t] = await (db as any)[t].toArray();
-      }
-      const payload = { app: 'gowslab', schema: 1, exportedAt: new Date().toISOString(), data: dump };
+      for (const t of db.tables) dump[t.name] = await t.toArray();
+      const payload = { app: 'gowslab', schema: 2, exportedAt: new Date().toISOString(), data: dump };
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
@@ -263,6 +261,13 @@
     try {
       const parsed = JSON.parse(await file.text()) as { app?: string; data?: Record<string, unknown[]> };
       if (parsed.app !== 'gowslab' || !parsed.data) throw new Error('Not a GowsLab backup');
+      // Restoring is a merge, not a replace: the table set comes from the file so a backup
+      // written before a new table existed still restores cleanly.
+      for (const tn of Object.keys(parsed.data)) {
+        if (!db.tables.some((t) => t.name === tn)) {
+          console.warn('[gowslab] backup contains unknown table, skipped:', tn);
+        }
+      }
       const tableNames = Object.keys(parsed.data ?? {}) as string[];
       await db.transaction('rw', db.tables, async () => {
         for (const tn of tableNames) {
@@ -285,6 +290,9 @@
   async function wipeAll(): Promise<void> {
     try {
       await Promise.all(db.tables.map((t) => t.clear()));
+      // Before the reload, and in localStorage, because the reload re-runs the seed and every
+      // Dexie table is now empty. Without this the demo rides come straight back.
+      markWiped();
       location.hash = '#/';
       location.reload();
     } catch (err) {
