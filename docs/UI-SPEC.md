@@ -843,3 +843,54 @@ bermakna untuk output build dengan service worker dan bundel ter-minify-nya.
 `vitest.config.ts` dipisah dari `vite.config.ts` karena file E2E memakai sufiks `.spec.ts`
 konvensi Playwright; tanpa `include` eksplisit, Vitest akan mengoleksinya dan gagal di
 runner yang salah.
+
+## 28. v6.7 — Readout course: pita tumbuh, isi dirapatkan (2 Okt 2026)
+
+Pita readout diperbaiki agar tidak pernah menutupi chart **dan** tidak lagi meluber sendiri.
+
+### 28.1 Akar masalahnya: tinggi tetap plus kartu absolut
+
+§24.1 memindahkan popup ke pita 62 px di atas canvas dengan **tinggi tetap**, supaya chart tidak
+pernah reflow. Prinsipnya benar, tapi implementasinya rapuh: kartu di dalam pita memakai
+`absolute`, sehingga **kartu bisa tumbuh tanpa membatasi pita**. Ketika §26 menambah dua baris
+CP/W′ ke tooltip, isinya menjadi **118 px di pita 62 px** — overflow 56 px, dan baris
+terakhir `W′ 100% · Pace sits below CP — sustainable indefinitely` jatuh tepat **menimpa
+legenda chart**.
+
+Yang membuat ini lolos begitu lama: **semua teksnya tetap ada dan terbaca**. Tidak ada error,
+tidak ada elemen hilang — hanya berantakan. Bug visual bukan bug fungsional, jadi tidak pernah
+muncul di tes teks.
+
+Aturan yang dipakai: *apa pun yang bisa berubah ukuran harus diukur oleh layout yang memiliki
+itu.* Pita sekarang `min-h-[62px]` (tinggi saat collapsed tetap) dan kartunya **in normal
+flow**, bukan `absolute`. Chart tetap tidak reflow saat collapsed, dan pita melebar justru
+ketika readout butuh ruang.
+
+### 28.2 Readout dirapatkan dari enam baris jadi tiga
+
+Enam baris (KM / grade-alt-kph / buffer / jam / gate / W′ plus alasan) terasa berantakan di
+pita selebar kartu. Sekarang tiga baris, masing-masing menjawab satu pertanyaan:
+
+1. **Baris identitas** — `KM 131.4` · `+163 min` (berwarna menurut feasibilitas) · `10:17`
+2. **Baris medan** — `-1.2% · 1316 m · 41.1 km/h · 88.6 km to Finish`
+3. **Baris W′** — chip `W′ 100%` + `227 W needed · 233 W left`
+
+Alasan lengkap (`Pace sits below CP…`) **dihapus dari tooltip** — ia sudah ada di kartu
+`W′ at this pace`, jadi mengulangnya di sini hanya menggandakan isi. `truncate` dipakai pada
+baris jam dan W′ supaya label cut-off yang panjang tidak memaksa pita melebar.
+
+### 28.3 Tes geometri, bukan tes teks
+
+Tiga tes E2E baru mengukur piksel: `card.bottom` tidak boleh melewati `plot.top` di tiga posisi
+horizontal, caret tidak keluar host di tepi kiri dan kanan, dan tombol ✕ saat pin tetap di
+dalam kartu. Selector memakai **struktur** (`div.relative > div`), bukan index.
+
+**Bukti menangkap regresi:** pita dikembalikan ke `h-[62px]` lalu suite dijalankan — tes gagal
+dengan pesan `readout overflows its band at 0.15`. Dikembalikan: 13/13 hijau.
+
+**Jebakan yang ditemukan saat menulis tes:** di viewport ponsel, kotak `.u-over` melaporkan
+**y negatif** (−524) karena chart berada di bawah lipatan. `page.mouse.move` tidak akan pernah
+menyentuh koordinat yang tidak ada di layar, sehingga crosshair tidak pernah bergerak dan tes
+gagal untuk alasan yang sama sekali tidak terkait. Hover karena itu di-*dispatch* langsung ke
+`.u-over` dengan koordinat yang sama — persis cara komponen berperilaku di bawah touch, di
+mana hover memang tidak ada.

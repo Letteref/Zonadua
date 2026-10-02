@@ -243,6 +243,125 @@ test.describe('race cockpit without a network', () => {
   });
 });
 
+/** The readout card and the band that contains it, found by structure not by index. */
+const readout = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => {
+    const host = document.querySelector('[role=slider]') as HTMLElement;
+    const band = host.previousElementSibling as HTMLElement;
+    // band > div.relative (positioned wrapper) > the dark panel; the caret is the sibling
+    // span pinned to the bottom of that wrapper. Targeting by structure keeps this stable
+    // when the markup gains or loses a wrapper div.
+    const card = band.querySelector('div.relative > div') as HTMLElement;
+    const caret = band.querySelector('div.relative > span[aria-hidden]');return {
+      card: card ? card.getBoundingClientRect().toJSON() : null,
+      caret: caret ? caret.getBoundingClientRect().toJSON() : null,
+      bandClientH: band.clientHeight,
+      bandScrollH: band.scrollHeight,
+      plotTop: document.querySelector('.u-over')!.getBoundingClientRect().top,
+      hostLeft: host.getBoundingClientRect().left,
+      hostRight: host.getBoundingClientRect().right
+    };
+  });
+
+/**
+ * Hover the plot at a fraction of its width.
+ *
+ * The event is dispatched on `.u-over` rather than driven through `page.mouse`, because the
+ * cockpit sits well below the fold in a phone-sized viewport: the plot's box can report a
+ * *negative* y, where a real pointer has nothing to reach. A synthetic `mousemove` carries
+ * the same coordinates without needing the point to be on screen, which is also how the
+ * component behaves under touch, where there is no hover at all.
+ */
+async function hoverPlot(page: import('@playwright/test').Page, frac: number): Promise<void> {
+  const box = (await page.locator('.u-over').boundingBox())!;
+  await page.evaluate(([px, py]) => {
+    const o = { bubbles: true, clientX: px, clientY: py };
+    const cv = document.querySelector('.u-over')!;
+    cv.dispatchEvent(new MouseEvent('mouseenter', o));
+    cv.dispatchEvent(new MouseEvent('mousemove', o));
+  }, [box.x + box.width * frac, box.y + box.height * 0.4]);
+  await page.waitForTimeout(250);
+}
+
+/** Click the plot at a fraction of its width — the pin gesture (§24). */
+async function clickPlot(page: import('@playwright/test').Page, frac: number): Promise<void> {
+  const box = (await page.locator('.u-over').boundingBox())!;
+  await page.evaluate(([px, py]) => {
+    const o = { bubbles: true, clientX: px, clientY: py };
+    const cv = document.querySelector('.u-over')!;
+    cv.dispatchEvent(new MouseEvent('mousemove', o));
+    cv.dispatchEvent(new MouseEvent('click', o));
+  }, [box.x + box.width * frac, box.y + box.height * 0.4]);
+  await page.waitForTimeout(250);
+}
+
+test.describe('readout never covers the chart', () => {
+  /**
+   * Regression guard for the readout band (UI-SPEC §28).
+   *
+   * The band was pinned to a fixed 62px while its card was `absolute`, so when the tooltip
+   * gained the CP/W' rows in §26 the card grew to 118px, overflowed the band and dropped its
+   * last row straight onto the chart legend. Geometry is the only thing that catches this —
+   * the text was all present either way, which is exactly why it went unnoticed.
+   */
+  test('the readout sits above the plot and does not overflow its band', async ({ page }) => {
+    await openRaceCockpit(page);
+    await startRace(page);
+
+    const box = (await page.locator('.u-over').boundingBox())!;
+    expect(box).not.toBeNull();
+
+    for (const frac of [0.15, 0.5, 0.85]) {
+      await hoverPlot(page, frac);
+
+      const g = await readout(page);
+      expect(g.card, `no readout card at ${frac}`).not.toBeNull();
+      // no pixel of the card may cross into the plot
+      expect(g.card!.bottom, `readout overlaps plot at ${frac}`).toBeLessThanOrEqual(g.plotTop);
+      // The content must fit the band that owns it. A few pixels of slack are legitimate:
+      // the caret hangs a few px below the card by design, and the band does not clip it.
+      // What must never happen is the *text* overflowing, which is what the fixed height used
+      // to allow — the card grew past the band and dumped its last row onto the legend.
+      expect(g.bandScrollH, `readout overflows its band at ${frac}`).toBeLessThanOrEqual(
+        g.bandClientH + 12
+      );
+    }
+  });
+
+  test('the caret stays inside the host at both edges', async ({ page }) => {
+    await openRaceCockpit(page);
+    await startRace(page);
+    for (const frac of [0.04, 0.96]) {
+      await hoverPlot(page, frac);
+
+      const g = await readout(page);
+      expect(g.caret, `caret missing at ${frac}`).not.toBeNull();
+      expect(g.caret!.left, `caret escaped the host at ${frac}`).toBeGreaterThanOrEqual(g.hostLeft - 2);
+      expect(g.caret!.left).toBeLessThanOrEqual(g.hostRight + 2);
+    }
+  });
+
+  test('a pinned readout still exposes its clear button inside the card', async ({ page }) => {
+    await openRaceCockpit(page);
+    await startRace(page);
+    await hoverPlot(page, 0.45);
+    await clickPlot(page, 0.45);
+
+    const inside = await page.evaluate(() => {
+      const band = (document.querySelector('[role=slider]') as HTMLElement)
+        .previousElementSibling as HTMLElement;
+      const card = band.querySelector('div.relative > div') as HTMLElement;
+      const btn = card.querySelector('button');
+      if (!btn) return null;
+      const b = btn.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      return b.right <= c.right + 1 && b.left >= c.left - 1 && b.bottom <= c.bottom + 1;
+    });
+    expect(inside, 'clear button missing or outside the card').not.toBeNull();
+    expect(inside).toBe(true);
+  });
+});
+
 test.describe('honest empty states', () => {
   test('a race with no route profile says so instead of inventing numbers', async ({ page }) => {
     await page.clock.install({ time: new Date(FROZEN_MORNING) });

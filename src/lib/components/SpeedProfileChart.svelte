@@ -435,56 +435,63 @@
     <!--
       The readout lives in its own band ABOVE the canvas, not as a floating card inside it.
       A floating card has to sit somewhere over the plot: over the summit it hides the very
-      climb the rider is asking about, and over a cut-off marker it hides the label. Here the
-      band is always the same height, so the chart never reflows, and nothing is ever covered.
-      The caret below it is the only thing that tracks the pointer.
+      climb the rider is asking about, and over a cut-off marker it hides the label. The caret
+      below it is the only thing that tracks the pointer.
+
+      The band grows with its content (`min-h` reserves the collapsed height, the card is in
+      normal flow rather than `absolute`) because a fixed height silently overflowed as soon
+      as the tooltip gained the CP/W' lines in §26 — the card grew past the band and the last
+      row landed on top of the chart legend. Anything that can change size must be measured
+      by the layout that owns it.
     -->
-    <div class="relative h-[62px]">
+    <div class="relative min-h-[62px]">
       {#if h && active}
         {@const tipLeft = Math.max(0, Math.min(hostWidth - 8, active.x))}
-        <div
-          class="absolute inset-x-2 top-0 rounded-2xl bg-mono border border-white/10 elevation-raised px-3 py-2 flex flex-col gap-0.5"
-        >
-          <div class="flex items-start gap-2">
-            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
-              {#if tooltip}
-                {@render tooltip(h)}
-              {:else}
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose">
-                  KM {h.km.toFixed(1)}
-                </span>
-                <span class="text-[11px] font-bold text-white tabular">
-                  {h.gradePct >= 0 ? '+' : ''}{h.gradePct.toFixed(1)}% grade · {h.altM.toFixed(0)} m · {h.kph.toFixed(1)} km/h
-                </span>
-                <span class="text-[10px] font-semibold text-on-mono-dim tabular">
-                  {durationOf(h.elapsedSec)} in · {clockOf(h.clockMin)}
-                </span>
-                {#if h.powerLimited}
-                  <span class="text-[9px] font-extrabold uppercase tracking-wider text-rose">
-                    Beyond {targetWatts} W
+        <div class="relative mx-2">
+          <div
+            class="rounded-2xl bg-mono border border-white/10 elevation-raised px-3 py-2 flex flex-col gap-0.5"
+          >
+            <div class="flex items-start gap-2">
+              <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+                {#if tooltip}
+                  {@render tooltip(h)}
+                {:else}
+                  <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose">
+                    KM {h.km.toFixed(1)}
                   </span>
+                  <span class="text-[11px] font-bold text-white tabular">
+                    {h.gradePct >= 0 ? '+' : ''}{h.gradePct.toFixed(1)}% grade · {h.altM.toFixed(0)} m · {h.kph.toFixed(1)} km/h
+                  </span>
+                  <span class="text-[10px] font-semibold text-on-mono-dim tabular">
+                    {durationOf(h.elapsedSec)} in · {clockOf(h.clockMin)}
+                  </span>
+                  {#if h.powerLimited}
+                    <span class="text-[9px] font-extrabold uppercase tracking-wider text-rose">
+                      Beyond {targetWatts} W
+                    </span>
+                  {/if}
                 {/if}
+              </div>
+              {#if pinned}
+                <button
+                  class="pointer-events-auto shrink-0 grid h-5 w-5 place-items-center rounded-full bg-white/10 text-on-mono-dim hover:bg-white/20 hover:text-white transition-colors"
+                  onclick={clearPin}
+                  aria-label="Clear pinned point"
+                >
+                  <X size={11} strokeWidth={2.5} />
+                </button>
               {/if}
             </div>
-            {#if pinned}
-              <button
-                class="pointer-events-auto shrink-0 grid h-5 w-5 place-items-center rounded-full bg-white/10 text-on-mono-dim hover:bg-white/20 hover:text-white transition-colors"
-                onclick={clearPin}
-                aria-label="Clear pinned point"
-              >
-                <X size={11} strokeWidth={2.5} />
-              </button>
-            {/if}
           </div>
+          <!-- caret: ties the band to the point without covering it -->
+          <span
+            class="absolute -bottom-1 h-2 w-2 rotate-45 bg-mono border-r border-b border-white/10 translate-x-1/2"
+            style="left:{tipLeft}px"
+            aria-hidden="true"
+          ></span>
         </div>
-        <!-- caret: ties the band to the point without covering it -->
-        <span
-          class="absolute bottom-0 h-2 w-2 rotate-45 bg-mono border-r border-b border-white/10 translate-x-1/2"
-          style="left:{tipLeft}px"
-          aria-hidden="true"
-        ></span>
       {:else}
-        <div class="absolute inset-x-2 top-0 grid place-items-center rounded-2xl border border-dashed border-hairline-strong h-full">
+        <div class="absolute inset-x-2 top-0 grid h-[62px] place-items-center rounded-2xl border border-dashed border-hairline-strong">
           <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">
             Hover or click the profile for details
           </span>

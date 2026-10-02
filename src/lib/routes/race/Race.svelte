@@ -780,35 +780,61 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           onhover={(p) => (probeKm = p ? p.km : null)}
         >
           {#snippet tooltip(p)}
-            <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose">KM {p.km.toFixed(1)}</span>
-            <span class="text-[11px] font-bold text-white tabular">
-              {p.gradePct >= 0 ? '+' : ''}{p.gradePct.toFixed(1)}% · {p.altM.toFixed(0)} m · {p.kph.toFixed(1)} km/h
+            <span class="flex items-baseline gap-2 min-w-0">
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-rose shrink-0">
+                KM {p.km.toFixed(1)}
+              </span>
+              {#if probe}
+                <span
+                  class="text-[11px] font-extrabold tabular shrink-0"
+                  style="color:{probe.feasibility === 'aman' ? '#4ade9a' : probe.feasibility === 'waspada' ? '#ffb35a' : '#ff8a92'}"
+                  title="Slack against {probe.gateLabel}"
+                >
+                  {probe.bufferMin >= 0 ? '+' : '−'}{Math.abs(probe.bufferMin).toFixed(0)} min
+                </span>
+              {/if}
+              <span class="text-[10px] font-semibold text-on-mono-dim tabular truncate">
+                {clockOf(p.clockMin)}
+              </span>
             </span>
-            {#if probe}
-              <span class="text-[10px] font-bold tabular" style="color:{probe.feasibility === 'aman' ? '#4ade9a' : probe.feasibility === 'waspada' ? '#ffb35a' : '#ff8a92'}">
-                {probe.bufferMin >= 0 ? '+' : '−'}{Math.abs(probe.bufferMin).toFixed(0)} min vs {probe.gateLabel}
-              </span>
-              <span class="text-[10px] font-semibold text-on-mono-dim tabular">
-                {clockOf(probe.clockMin)} · {probe.remainingKm.toFixed(1)} km to gate
-              </span>
-            {:else}
-              <span class="text-[10px] font-semibold text-on-mono-dim tabular">{clockOf(p.clockMin)}</span>
-            {/if}
+
+            <!-- One line for the terrain and the pace: they are read together, not apart. -->
+            <span class="text-[11px] font-bold text-white tabular">
+              {p.gradePct >= 0 ? '+' : ''}{p.gradePct.toFixed(1)}%
+              <span class="text-on-mono-dim font-semibold">·</span>
+              {p.altM.toFixed(0)} m
+              <span class="text-on-mono-dim font-semibold">·</span>
+              {p.kph.toFixed(1)} km/h
+              {#if probe}
+                <span class="text-on-mono-dim font-semibold">·</span>
+                {probe.remainingKm.toFixed(1)} km to {probe.gateLabel}
+              {/if}
+            </span>
+
+            <!--
+              CP/W' gets one dense line rather than two prose lines. The verdict is the
+              part worth reading on a climb; the full reason already lives in the
+              "W′ at this pace" card, so repeating it here only crowded the readout.
+            -->
             {#if probeSustain}
-              <span class="text-[10px] font-bold tabular" style="color:{probeSustain.sustainable ? '#4ade9a' : '#ffb35a'}">
-                {probeSustain.requiredW} W needed
-                {#if probeSustain.cp !== null}
-                  · {probeSustain.availableW} W left at CP/W′
-                {:else}
-                  · no CP fit
-                {/if}
-              </span>
-              <span class="text-[9px] font-semibold text-on-mono-dim">
-                {#if probeSustain.wPrimePct !== null}
-                  W′ {Math.round(probeSustain.wPrimePct * 100)}% · {probeSustain.reason}
-                {:else}
-                  {probeSustain.reason}
-                {/if}
+              <span class="flex items-center gap-1.5 min-w-0">
+                <span
+                  class="text-[9px] font-extrabold uppercase tracking-wider tabular shrink-0 rounded px-1 py-px"
+                  style={probeSustain.sustainable
+                    ? 'background:rgba(74,222,154,.16);color:#4ade9a'
+                    : probeSustain.wPrimeLeft === 0
+                      ? 'background:rgba(255,138,146,.16);color:#ff8a92'
+                      : 'background:rgba(255,179,90,.16);color:#ffb35a'}
+                >
+                  {#if probeSustain.wPrimePct !== null}
+                    W′ {Math.round(probeSustain.wPrimePct * 100)}%
+                  {:else}
+                    no CP
+                  {/if}
+                </span>
+                <span class="text-[10px] font-bold text-on-mono-dim tabular truncate">
+                  {probeSustain.requiredW} W needed{#if probeSustain.cp !== null}&nbsp;· {probeSustain.availableW} W left{/if}
+                </span>
               </span>
             {/if}
           {/snippet}
