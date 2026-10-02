@@ -36,7 +36,7 @@ Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
 > mean-max curve + CP/W' fit, time in zones), `course.ts` (GPX/TCX), `units.ts`, `trend.ts`,
 > and the M3 solver pair `physics.ts` + `pacing.ts` (power→speed → finish time → checkpoints →
-interactive chart series), plus `race.ts` (cut-off buffer + feasibility), with **256 unit tests**.
+interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability), with **275 unit tests**.
 Still missing: the rest of the race model (full M4 projection vs CP/W′).
 
 ## Commands
@@ -82,7 +82,7 @@ status table in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/PRD.md](docs/PRD.md) — features F1–F8, acceptance criteria, MVP scope
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, data model, physics, Strava integration, compliance
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phase status + the recommended execution order
-- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §25
+- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §26
 - [docs/STITCH-PROMPTS-v5.md](docs/STITCH-PROMPTS-v5.md) — Google Stitch prompt source (historical reference)
 
 ## Deploy (zero-cost)
@@ -91,7 +91,7 @@ Cloudflare Pages: build `npm run build`, output `dist/`. Hash routing means no r
 
 ## Status
 
-**The UI is no longer ahead of the domain logic.** M0–M3 are implemented and tested (240 unit tests);
+**The UI is no longer ahead of the domain logic.** M0–M3 are implemented and tested (275 unit tests);
 the remaining gap is the full race projection. Design work is at **v6.2** (see [docs/UI-SPEC.md](docs/UI-SPEC.md)):
 
 | Phase | State |

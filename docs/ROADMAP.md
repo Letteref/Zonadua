@@ -24,7 +24,7 @@ feasibility belum dibandingkan dengan CP/W′.
 | M1 | **Done** | parser GPX/TCX di `domain/course.ts` (16 tes fixture), `domain/units.ts` (imperial dipakai di 4 tampilan), `domain/trend.ts` + kartu Body trend, editor zona F2-AC4 di Settings, `domain/zones.ts` dengan template |
 | M2 | **Done** | `domain/metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (109 tes hijau), `data/streams.ts` + `synthetic.ts` + `recompute.ts`, tabel `power_curves`, kartu Power curve + route `#/rides/:id` |
 | M3 | **Done** | `domain/physics.ts` + `domain/pacing.ts` (66 tes), `Routes.svelte` memakai hasil solve; `AVG_KMH = 30` dihapus; chart profil interaktif uPlot (hover + klik-pin + keyboard) |
-| M4 | **Separuh** | `domain/race.ts` (gate buffer + feasibility), cockpit live memakai `SpeedProfileChart` dengan crosshair buffer-vs-cut-off; hero masih `AVG_KMH` konstanta |
+| M4 | **Selesai** | `domain/race.ts` (gate buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt` vs CP/W′), hero BUFFER/PROJECTED FINISH/REQUIRED AVG dari `racePlan` (`RACE_KM`/`AVG_KMH` dihapus), sektor lambat dari solver (275 tes) |
 | M5 | **Stub** | chat masuk ke `ai_notes`, tidak ada panggilan LLM |
 | M6 | **Belum mulai** | tidak ada backend; `sync_state` kosong |
 
@@ -149,18 +149,21 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 
 ## M4 — Race Mode (F7) ⭐
 
-> **Status: separuh selesai (2 Okt 2026).** Setup race dari rute, cockpit live dengan chrome
+> **Status: selesai (2 Okt 2026).** Setup race dari rute, cockpit live dengan chrome
 > browser, tombol checkpoint ke `race_logs`, status planned/live/finished — semua jalan.
-> **Slice 1 masuk:** `domain/race.ts` (`gateBufferAt`, `feasibility`, `lastGatePassed`, 10 tes)
-> dan cockpit live sekarang menampilkan `SpeedProfileChart` yang sama dengan halaman Routes —
-> crosshair memberi `±n min vs <cut-off>` + status AMAN/WASPADA/KRITIS di titik mana pun,
-> dengan marker cut-off dan garis posisi. Chart memakai profil GPX asli dari Dexie
-> (`fetchRouteProfile`) + `buildPlan`, bukan konstanta.
-> **Yang masih hilang:** hero `BUFFER`, `PROJECTED FINISH` dan `REQUIRED AVG` masih memakai
-> `AVG_KM / AVG_KMH` konstanta (planned finish), dan feasibility belum dibandingkan dengan
-> CP/W′ — jadi status KRITIS masih bermakna "buffer cut-off", belum "beyond your physiology".
-> Solver M3 sudah siap
-> dipakai di sini — ini satu-satunya domain file yang tersisa.
+> **Slice 1:** `domain/race.ts` (`gateBufferAt`, `feasibility`, `lastGatePassed`) dan cockpit
+> live memakai `SpeedProfileChart` yang sama dengan halaman Routes — crosshair memberi
+> `±n min vs <cut-off>` + status AMAN/WASPADA/KRITIS di titik mana pun, dengan marker cut-off
+> dan garis posisi. Chart memakai profil GPX asli dari Dexie (`fetchRouteProfile`) + `buildPlan`,
+> bukan konstanta.
+> **Slice 2 (v6.4):** hero `BUFFER`, `PROJECTED FINISH`, `REQUIRED AVG` diturunkan dari
+> `racePlan`; `RACE_KM`/`AVG_KMH` dan sektor lambat hard-code dihapus. Bug buffer yang mengukur
+> dirinya sendiri diperbaiki (`UI-SPEC §25.1`).
+> **Slice 3 (v6.5):** feasibility vs CP/W′. `wPrimeSpentAt` +
+> `sustainAt(…, horizonSec)` menjawab "apakah plan pace masih bisa dipegang" — termasuk di
+> tooltip crosshair dan kartu `W′ at this pace`. Detail model: `UI-SPEC §26`.
+> **Sisa (bukan domain):** DoD E2E Playwright + uji offline belum dikerjakan, dan
+> pascalarace belum menyimpan koreksi hasil aktual (masuk sebagai bahan kalibrasi M5).
 
 **Tujuan:** tracker race-day yang bekerja penuh offline dan menjawab "apakah saya aman?" dalam 1 detik.
 
@@ -240,7 +243,7 @@ sekarang **langkah 0–4 sudah selesai** (2 Okt 2026), tinggal `race.ts` untuk M
 | --- | --- | --- | --- |
 | 0 | **Test harness + domain metrics** — ✅ selesai 2 Okt 2026 | Vitest terpasang; `domain/metrics.ts` + `domain/pmc.ts` dengan golden fixtures; codec stream; trace power untuk ride seed; backfill `METRICS_VERSION` | `npm test` → 55 tes hijau; angka dashboard berasal dari power |
 | 1 | **M3 physics** — ✅ selesai 2 Okt 2026 | `domain/physics.ts` (gravitasi + rolling + aero + drivetrain loss, bisection `v`) dan `domain/pacing.ts`; disambungkan ke `Routes.svelte` | ETA berubah menurut grade; property test arah perubahan logis |
-| 2 | **M4 race projection** | `domain/race.ts` memakai solver M3 → proyeksi finish, buffer, required pace, feasibility AMAN/WASPADA/KRITIS | KRITIS bisa muncul dari fixture W′; input checkpoint < 100 ms |
+| 2 | **M4 race projection** — ✅ selesai 2 Okt 2026 | `domain/race.ts` memakai solver M3 → proyeksi finish, buffer, required pace, feasibility AMAN/WASPADA/KRITIS | KRITIS bisa muncul dari fixture W′; input checkpoint < 100 ms |
 | 3 | **Sisa M1** — ✅ selesai 2 Okt 2026 | zone editor (F2-AC4) + template, grafik tren berat/FTP overlay (F2-AC2), satuan imperial dipakai di 4 tampilan, `domain/units.ts` + `domain/trend.ts` + parser `domain/course.ts` (16 tes) | F2-AC2 & F2-AC4 terpenuhi; M1 ditutup |
 | 4 | **Activity detail** — ✅ selesai 2 Okt 2026 | route `#/rides/:id` (router param), header + angka dark, kurva ride vs all-time best, time in zones, sparkline asli di list Rides | daftar ride bisa dibuka; ride tanpa power menampilkan empty state jujur |
 | 5 | **M5 AI Coach** | adapter provider, context builder (hanya metrik turunan), prompt statis | hanya setelah angka/domain tepercaya — kalau context-nya salah, AI mengarang |

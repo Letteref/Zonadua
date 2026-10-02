@@ -3,14 +3,22 @@
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
-  import { allBikes, fetchRouteProfile, latestFtp, weightSeries } from '$lib/data/queries.svelte';
+  import { allBikes, fetchRouteProfile, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
   import { db, type Race, type RaceCheckpoint, type RaceLog } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { liveQuery } from 'dexie';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
-  import { buildPlan, clockOf, planSeries, slowestWindows, type PlanSeriesPoint } from '$lib/domain/pacing';
-  import { gateBufferAt, kmAtClock as kmAtClockAt, planMinutesBetween, type CutoffGate } from '$lib/domain/race';
-  import type { ProfilePoint } from '$lib/domain/physics';
+import { buildPlan, clockOf, planSeries, slowestWindows, type PlanSeriesPoint } from '$lib/domain/pacing';
+import {
+  gateBufferAt,
+  kmAtClock as kmAtClockAt,
+  planMinutesBetween,
+  sustainAt,
+  wPrimeSpentAt,
+  type CutoffGate
+} from '$lib/domain/race';
+import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
+import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
   import {
     ChevronLeft,
     Lock,
@@ -103,18 +111,35 @@
 
   const raceKm = $derived(profile.at(-1)?.distKm ?? 0);
 
+  /**
+   * One physics block, shared by the plan builder and the W' feasibility check. If these
+   * ever drift apart the cockpit would judge the rider against a different bike than the
+   * one it planned with, and the two answers would quietly disagree.
+   */
+  const racePhysics = $derived<PhysicsParams>({
+    riderKg,
+    bikeKg: bike?.weightKg ?? 9.4,
+    cargoKg,
+    crr: bike?.crr ?? 0.0045,
+    cda: bike?.cda ?? 0.32,
+    temperatureC: 20
+  });
+
+  /**
+   * CP/W' fitted from every activity that carries power — the same merged mean-max curve
+   * the dashboard uses. Null when the athlete has no power rides yet, which is an honest
+   * "cannot judge" rather than a guess.
+   */
+  const cpFit = $derived.by(() => {
+    const merged = mergePowerCurves((powerCurves.current ?? []).map((c) => c.points));
+    return merged.length >= 4 ? fitCriticalPower(merged) : undefined;
+  });
+
   const racePlan = $derived(
     profile.length >= 2
       ? buildPlan({
         profile,
-        physics: {
-          riderKg,
-          bikeKg: bike?.weightKg ?? 9.4,
-          cargoKg,
-          crr: bike?.crr ?? 0.0045,
-          cda: bike?.cda ?? 0.32,
-          temperatureC: 20
-        },
+        physics: racePhysics,
         pacing: { mode: 'if', ifTarget, ftp },
         stops: { count: stopsMin > 0 ? Math.max(1, Math.round(stopsMin / 15)) : 0, minutesEach: 15 },
         startMin,
@@ -138,6 +163,24 @@
   /** what the crosshair is currently reporting, or null when it is off the plot */
   let probeKm = $state<number | null>(null);
   const probe = $derived(probeKm != null ? gateBufferAt(chartRows, gates, probeKm) : null);
+  /**
+   * Can the plan pace at the crosshair still be held? This is the M4 question the pacing
+   * model alone cannot answer: the solver assumes the target is sustainable from a full
+   * tank, and this asks what is left of it.
+   *
+   * W′ is charged by work above CP along the solved segments (`wPrimeSpentAt`), and the
+   * remaining reserve is spread over the stretch this pace still has to be held — the next
+   * cut-off ahead, not the whole race. A pace that must last five minutes and one that must
+   * last five hours draw on the same tank very differently.
+   */
+  const probeSustain = $derived.by(() => {
+    const km = probeKm;
+    if (km == null) return null;
+    const spent = racePlan?.solution && cpFit ? wPrimeSpentAt(racePlan.solution.segments, cpFit, km) : 0;
+    const gateKm = gates.find((g) => g.km >= km)?.km ?? raceKm;
+    const holdMin = planMinutesBetween(chartRows, km, gateKm) ?? 600;
+    return sustainAt(chartRows, km, racePhysics, cpFit, cpFit ? spent : 0, holdMin * 60);
+  });
 
   // ---------- setup preview: the plan, not a guess ----------
   /** true once the solver produced a usable plan — every number below needs one */
@@ -274,6 +317,17 @@
     // first tap.
     const fromPlan = kmAtClockAt(chartRows, startMin + elapsedMin);
     return fromPlan == null ? 0 : Math.max(0, Math.min(raceKm, fromPlan));
+  });
+
+  /**
+   * The same judgement at the rider's current position, not the hovered one. The horizon is
+   * the ride to the finish: that is how long the plan pace has to survive.
+   */
+  const nowSustain = $derived.by(() => {
+    if (!hasPlan) return null;
+    const spent = racePlan?.solution && cpFit ? wPrimeSpentAt(racePlan.solution.segments, cpFit, kmAtClock) : 0;
+    const holdMin = planMinutesBetween(chartRows, kmAtClock, raceKm) ?? 600;
+    return sustainAt(chartRows, kmAtClock, racePhysics, cpFit, cpFit ? spent : 0, holdMin * 60);
   });
 
   const avgSpeed = $derived.by(() => {
@@ -740,6 +794,23 @@
             {:else}
               <span class="text-[10px] font-semibold text-on-mono-dim tabular">{clockOf(p.clockMin)}</span>
             {/if}
+            {#if probeSustain}
+              <span class="text-[10px] font-bold tabular" style="color:{probeSustain.sustainable ? '#4ade9a' : '#ffb35a'}">
+                {probeSustain.requiredW} W needed
+                {#if probeSustain.cp !== null}
+                  · {probeSustain.availableW} W left at CP/W′
+                {:else}
+                  · no CP fit
+                {/if}
+              </span>
+              <span class="text-[9px] font-semibold text-on-mono-dim">
+                {#if probeSustain.wPrimePct !== null}
+                  W′ {Math.round(probeSustain.wPrimePct * 100)}% · {probeSustain.reason}
+                {:else}
+                  {probeSustain.reason}
+                {/if}
+              </span>
+            {/if}
           {/snippet}
         </SpeedProfileChart>
         <p class="text-[10px] font-medium text-ink-dim">
@@ -848,6 +919,31 @@
         <StatusChip label="Kritis" status={status === 'kritis' ? 'kritis' : 'neutral'} icon={status === 'kritis' ? 'alert' : undefined} />
       </div>
       <p class="mt-3 text-sm text-ink-dim">{statusMsg}</p>
+      {#if nowSustain}
+        <div class="mt-3 pt-3 border-t border-hairline">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">W′ at this pace</span>
+            {#if nowSustain.wPrimePct === null}
+              <StatusChip label="No CP fit" status="neutral" />
+            {:else}
+              <StatusChip
+                label="{Math.round(nowSustain.wPrimePct * 100)}% · {(nowSustain.wPrimeLeft! / 1000).toFixed(1)} kJ"
+                status={nowSustain.sustainable ? 'aman' : 'waspada'}
+                icon={nowSustain.sustainable ? 'check' : 'warn'}
+              />
+            {/if}
+          </div>
+          <p class="mt-1.5 text-[11px] font-medium text-ink-dim">
+            {#if nowSustain.cp === null}
+              Ride a power session to fit CP/W′ and this becomes a real judgement instead of a
+              pace the model only hopes for.
+            {:else}
+              {nowSustain.requiredW} W needed here · CP {nowSustain.sustainableW} W ·
+              {nowSustain.availableW} W available. {nowSustain.reason}.
+            {/if}
+          </p>
+        </div>
+      {/if}
     </SectionCard>
 
     <button

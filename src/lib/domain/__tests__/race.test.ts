@@ -6,9 +6,12 @@ import {
   gateBufferAt,
   kmAtClock,
   lastGatePassed,
-  planMinutesBetween
+  planMinutesBetween,
+  sustainAt,
+  wPrimeSpentAt
 } from '../race';
 import type { PlanSeriesPoint } from '../pacing';
+import type { Segment } from '../physics';
 
 /**
  * Flat 100 km at 30 km/h from a 05:30 gun, sampled every 10 km.
@@ -177,3 +180,187 @@ describe('planMinutesBetween', () => {
     expect(planMinutesBetween([], 0, 100)).toBeNull();
   });
 });
+
+/** Segments solved off `watt` for `secPerSeg` seconds each, `count` of them. */
+function segs(count: number, watt: number, secPerSeg: number, stepKm = 2): Segment[] {
+  return Array.from({ length: count }, (_, i) => ({
+    i,
+    distKm: stepKm * (i + 1),
+    altM: 100,
+    riseM: 0,
+    gradePct: 0,
+    vKph: 30,
+    sec: secPerSeg,
+    cumDistKm: stepKm * (i + 1),
+    cumTimeSec: secPerSeg * (i + 1),
+    powerLimited: false,
+    powerUsedW: watt
+  }));
+}
+
+describe('wPrimeSpentAt', () => {
+  const FIT = { cp: 250, wPrime: 200000, r2: 0.98, points: 12, predicted: [] };
+
+  it('spends nothing while riding exactly at CP', () => {
+    expect(wPrimeSpentAt(segs(5, 250, 600), FIT, 10)).toBe(0);
+  });
+
+  it('spends work above CP and banks the deficit below it', () => {
+    // 10 min at 300 W: 50 W surplus × 600 s = 30 kJ
+    expect(wPrimeSpentAt(segs(1, 300, 600), FIT, 2)).toBeCloseTo(30000, 0);
+    // 10 min at 200 W: 50 W under × 600 s = −30 kJ, which floors at zero spend
+    expect(wPrimeSpentAt(segs(1, 200, 600), FIT, 2)).toBe(0);
+    // 5 min above then 10 min below cancels out exactly
+    expect(wPrimeSpentAt([...segs(1, 300, 300), ...segs(2, 200, 300)], FIT, 6)).toBeCloseTo(0, 0);
+  });
+
+  it('never banks more than the tank holds', () => {
+    expect(wPrimeSpentAt(segs(3, 250, 1), FIT, 6)).toBe(0);
+  });
+
+  it('cannot be driven negative by a long descent', () => {
+    expect(wPrimeSpentAt(segs(4, 100, 900), FIT, 8)).toBe(0);
+  });
+
+  it('stops at the requested distance rather than the end of the route', () => {
+    // 50 W surplus per 600 s segment = 30 kJ each. Segments end at km 2/4/6/8, so asking
+    // for km 4 admits the first two, and asking for the end admits all four.
+    expect(wPrimeSpentAt(segs(4, 300, 600), FIT, 2)).toBeCloseTo(30000, 0);
+    expect(wPrimeSpentAt(segs(4, 300, 600), FIT, 4)).toBeCloseTo(60000, 0);
+    expect(wPrimeSpentAt(segs(4, 300, 600), FIT, 8)).toBeCloseTo(120000, 0);
+  });
+
+  it('cannot spend more than the tank holds, however long the climb runs', () => {
+    // an hour of continuous 100 W surplus is 360 kJ, far past a 40 kJ tank
+    expect(wPrimeSpentAt(segs(1, 350, 3600), FIT, 2)).toBe(FIT.wPrime);
+  });
+
+  it('is zero for a degenerate fit instead of dividing by zero', () => {
+    expect(wPrimeSpentAt(segs(3, 300, 600), { ...FIT, cp: 0 }, 6)).toBe(0);
+  });
+});
+
+describe('sustainAt', () => {
+  const PHYSICS = { riderKg: 68, bikeKg: 9.4, cargoKg: 0, crr: 0.0045, cda: 0.32, temperatureC: 20 };
+  /** 250 W CP with 40 kJ of W′. */
+  const FIT = { cp: 250, wPrime: 40000, r2: 0.98, points: 12, predicted: [] };
+
+  it('returns null without a usable plan', () => {
+    expect(sustainAt([], 50, PHYSICS, FIT, 0, 600)).toBeNull();
+  });
+
+  it('still judges the gradient when there is no CP fit', () => {
+    const p = sustainAt(rows(), 50, PHYSICS, undefined, 0, 600)!;
+    expect(p.cp).toBeNull();
+    expect(p.wPrimeLeft).toBeNull();
+    expect(p.requiredW).toBeGreaterThan(0);
+    expect(p.reason).toContain('No CP fit');
+  });
+
+  it('reports a pace below CP as sustainable indefinitely', () => {
+    const p = sustainAt(rows(), 50, PHYSICS, FIT, 0, 600)!;
+    expect(p.requiredW).toBeLessThan(p.sustainableW!);
+    expect(p.sustainable).toBe(true);
+    expect(p.reason).toContain('below CP');
+  });
+
+  it('leaves the tank untouched when nothing has been spent', () => {
+    const p = sustainAt(rows(), 50, PHYSICS, FIT, 0, 600)!;
+    expect(p.wPrimeLeft).toBe(FIT.wPrime);
+    expect(p.wPrimePct).toBeCloseTo(1, 6);
+  });
+
+  it('draws the tank down as work above CP accumulates', () => {
+    const half = sustainAt(rows(), 50, PHYSICS, FIT, FIT.wPrime / 2, 600)!;
+    const most = sustainAt(rows(), 50, PHYSICS, FIT, FIT.wPrime * 0.95, 600)!;
+    expect(half.wPrimeLeft!).toBeGreaterThan(most.wPrimeLeft!);
+    expect(half.availableW!).toBeGreaterThan(most.availableW!);
+    expect(half.wPrimePct!).toBeCloseTo(0.5, 2);
+    expect(most.wPrimePct!).toBeCloseTo(0.05, 2);
+  });
+
+  it('clamps an overspend to an empty tank, not a negative one', () => {
+    const p = sustainAt(rows(), 50, PHYSICS, FIT, FIT.wPrime * 3, 600)!;
+    expect(p.wPrimeLeft).toBe(0);
+    expect(p.wPrimePct).toBe(0);
+    expect(p.availableW).toBe(p.sustainableW); // nothing left to borrow
+  });
+
+  it('ignores a negative spend rather than inventing reserve', () => {
+    // recovery below CP fills the tank but cannot overfill it
+    const p = sustainAt(rows(), 50, PHYSICS, FIT, -5000, 600)!;
+    expect(p.wPrimeLeft).toBe(FIT.wPrime);
+    expect(p.wPrimePct).toBeCloseTo(1, 6);
+  });
+
+  it('fails a wall once the tank is empty, but passes it fresh', () => {
+    // the same wall, judged before and after the plan has drained W′
+    const fresh = sustainAt(steepRows(), 4, PHYSICS, FIT, 0, 600)!;
+    const spent = sustainAt(steepRows(), 4, PHYSICS, FIT, FIT.wPrime, 600)!;
+    expect(fresh.requiredW).toBeGreaterThan(fresh.sustainableW!); // the wall is above CP
+    expect(fresh.availableW!).toBeGreaterThan(fresh.sustainableW!); // W′ still contributing
+    expect(fresh.sustainable).toBe(true);
+    expect(spent.sustainable).toBe(false);
+    expect(spent.reason).toContain('spent');
+  });
+
+  it('does not let even a fresh tank rescue an impossible gradient', () => {
+    // A 2 kJ tank over a 600 s horizon buys ~3 W on top of CP, which cannot lift a wall
+    // that costs hundreds. The reason distinguishes this from a *spent* tank.
+    const p = sustainAt(steepRows(), 4, PHYSICS, { ...FIT, wPrime: 2000 }, 0, 600)!;
+    expect(p.sustainable).toBe(false);
+    expect(p.wPrimeLeft).toBe(2000);
+    expect(p.reason).toContain('exceeds what the remaining W′ can buy');
+  });
+
+  it('scales the borrowed power with the horizon the pace must be held', () => {
+    // The same full tank: a short burst can spend it on a big burst, a long haul cannot.
+    // Without a horizon the reserve collapses to exactly CP regardless of its size, which
+    // would let a tiny tank borrow as much as a large one.
+    const burst = sustainAt(steepRows(), 4, PHYSICS, FIT, 0, 30)!;
+    const haul = sustainAt(steepRows(), 4, PHYSICS, FIT, 0, 3600)!;
+    expect(burst.availableW!).toBeGreaterThan(haul.availableW!);
+    expect(haul.availableW! - haul.sustainableW!).toBeLessThan(burst.availableW! - burst.sustainableW!);
+    // a small tank buys strictly less than a large one over the same horizon
+    const small = sustainAt(steepRows(), 4, PHYSICS, { ...FIT, wPrime: 4000 }, 0, 600)!;
+    const large = sustainAt(steepRows(), 4, PHYSICS, FIT, 0, 600)!;
+    expect(small.availableW!).toBeLessThan(large.availableW!);
+  });
+
+  it('caps the borrow at the model horizon W′/CP, however absurd the tank', () => {
+    // Over a 1 s window an enormous reserve would naively promise W'/1 s = 5 000 000 W.
+    // The model's own horizon, W'/CP, bounds it instead.
+    const huge = { ...FIT, wPrime: 5_000_000 };
+    const burst = sustainAt(steepRows(), 4, PHYSICS, huge, 0, 1)!;
+    const cap = huge.wPrime / huge.cp;
+    expect(burst.availableW! - burst.sustainableW!).toBeLessThanOrEqual(cap);
+    // over a realistic 10 min window the same reserve is spread as 5 000 000/600 = 8.3 kW,
+    // which is the point: the *duration* is what makes a reserve meaningful, not its size
+    const real = sustainAt(steepRows(), 4, PHYSICS, huge, 0, 600)!;
+    expect(real.availableW! - real.sustainableW!).toBeCloseTo(Math.round(5_000_000 / 600), -2);
+  });
+
+  it('rejects a degenerate fit rather than dividing by zero', () => {
+    for (const bad of [{ ...FIT, cp: 0 }, { ...FIT, wPrime: 0 }]) {
+      const p = sustainAt(rows(), 50, PHYSICS, bad, 0, 600)!;
+      expect(p.cp === null || p.sustainableW === null).toBe(true);
+    }
+  });
+});
+
+/**
+ * A wall: a sustained +12 % solved down to a crawl. Holding any speed here costs far more
+ * than CP, which is the only situation where W' actually decides the outcome.
+ */
+function steepRows(): PlanSeriesPoint[] {
+  const kph = 10;
+  return Array.from({ length: 6 }, (_, i) => ({
+    km: i * 2,
+    altM: 100 + i * 240, // +12 % over each 2 km
+    gradePct: 12,
+    kph,
+    elapsedSec: i * ((2 / kph) * 3600),
+    clockMin: 330 + i * ((2 / kph) * 60),
+    powerLimited: true
+  }));
+}

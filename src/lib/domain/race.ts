@@ -11,6 +11,8 @@
  */
 
 import type { PlanSeriesPoint } from './pacing';
+import type { CriticalPowerFit } from './power-curve';
+import { powerForSpeed, type PhysicsParams, type RideSolution } from './physics';
 
 export type Feasibility = 'aman' | 'waspada' | 'kritis';
 
@@ -118,6 +120,143 @@ export function lastGatePassed(
   let best: CutoffGate | null = null;
   for (const g of gates) if (g.km <= km) best = g;
   return best;
+}
+
+/**
+ * M4 slice 2: can this rider actually hold this pace?
+ *
+ * The pacing model answers "how long does this power take over this profile", which
+ * assumes the target is sustainable from a full tank. Two things break that:
+ *
+ *  - **The gradient is steeper than the plan allows for.** Invert the solver with
+ *    `powerForSpeed`: the watts needed to hold the plan speed on the *actual* local grade.
+ *  - **W' is already spent.** Above CP power is borrowed from a finite anaerobic store;
+ *    once it empties, the same watts stop being available at all.
+ *
+ * Returns null when there is nothing to judge — no fit, no params. "Unknown" must never
+ * read as "fine".
+ */
+export interface SustainProjection {
+  /** the point on the route this judgement is about */
+  km: number;
+  /** watts needed to hold `planKph` on the local gradient */
+  requiredW: number;
+  /** the rider's critical power, or null when no fit exists */
+  cp: number | null;
+  /** watts the rider can hold indefinitely; null when no fit exists */
+  sustainableW: number | null;
+  /** watts available right now after work at power has drawn down W', null without a fit */
+  availableW: number | null;
+  /** how long this pace must still be held, seconds — what the W' reserve is spread over */
+  horizonSec: number | null;
+  /** W' left in the tank (J), null without a fit */
+  wPrimeLeft: number | null;
+  /** W' as a fraction of its full capacity, 0–1, null without a fit */
+  wPrimePct: number | null;
+  /** true only when the plan pace fits inside what is left */
+  sustainable: boolean;
+  /** short reason, honest enough to print next to a status chip */
+  reason: string;
+}
+
+/**
+ * W′ spent by riding the plan up to `km`, in joules.
+ *
+ * This is the honest accounting and it is deliberately NOT `wPrimeRemaining(fit, seconds)`.
+ * That function describes the *model curve* P(t) = W′/t + CP — how much total work the
+ * minimal model contains — so feeding it elapsed time treats every second as if the rider
+ * were pinned on the asymptote, and empties the tank within minutes on any long ride.
+ *
+ * W′ is spent by **work above CP** and partly replenished by work below it, so the balance
+ * integrates the plan: surplus power above CP drains the tank, deficit below CP refills it,
+ * and time spent cruising exactly at CP is free. That is why an eight-hour ultra ends with
+ * W′ intact while a repeated-above-CP race does not.
+ *
+ * Segments are the solved ones, so this measures the plan the rider is actually on.
+ * Returned value is clamped to `[0, fit.wPrime]`: a deep descent cannot push W′ negative,
+ * and a rider cannot bank more than the tank holds.
+ */
+export function wPrimeSpentAt(
+  segments: ReadonlyArray<RideSolution['segments'][number]>,
+  fit: CriticalPowerFit,
+  km: number
+): number {
+  if (fit.cp <= 0) return 0;
+  let net = 0; // joules above (positive) / below (negative) CP
+  for (const s of segments) {
+    // a segment records where it ends, so stop before the one that overruns the distance
+    if (s.cumDistKm > km) break;
+    net += (s.powerUsedW - fit.cp) * s.sec;
+  }
+  return Math.max(0, Math.min(fit.wPrime, net));
+}
+
+/**
+ * Whether the plan speed at `km` is still holdable given the W′ spent getting there.
+ *
+ * `wPrimeSpentJ` is in joules and comes from {@link wPrimeSpentAt} — pass what the plan has
+ * actually cost at this distance, not elapsed wall-clock.
+ *
+ * `horizonSec` is **how long this pace has to be held**, and it genuinely changes the
+ * answer: 5 kJ of reserve buys ~167 W on top of CP for 30 s, but only ~8 W if it must last
+ * 600 s. Sizing the reserve without a duration collapses to `wPrimeLeft / t_lim`, which
+ * simplifies to exactly CP for *any* tank size — a two-kilowatt-second rider would then
+ * borrow as much as a twenty-kilojoule one, which is nonsense.
+ */
+export function sustainAt(
+  rows: readonly PlanSeriesPoint[],
+  km: number,
+  physics: PhysicsParams,
+  fit: CriticalPowerFit | undefined,
+  wPrimeSpentJ: number,
+  horizonSec: number
+): SustainProjection | null {
+  const row = rowAt(rows, km);
+  if (!row) return null;
+
+  const requiredW = Math.round(powerForSpeed(physics, row.gradePct, row.kph));
+  if (!fit || fit.cp <= 0 || fit.wPrime <= 0) {
+    return {
+      km,
+      requiredW,
+      cp: null,
+      sustainableW: null,
+      availableW: null,
+      horizonSec: null,
+      wPrimeLeft: null,
+      wPrimePct: null,
+      // Without a fit the gradient is still judged; there is simply no W' to reason about.
+      sustainable: true,
+      reason: 'No CP fit — pace judged against the plan only'
+    };
+  }
+
+  const wPrimeLeft = Math.max(0, fit.wPrime - Math.max(0, wPrimeSpentJ));
+  // Power still available: sustainable CP, plus the average surplus the remaining reserve
+  // can carry across the stretch this pace has to be held.
+  const horizon = Math.max(1, horizonSec);
+  const borrowedW = wPrimeLeft > 0 ? Math.min(wPrimeLeft / horizon, fit.wPrime / fit.cp) : 0;
+  const availableW = Math.round(fit.cp + borrowedW);
+  const sustainable = requiredW <= availableW;
+
+  let reason: string;
+  if (requiredW <= fit.cp) reason = 'Pace sits below CP — sustainable indefinitely';
+  else if (sustainable) reason = 'W′ still covers the gap above CP';
+  else if (wPrimeLeft <= 0) reason = 'W′ is spent — the plan’s power is no longer available';
+  else reason = 'Gap above CP exceeds what the remaining W′ can buy';
+
+  return {
+    km,
+    requiredW,
+    cp: Math.round(fit.cp),
+    sustainableW: Math.round(fit.cp),
+    availableW,
+    horizonSec: Math.round(horizon),
+    wPrimeLeft: Math.round(wPrimeLeft),
+    wPrimePct: Math.max(0, Math.min(1, wPrimeLeft / fit.wPrime)),
+    sustainable,
+    reason
+  };
 }
 
 /**

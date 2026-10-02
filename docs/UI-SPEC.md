@@ -733,3 +733,50 @@ Verifikasi browser: setup → `7h 10m`, buffer `+5H 50M`, ETA `12:40`, avg `33.0
 `KM 60–71` @ `25.2 km/h`. Live → projected finish `23:08`, buffer `−278m` (`−4h 38m`),
 required avg `100.8 km/h`. Gerbang: `npm test` 256 hijau, `npm run check` 0 error 0 warning,
 `npm run build` hijau 3.28 s.
+
+## 26. v6.5 — M4: feasibility vs CP/W′ (2 Okt 2026)
+
+`powerForSpeed` dan `wPrimeRemaining` sudah ada sejak M2/M3 tapi **tidak pernah tersambung ke
+apa pun** di halaman Race. Itu gap M4 yang tersisa: model pacing menjawab "berapa lama power
+ini menyelesaikan profil", dan itu selalu mengasumsikan target bisa dipertahankan dari tangki
+penuh. Menyelesaikan M4 berarti bertanya *"apa yang masih tersisa?"*.
+
+### 26.1 Dua koreksi model — keduanya kacau di percobaan pertama
+
+**W′ bukan fungsi waktu tempuh.** `wPrimeRemaining(fit, seconds)` adalah hubungan **kurva
+model** `P(t) = W′/t + CP` — total kerja yang dicadangkan model minimal — bukan aturan
+deplesi. Memberinya elapsed time memperlakukan setiap detik seolah menempel di asimtot, dan
+menguras tangki dalam hitungan menit di ride mana pun. Di browser, versi pertama langsung
+tampil `W′ 0% · 0.0 KJ` bahkan di posisi start, yang jelas salah: W′ habis karena **kerja di
+atas CP**, dan justru **pulih** di bawahnya.
+
+Fix: `wPrimeSpentAt(segments, fit, km)` mengintegralkan plan — surplus daya di atas CP
+menguras tangki, defisit di bawah CP mengisinya kembali, dan daya yang tepat di CP itu
+gratis. Inilah kenapa ultra delapan jam berakhir dengan W′ utuh, sementara race yang
+berulang di atas CP tidak. Nilai di-clamp ke `[0, wPrime]`: turunan panjang tidak bisa membuat
+W′ negatif, dan pembalap tidak bisa menabung melebihi tangki.
+
+**Cadangan tanpa durasi runtuh ke tepat CP.** `availableW = cp + wPrimeLeft / t_lim`, dengan
+`t_lim = W′/CP`, secara matematika **selalu** mengembalikan tepat `cp` — untuk **ukuran tangki
+apapun**. Tangki 2 kJ akan meminjam sebanyak tangki 20 kJ, yang tidak masuk akal.
+Penyebabnya: cadangan daya hanya bermakna relatif terhadap **berapa lama** harus dipertahankan.
+5 kJ memberi sekitar 167 W di atas CP selama 30 detik, tapi hanya sekitar 8 W bila harus
+bertahan 600 detik.
+
+Fix: `sustainAt(..., horizonSec)` — horizon itu adalah **ruas yang harus dilalui**, dalam
+cockpit = jarak ke cut-off berikutnya (bukan sisa seluruh race). Pinjaman tetap di-cap `W′/CP`,
+jadi tangki tak terbatas tidak menjanjikan daya tak terbatas.
+
+### 26.2 Yang ditampilkan
+
+- **Tooltip crosshair**: `{requiredW} W needed · {availableW} W left at CP/W′` +
+  `W′ {persen}%` + alasan singkat. Di atas CP, persentasenya benar-benar turun seiring perjalanan.
+- **Kartu "W′ at this pace"** di blok Status: chip persentase + kJ tersisa, dan baris
+  `{requiredW} W needed here · CP {cp} W · {availableW} W available · {reason}`.
+- Tanpa CP fit: chip `No CP fit` netral plus ajakan ride dengan power — **bukan** hijau default.
+
+Verifikasi browser dua arah (CP fit 231 W dari data seed): pada IF 0,70 (195 W) →
+`W′ 100% · 13.8 kJ`, `Pace sits below CP — sustainable indefinitely`; pada IF 0,95 (261 W) →
+`W′ 0%`, `271 W needed · 231 W left`, `W′ is spent`. Kesimpulan berubah sesuai power yang
+dibutuhkan. Gerbang: `npm test` 275 hijau, `npm run check` 0 error 0 warning, `npm run build`
+hijau 2.82 s.
