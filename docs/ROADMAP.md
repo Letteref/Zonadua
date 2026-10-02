@@ -22,6 +22,12 @@ pascalarace** — lihat DoD M4.
 | M2 | **Done** | `domain/metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (109 tes hijau), `data/streams.ts` + `synthetic.ts` + `recompute.ts`, tabel `power_curves`, kartu Power curve + route `#/rides/:id` |
 | M3 | **Done** | `domain/physics.ts` + `domain/pacing.ts` (66 tes), `Routes.svelte` memakai hasil solve; `AVG_KMH = 30` dihapus; chart profil interaktif uPlot (hover + klik-pin + keyboard) |
 | M4 | **Selesai** | `domain/race.ts` (gate buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt` vs CP/W′, `raceOutcome`/`readoutOfOutcomes`), hero BUFFER/PROJECTED FINISH/REQUIRED AVG dari `racePlan` (`RACE_KM`/`AVG_KMH` dihapus), sektor lambat dari solver, kartu pascalarace (284 tes unit · 17 tes E2E) |
+
+> **Catatan kejujuran dokumen (2 Okt 2026):** M0–M3 berlabel **Done** tetapi masih membawa **sembilan
+> kotak DoD kosong**. Hanya satu (golden test ±7 %) yang benar-benar butuh device; sisanya — Lighthouse,
+> installability, offline shell, deploy preview, import GPX 200 km < 2 s, round-trip backup,
+> 500 aktivitas < 100 ms — bisa diverifikasi di mesin ini dan cuma belum dikerjakan. Kotak kosong di
+> sini berarti **belum diverifikasi**, bukan **tidak bisa**. M4 tidak punya kotak kosong.
 | M5 | **Stub** | chat masuk ke `ai_notes`, tidak ada panggilan LLM |
 | M6 | **Belum mulai** | tidak ada backend; `sync_state` kosong |
 

@@ -93,9 +93,13 @@ Cloudflare Pages: build `npm run build`, output `dist/`. Hash routing means no r
 
 ## Status
 
-**The UI is no longer ahead of the domain logic.** M0–M4 are implemented and tested (284 unit tests, 17 E2E tests);
-every Definition-of-Done line in the M0–M4 roadmap is verified except the two that need hardware or a
-deployed backend. Design work is at **v6.8** (see [docs/UI-SPEC.md](docs/UI-SPEC.md)):
+**The UI is no longer ahead of the domain logic.** M4 — the race cockpit — is complete, with every
+Definition-of-Done line verified (284 unit tests, 17 E2E tests). M0–M3 are marked Done but still carry
+**nine unticked DoD lines** that were never individually checked; one (the ±7 % golden test) genuinely
+needs a device on the same route, but the others — Lighthouse, installability, offline shell, preview
+deploy, GPX import timing, the backup export→wipe→import round trip, 500-activity dashboard latency —
+are all verifiable on this machine and are simply still open. Design work is at **v6.8**
+(see [docs/UI-SPEC.md](docs/UI-SPEC.md)):
 
 | Phase | State |
 | --- | --- |
