@@ -1164,3 +1164,93 @@ Dua tes E2E baru, `routes hero hierarchy`:
 **Bukti menangkap regresi:** `justify-between` dikembalikan → gagal dengan `strip sits
 -104px off centre`. Latar/border tile kedua dikembalikan → gagal dengan `tiles disagree on
 borderColor: rgb(43, 45, 51) vs rgb(51, 51, 56)`. Dipulihkan: 32/32 hijau.
+
+## §33 — Audit hierarki: Dashboard, Rides, dan slot yang tidak pernah kanan (v7.2)
+
+Audit yang diminta: *"kotak yang berbeda padahal seharusnya satu komponen, dan baris yang
+tidak center"* — di Dashboard dan Rides. Dijalankan sebagai pengukuran di browser, bukan
+dengan membaca markup, karena ketiga kelas bug itu tidak terlihat dari kode.
+
+### 33.1 Cara mengaudit
+
+Dua sapuan in-page, lalu setiap temuan dikonfirmasi satu per satu:
+
+1. **Baris yang menempel** — setiap elemen `display:flex` dengan `justify-content:
+   space-between` tapi **satu anak**. suspiciously, `space-between` dengan satu anak
+   selalu resolve ke kiri; kalau baris itu memang dimaksudkan rata kiri, kelasnya
+  sefbenarnya tidak melakukan apa pun.
+2. **Grup bersaudara yang tidak cocok** — setiap `div`/`section` dengan 2–6 anak yang
+   permukaannya (bg, border, radius, padding) tidak seragam.
+
+Sapuan ke-2 menghasilkan banyak **false positive** — ia mencocokkan orang tua yang anak-anaknya
+memang bukan kartu-kartu bersaudara (mis. pembungkus halaman). Karena itu tidak ada temuan
+yang langsung acted upon; semuanya diukur ulang satu per satu.
+
+### 33.2 Temuan: slot `right` di `SectionCard` tidak pernah kanan
+
+Ini yang paling|ISBN pekerjaan, karena bukan per halaman — tapi di komponen yang dipakai
+seluruh aplikasi.
+
+```svelte
+{#if right}
+  <div class="flex items-center justify-between mb-4">{@render right()}</div>
+{/if}
+```
+
+**Setiap** pemanggil mengirim **satu** elemen ke slot itu — `LegendPill`, `StatusChip`,
+`ShieldAlert`, sebuah `<span>`. Dan `justify-between` dengan satu anak selalu resolve ke
+**kiri**. Jadi prop yang namanya `right` **tidak pernah sekali pun** meratakan apa pun ke
+kanan, sejak komponen itu dibuat.
+
+Terukur: kartu *Fitness & fatigue* meninggalkan **192 px** ruang kosong di sebelah kanan
+kontennya, *Power curve* **61 px**.
+
+Yang membuatnya tidak terlihat: legenda rata kiri membaca sebagai "legenda ada di sini",
+di dekat chart yang dijelaskannya — jadi terasa disengaja, padahal tidak ada yang disengaja.
+
+Diubah ke `justify-end`, yang memang sudah dijanjikan prop tersebut. Ini memperbaiki
+Dashboard, Rides, Race, dan ActivityDetail sekaligus.
+
+### 33.3 Temuan: hero Rides tidak punya ritme
+
+Kanan hero Rides adalah `5.8h · 313 TSS` — **dua pengukuran berbeda** yang disambung
+tanda titik, tanpa label, sebaris dengan tombol pengaturan. Jadi angka primer punya label
+dan angka 28px, sementara dua lainnya berupa teks 11px tanpa keterangan apa pun. Ketiganya
+juga tidak sharing baseline: teks itu mulai **19 px di bawah** label primer.
+
+Terukur setelah perbaikan: ketiga kolom punya `valueBottom` yang sama, ukuran label sama
+(10 px), dan angka primer tetap 28px — hierarki dibawa **ukuran**, bukan oleh
+ketidaksejajaran.
+
+Ini persis susunan yang sudah dipakai hero Dashboard (Time · Distance · Stress), jadi
+perbaikannya menyelaraskan Rides dengan bahasa visual yang sudah ada, bukan menciptakan
+yang baru. Tombol pengaturan tetap di ujung dan tetap tombol — itu sebuah **aksi**, dan
+menggambarnya seolah data adalah bagian dari masalahnya.
+
+### 33.4 Yang **bukan** bug: empat tile Snapshot
+
+Sapuan melaporkan keempat tile Snapshot berbeda: yang keempat (`Form (TSB)`) tidak punya
+background dan border, tapi punya `box-shadow` merah.
+
+Diukur ulang: keempatnya memakai komponen `StatTile` yang sama, radius `16px`, padding
+`16px`, lebar `184px`, tinggi `111/111/110/110`. Yang berbeda hanya perlakuan permukaan,
+karena yang keempat diberi `variant="flare"` — **aksen hierarki yang disengaja**, bukan
+inkonsistensi. Tidak diubah.
+
+### 33.5 Tes
+
+Lima tes E2E di `audit — hierarchy`:
+
+- **Slot kanan** — diuji di empat halaman (Dashboard, Rides, Race, ActivityDetail):
+  setiap isi slot harus rata kanan dalam 1 px. Slot kosong dilewati; snippet yang satu-
+  cabangnya `false` merender apa pun, jadi tidak ada yang bisa diukur.
+- **Baseline hero Rides** — tiga kolom, tiga label, satu ukuran label, satu baseline angka,
+  dan angka primer harus lebih besar dari dua angka lainnya.
+
+Elemen slot dicari lewat `data-slot="right"`, yaitu **kontrak komponennya sendiri** — bukan
+`justify-end` yang memperbaiki bug itu. Memilih berdasarkan kelas perbaikannya sendiri akan
+membuat tes gagal karena alasan yang salah, persis seperti di §31.
+
+**Bukti menangkap regresi:** `justify-between` dikembalikan → gagal dengan `"CTL 23 ATL 39"
+sits 220px from the right edge`. Kolom Time dikembalikan menjadi string run-on → gagal di
+assertion label. Dipulihkan: 37/37 hijau.

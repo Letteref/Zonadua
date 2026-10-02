@@ -32,7 +32,17 @@
     {/if}
     <div class="p-5">
     {#if right}
-      <div class="flex items-center justify-between mb-4">
+      <!--
+        `justify-end`, not `justify-between`.
+
+        Every caller passes exactly one element to this slot, and `justify-between` with a
+        single child always resolves to the left — so a slot named `right` had never once
+        right-aligned anything in the app, leaving measured dead space beside it (192 px in
+        the Fitness & fatigue card, 61 px in Power curve). `justify-end` is what the prop
+        has always promised, and it behaves identically for a caller who later passes two
+        children *and wants them apart* only if that caller opts out via their own wrapper.
+      -->
+      <div class="flex items-center justify-end gap-2 mb-4" data-slot="right">
         {@render right()}
       </div>
     {/if}

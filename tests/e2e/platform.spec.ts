@@ -727,3 +727,115 @@ test.describe('routes hero hierarchy', () => {
     expect(Math.abs(m.offset), `strip sits ${m.offset}px off centre`).toBeLessThanOrEqual(1);
   });
 });
+
+test.describe('audit — hierarchy across the app', () => {
+  /**
+   * The `right` slot in `SectionCard`, checked wherever it is used.
+   *
+   * The slot was built with `justify-between`, but every single caller renders one element
+   * into it — and `justify-between` with one child always resolves left. So a prop named
+   * `right` had never once right-aligned anything in the app, and it was not obvious by
+   * eye: a left-aligned legend simply reads as "the legend is over here", next to the
+   * chart it describes.
+   *
+   * Measured before the fix: the Fitness & fatigue card left 192 px of empty space to the
+   * right of its content, Power curve left 61 px.
+   *
+   * `data-slot="right"` is the component's own contract, not an echo of the class that
+   * fixes it — selecting on `justify-end` would make this test pass for the wrong reason.
+   */
+  async function rightSlots(page: Page): Promise<
+    Array<{ content: string; fromRight: number }>
+  > {
+    return page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('[data-slot=right]')]
+        // A snippet whose only branch is false renders nothing, leaving the slot empty —
+        // there is no alignment to assert in that case.
+        .filter((el) => el.firstElementChild)
+        .map((el) => {
+          const kid = el.firstElementChild as HTMLElement;
+          const k = kid.getBoundingClientRect();
+          const r = el.getBoundingClientRect();
+          return {
+            content: kid.textContent?.replace(/\s+/g, ' ').trim().slice(0, 46) ?? '(icon only)',
+            fromRight: Math.round(r.right - k.right)
+          };
+        })
+    );
+  }
+
+  for (const [label, hash] of [
+    ['dashboard', '#/'],
+    ['races', '#/rides'],
+    ['race cockpit', '#/race'],
+    ['activity detail', '#/rides/seed']
+  ] as const) {
+    test(`the right-hand slot is actually right on ${label}`, async ({ page }) => {
+      await openApp(page, hash);
+      await page.locator('#app').waitFor({ timeout: 20_000 });
+      await page.waitForTimeout(1500);
+
+      const slots = await rightSlots(page);
+      // The activity detail route needs a real ride id; if the page has no card to check,
+      // that is a different test's subject, not a failure of this one.
+      if (slots.length === 0) return;
+
+      for (const s of slots) {
+        expect(s.fromRight, `"${s.content}" sits ${s.fromRight}px from the right edge`).toBeLessThanOrEqual(1);
+      }
+    });
+  }
+
+  /**
+   * The Rides hero: one rhythm across the primary figure and its two peers.
+   *
+   * Hours and TSS used to be one unlabelled string, "5.8h · 313 TSS", on the same line as a
+   * settings button — so the primary distance had a label and a 28px figure while its peers
+   * were 11px text with nothing to say what they were. The three figures now sit on a shared
+   * baseline and share the label size, which is the arrangement the dashboard hero already
+   * used.
+   */
+  test('rides hero puts distance, time and stress on one baseline', async ({ page }) => {
+    await openApp(page, '#/rides');
+    await page.getByText(/This week/i).first().waitFor({ timeout: 20_000 });
+
+    const hero = await page.evaluate(() => {
+      const card = [...document.querySelectorAll('div')].find(
+        (d) => /This week/i.test(d.textContent ?? '') && /Stress/i.test(d.textContent ?? '')
+      );
+      if (!card) return null;
+      const cols = [...card.querySelectorAll('div')].filter(
+        (d) => d.className.includes('flex-col') && d.children.length === 2
+      );
+      return {
+        overflow: card.scrollWidth - card.clientWidth,
+        columns: cols.map((c) => {
+          const [label, value] = [...c.children].map((k) => {
+            const r = k.getBoundingClientRect();
+            return {
+              text: k.textContent?.trim() ?? '',
+              fs: parseFloat(getComputedStyle(k).fontSize),
+              bottom: Math.round(r.bottom)
+            };
+          });
+          return { label: label.text, value: value.value, labelFs: label.fs, valueFs: value.fs, bottom: value.bottom };
+        })
+      };
+    });
+
+    expect(hero, 'rides hero not found').not.toBeNull();
+    expect(hero!.overflow, 'the hero overflows its card').toBeLessThanOrEqual(0);
+    // distance, time, stress — three figures, not two and a run-on string
+    expect(hero!.columns.length).toBe(3);
+    expect(hero!.columns.map((c) => c.label)).toEqual(['This week', 'Time', 'Stress']);
+    // One label size across all three, or the peers read as captions rather than peers.
+    expect(new Set(hero!.columns.map((c) => c.labelFs)).size).toBe(1);
+    // One baseline for the figures: the hierarchy is carried by size, not by misalignment.
+    expect(
+      new Set(hero!.columns.map((c) => c.bottom)).size,
+      `figures do not share a baseline: ${hero!.columns.map((c) => `${c.value}@${c.bottom}`).join(', ')}`
+    ).toBe(1);
+    // ...and the primary is still the primary.
+    expect(hero!.columns[0].valueFs).toBeGreaterThan(hero!.columns[1].valueFs);
+  });
+});

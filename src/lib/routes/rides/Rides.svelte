@@ -162,15 +162,36 @@
     </div>
   {/if}
 
-  <div class="flex items-end justify-between gap-4 rounded-card bg-mono text-on-mono glow-mono bg-mono-gradient p-5">
-    <div>
+  <!--
+    One rhythm, three figures, one action.
+
+    The right-hand side used to be "5.8h · 313 TSS" — two different measurements joined by a
+    middot with no labels, sitting on the same line as a settings button. So the primary
+    number had a label and a large figure while its peers were an unlabelled run-on string
+    at 11px, and the three items were not on a shared baseline: the text started 19px below
+    the primary's label.
+
+    Hours and TSS are now label + figure pairs with the same rhythm as the primary, which is
+    the pattern the dashboard hero already uses. The button stays last and stays a button:
+    it is an action, and dressing it as data was part of what made the row read as one
+    undifferentiated block.
+  -->
+  <div class="flex items-end justify-between gap-3 rounded-card bg-mono text-on-mono glow-mono bg-mono-gradient p-5">
+    <div class="flex flex-col">
       <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">This week</span>
-      <span class="block text-metric-lg text-tabular font-extrabold">
+      <span class="block text-metric-lg text-tabular font-extrabold leading-tight">
         {formatDistance(month.km, unit, 0).split(' ')[0]}<span class="text-sm text-on-mono-dim font-semibold ml-1.5">{distanceUnit(unit)}</span>
       </span>
     </div>
-    <div class="flex items-center gap-3">
-      <span class="text-[11px] font-bold uppercase tracking-wider text-on-mono-dim">{month.hours}h · {month.tss} TSS</span>
+    <div class="flex items-end gap-3.5">
+      <div class="flex flex-col items-end">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Time</span>
+        <span class="text-base font-extrabold text-on-mono text-tabular leading-tight">{month.hours}h</span>
+      </div>
+      <div class="flex flex-col items-end">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Stress</span>
+        <span class="text-base font-extrabold text-rose text-tabular leading-tight">{month.tss}</span>
+      </div>
       <CircleButton icon="refresh-cw" label="Strava sync status & settings" onclick={() => route.navigate('settings')} />
     </div>
   </div>

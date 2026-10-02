@@ -85,7 +85,7 @@ status table in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/PRD.md](docs/PRD.md) — features F1–F8, acceptance criteria, MVP scope
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, data model, physics, Strava integration, compliance
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phase status + the recommended execution order
-- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §32
+- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §33
 - [docs/STITCH-PROMPTS-v5.md](docs/STITCH-PROMPTS-v5.md) — Google Stitch prompt source (historical reference)
 
 ## Deploy (zero-cost)
