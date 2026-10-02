@@ -1,0 +1,8 @@
+# Normalize line endings in the repository. The working copy is LF (Vite/esbuild assume it);
+# without this, Windows checkouts rewrite every file to CRLF and every diff is noise.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending normalized or diffed as text.
+*.png binary
+*.woff2 binary
+*.ico binary
