@@ -156,7 +156,7 @@ describeVerified('deviasi estimasi vs ride nyata < ±7 %', () => {
     const table = rows
       .map((r) => `  ${r.name.padEnd(28)} ${r.predicted} min predicted vs ${r.actual} min actual → ${r.dev >= 0 ? '+' : ''}${r.dev.toFixed(1)} %`)
       .join('\n');
-    console.log(`\nGowsLab prediction accuracy over ${rows.length} verified ride(s):\n${table}`);
+    console.log(`\nZonadua prediction accuracy over ${rows.length} verified ride(s):\n${table}`);
 
     for (const r of rows) {
       expect(

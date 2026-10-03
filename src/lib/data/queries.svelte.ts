@@ -16,7 +16,7 @@ function wrap<T>(lq: Observable<T>): { current: T | undefined; ready: boolean } 
       current = v;
       ready = true;
     },
-    error: (e) => console.error('[gowslab] liveQuery error:', e)
+    error: (e) => console.error('[zonadua] liveQuery error:', e)
   });
   if (import.meta.hot) {
     import.meta.hot.on('vite:beforeFullReload', () => unsub.unsubscribe());
@@ -117,7 +117,7 @@ export async function fetchRouteProfile(routeId: string | undefined): Promise<Pr
     if (!Array.isArray(parsed) || parsed.length < 2) return [];
     return parsed.map(([distKm, altM]) => ({ distKm: Number(distKm), altM: Number(altM) }));
   } catch (e) {
-    console.error('[gowslab] route profile decode failed:', e);
+    console.error('[zonadua] route profile decode failed:', e);
     return [];
   }
 }
@@ -202,7 +202,7 @@ export function computeWear(comp: BikeComponent, odoKm: number): ComponentWear {
  * CTL/ATL/TSB — the PMC now lives in the domain layer (ARCHITECTURE.md §5.2) with unit
  * tests; this re-export keeps every existing import site working unchanged.
  */
-export { computePmc, formState } from '../domain/pmc';
+export { computePmc, formState, hasPmcLoad } from '../domain/pmc';
 
 export function latestWeight(logs: WeightLog[]): { current: number; delta: number } | undefined {
   if (logs.length === 0) return undefined;

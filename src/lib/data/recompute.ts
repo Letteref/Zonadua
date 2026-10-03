@@ -113,7 +113,7 @@ export async function backfillMetrics(): Promise<BackfillResult> {
 
   if (result.recomputed > 0 || result.curvesComputed > 0) {
     console.info(
-      `[gowslab] backfill: ${result.recomputed} metrics recomputed, ${result.curvesComputed} curves, ${result.tracesGenerated} synthetic traces, ${result.noPower} without power`
+      `[zonadua] backfill: ${result.recomputed} metrics recomputed, ${result.curvesComputed} curves, ${result.tracesGenerated} synthetic traces, ${result.noPower} without power`
     );
   }
   return result;
@@ -159,6 +159,6 @@ export async function recomputeSince(dateIso: string): Promise<number> {
     updated++;
   }
 
-  if (updated > 0) console.info(`[gowslab] rescored ${updated} ride(s) against the new FTP`);
+  if (updated > 0) console.info(`[zonadua] rescored ${updated} ride(s) against the new FTP`);
   return updated;
 }

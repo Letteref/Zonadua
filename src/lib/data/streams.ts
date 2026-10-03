@@ -45,7 +45,7 @@ export async function decodeStream(row: ActivityStreams | undefined): Promise<St
     const parsed = await inflateJson(row.compressed);
     return Array.isArray(parsed) ? (parsed as StreamSample[]) : [];
   } catch (err) {
-    console.error('[gowslab] stream decode failed:', err);
+    console.error('[zonadua] stream decode failed:', err);
     return [];
   }
 }

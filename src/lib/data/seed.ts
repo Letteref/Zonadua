@@ -29,8 +29,23 @@ const dayIso = (offsetDays: number): string => {
  * The wipe in Settings clears every table, so anything written inside the database would be
  * destroyed by the very action that needs to remember the wipe happened.
  */
-const SEED_FLAG = 'gowslab.seeded';
-const WIPE_FLAG = 'gowslab.wiped';
+// Both flags were renamed with the app. A rider who already ran "Delete all data" would
+// otherwise lose the `wiped` marker, the seeder would see an empty database as a first
+// launch, and 24 demo rides would silently return — the exact bug §30 fixed.
+const SEED_FLAG = 'zonadua.seeded';
+const WIPE_FLAG = 'zonadua.wiped';
+const LEGACY_SEED_FLAG = 'gowslab.seeded';
+const LEGACY_WIPE_FLAG = 'gowslab.wiped';
+
+/** Read a flag under its current name, falling back to the pre-rename one. */
+function flag(...keys: string[]): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  for (const key of keys) {
+    const value = localStorage.getItem(key);
+    if (value !== null) return value;
+  }
+  return null;
+}
 
 /**
  * Whether the demo data has already been offered on this device.
@@ -42,8 +57,7 @@ const WIPE_FLAG = 'gowslab.wiped';
  * wipe, so "Delete all data" now actually means all of it.
  */
 export function isSeedingSuppressed(): boolean {
-  if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem(WIPE_FLAG) === '1';
+  return flag(WIPE_FLAG, LEGACY_WIPE_FLAG) === '1';
 }
 
 /** Mark this device as deliberately emptied, so the demo data never comes back. */
@@ -53,10 +67,8 @@ export function markWiped(): void {
 }
 
 export async function ensureSeeded(): Promise<void> {
-  if (typeof localStorage !== 'undefined') {
-    if (localStorage.getItem(WIPE_FLAG) === '1') return;
-    if (localStorage.getItem(SEED_FLAG) === '1') return;
-  }
+  if (isSeedingSuppressed()) return;
+  if (flag(SEED_FLAG, LEGACY_SEED_FLAG) === '1') return;
   await db.open();
 
   const athlete = await db.athlete.get('me');

@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 
 /**
- * GowsLab local-first database (ARCHITECTURE.md §4, schema v1).
+ * Zonadua local-first database (ARCHITECTURE.md §4, schema v1).
  * Every record carries an `id` (nanoid-style, generated at repo layer) and `updatedAt`.
  */
 
@@ -95,6 +95,23 @@ export interface Activity {
   updatedAt: number;
 }
 
+/**
+ * Provenance label for an activity, as shown to the rider.
+ *
+ * The seeder marks its demo rides `synthetic: true` but writes `source: 'strava'` on
+ * half of them, so rendering `activity.source` put a **STRAVA** badge on rides that were
+ * generated locally and have never been near Strava. Every dashboard number — CTL, TSS,
+ * CP/W' — traces back to those rides, so the badge was not a cosmetic detail: it was the
+ * app claiming a provenance it did not have.
+ *
+ * `synthetic` wins over `source` because it is the field that means "this was not
+ * measured". Reading it here means every surface gets the same honest answer, and rows
+ * written by an older build are corrected on display rather than needing a migration.
+ */
+export function activityProvenance(act: Pick<Activity, 'source' | 'synthetic'>): string {
+  return act.synthetic ? 'demo' : act.source;
+}
+
 export interface ActivityStreams {
   id: string; // = activityId
   /** deflated JSON of typed arrays/arrays: { time, lat?, lng?, alt?, watts?, hr?, cad? } */
@@ -185,7 +202,11 @@ export interface Settings {
   updatedAt: number;
 }
 
-export const db = new Dexie('gowslab') as Dexie & {
+// The database was renamed with the app (`gowslab` → `zonadua`). Nothing migrates across:
+// a browser keeps the old database until it is deleted, and the seeder repopulates the new
+// one on first boot. That is only safe while the contents are demo data — see
+// docs/ROADMAP.md before shipping a rename like this to anyone with real rides in it.
+export const db = new Dexie('zonadua') as Dexie & {
   athlete: EntityTable<Athlete, 'id'>;
   weight_log: EntityTable<WeightLog, 'id'>;
   ftp_history: EntityTable<FtpHistory, 'id'>;

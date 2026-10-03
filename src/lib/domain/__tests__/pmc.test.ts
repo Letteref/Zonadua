@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ATL_TAU, CTL_TAU, computePmc, dailyTss, formState } from '../pmc';
+import { ATL_TAU, CTL_TAU, computePmc, dailyTss, formState, hasPmcLoad } from '../pmc';
 
 /** Fixed clock so every assertion is reproducible. */
 const NOW = new Date('2026-10-02T12:00:00.000Z');
@@ -113,5 +113,44 @@ describe('formState', () => {
     expect(formState(0)).toBe('balanced');
     expect(formState(15)).toBe('productive');
     expect(formState(30)).toBe('peaking');
+  });
+});
+
+describe('hasPmcLoad', () => {
+  const day = (offset: number, tss: number) => ({
+    date: new Date(Date.UTC(2026, 0, 1 + offset)).toISOString(),
+    tss
+  });
+
+  it('is false for a window that never saw a ride', () => {
+    expect(hasPmcLoad(computePmc([], 90, new Date('2026-04-01T00:00:00Z')))).toBe(false);
+  });
+
+  it('is false when every activity in the window scored zero', () => {
+    // The bug: a ride with no power data still produces a PMC row, so the window looks
+    // populated while CTL and ATL never leave zero.
+    const zeroLoad = [day(0, 0), day(1, 0), day(2, 0)];
+    expect(hasPmcLoad(computePmc(zeroLoad, 90, new Date('2026-04-01T00:00:00Z')))).toBe(false);
+  });
+
+  it('is true as soon as one day carries load', () => {
+    const oneRide = [day(0, 60)];
+    expect(hasPmcLoad(computePmc(oneRide, 90, new Date('2026-04-01T00:00:00Z')))).toBe(true);
+  });
+
+  it('still reads load after a long rest inside the window', () => {
+    // The decay tail is the point: a rider who trained in March and stopped in May has
+    // genuinely converged fitness and fatigue, and TSB 0 means something there.
+    const stale = [day(0, 80), day(40, 0), day(70, 0), day(89, 0)];
+    const series = computePmc(stale, 90, new Date('2026-04-01T00:00:00Z'));
+    expect(hasPmcLoad(series)).toBe(true);
+    expect(series.at(-1)!.ctl).toBeGreaterThan(0);
+  });
+
+  it('reads the series, not the inputs, so an out-of-window ride does not count', () => {
+    // A ride older than the window must not make the dashboard claim there is load, because
+    // the curve beside it is still flat zero.
+    const ancient = [{ date: '2019-01-01T00:00:00.000Z', tss: 300 }];
+    expect(hasPmcLoad(computePmc(ancient, 90, new Date('2026-04-01T00:00:00Z')))).toBe(false);
   });
 });
