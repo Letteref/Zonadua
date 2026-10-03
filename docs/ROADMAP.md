@@ -1,4 +1,4 @@
-# Roadmap — GowsLab
+# Roadmap — Zonadua
 
 Rencana implementasi bertahap. Setiap fase punya **definition of done** yang bisa diverifikasi. Urutan dirancang agar setiap fase menghasilkan sesuatu yang berguna (bukan setengah jalan).
 
@@ -44,7 +44,7 @@ dicentang. Keduanya kini punya tes yang gagal bila bugnya dikembalikan:
 2. **"Delete all data" bisa dibatalkan oleh seed sendiri.** Setiap tabel dijaga `count() === 0`,
    jadi mengosongkan semuanya membuat boot berikutnya tak terbedakan dari kunjungan pertama: 24 ride
    demo, 2 sepeda, dan riwayat berat kembali **detik** setelah dialog menjanjikan "cannot be undone".
-   Perbaikannya menandai localStorage (`gowslab.wiped`), karena wipe itu sendiri menghapus setiap
+   Perbaikannya menandai localStorage (`zonadua.wiped`), karena wipe itu sendiri menghapus setiap
    tabel Dexie.
 
 **Bukti menangkap regresi:** `power_curves` dikecualikan lagi dari backup → tes gagal dengan
@@ -86,7 +86,7 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 **Tujuan:** skeleton app yang jalan, ter-deploy, dan bisa di-install sebagai PWA.
 
 - Scaffold Svelte 5 + Vite + TS strict + Tailwind 4
-- Plus Jakarta Sans (fontsource variable) + Lucide icons terpasang global
+- Plus Jakarta Sans (fontsource variable) + Hugeicons icons terpasang global
 - Routing dasar (dashboard + placeholder 7 halaman)
 - Theme tokens (dark default + light), layout shell responsif (bottom nav mobile, sidebar desktop)
 - Dexie terpasang + skema v1 + seed "athlete: me"

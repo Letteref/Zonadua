@@ -1,4 +1,4 @@
-# Architecture — GowsLab
+# Architecture — Zonadua
 
 Dokumen teknis pendamping [PRD.md](PRD.md). Menjelaskan cara fitur F1–F8 diimplementasikan dengan stack yang ringan, local-first, dan zero-cost.
 
@@ -8,7 +8,7 @@ Dokumen teknis pendamping [PRD.md](PRD.md). Menjelaskan cara fitur F1–F8 diimp
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    GowsLab PWA (statis)                         │
+│                    Zonadua PWA (statis)                         │
 │  Svelte 5 + Vite + TS · Tailwind 4 · Dexie (IndexedDB)         │
 │                                                                 │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────────┐ │
@@ -56,7 +56,7 @@ Dokumen teknis pendamping [PRD.md](PRD.md). Menjelaskan cara fitur F1–F8 diimp
 | Bahasa | **TypeScript strict** | Bebas runtime error tipe |
 | Styling | **Tailwind CSS 4** | Utility-first, purge otomatis, hasil CSS kecil |
 | Font | `@fontsource-variable/plus-jakarta-sans` | Self-host variable font, tanpa request Google Fonts, offline-ready |
-| Icons | **lucide-svelte** | Tree-shakeable per icon |
+| Icons | **Hugeicons** (`@hugeicons/svelte` + `@hugeicons/core-free-icons`) | Subpath per ikon — tree-shakeable, dan 53 nama ikon terdaftar di satu file (`src/lib/icons.ts`) |
 | Charts | **uPlot** (~45 KB gzip) | Tercepat untuk time-series besar di canvas |
 | Map | **MapLibre GL JS** + raster tile OpenStreetMap/OSM-France | Gratis; opsional mode tanpa basemap |
 | DB lokal | **Dexie.js 4** (IndexedDB) | API TypeScript-friendly, reactive `liveQuery` |
@@ -123,7 +123,7 @@ src/
 
 ```ts
 // db.ts (skema versi 1)
-Dexie: gowslab
+Dexie: zonadua
 ├── athlete:        id='me'                        // singleton
 ├── weight_log:     id, date, kg
 ├── ftp_history:    id, date, ftp

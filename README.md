@@ -1,4 +1,4 @@
-# GowsLab
+# Zonadua
 
 **Local-first cycling performance, route estimation and race-day tracking PWA.**
 
@@ -6,7 +6,7 @@ All data lives on your device (IndexedDB via Dexie). Zero-cost static hosting. D
 
 ## License & attribution
 
-GowsLab is released under the **[MIT License](LICENSE)**.
+Zonadua is released under the **[MIT License](LICENSE)**.
 
 Third-party components are bundled in the build. Their licenses:
 
@@ -15,9 +15,9 @@ Third-party components are bundled in the build. Their licenses:
 | [Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans) (self-hosted variable font, bundled as `woff2`) | OFL-1.1 | [public/licenses/Plus-Jakarta-Sans-OFL-1.1.txt](public/licenses/Plus-Jakarta-Sans-OFL-1.1.txt) |
 | [Svelte](https://github.com/sveltejs/svelte), [Vite](https://github.com/vitejs/vite), [vite-plugin-pwa](https://github.com/vite-pwa/vite-plugin-pwa), [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss), [uPlot](https://github.com/leeoniya/uPlot), [Vitest](https://github.com/vitest-dev/vitest) | MIT | `package.json` |
 | [Dexie](https://github.com/dexie/Dexie.js) | Apache-2.0 | `package.json` |
-| [@lucide/svelte](https://github.com/lucide-icons/lucide) | ISC | `package.json` |
+| [Hugeicons](https://github.com/hugeicons/hugeicons) (`@hugeicons/svelte` renderer + `@hugeicons/core-free-icons` geometry) | MIT | `package.json` |
 
-**Formulas, not code.** The cycling-science formulas GowsLab implements — normalized
+**Formulas, not code.** The cycling-science formulas Zonadua implements — normalized
 power / intensity factor / training stress score, the Coggan zone models, CTL/ATL/TSB
 performance management, the Morton critical-power (CP/W′) model, and the gravity /
 rolling-resistance / aerodynamic power equations — are published science and common
@@ -30,7 +30,7 @@ only. Full audit trail: [docs/REFERENCES.md](docs/REFERENCES.md).
 
 ## Stack
 
-Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite-plugin-pwa · uPlot 1.6 (route chart) · Plus Jakarta Sans (self-hosted) · Lucide icons.
+Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite-plugin-pwa · uPlot 1.6 (route chart) · Plus Jakarta Sans (self-hosted) · Hugeicons.
 
 > Charts (uPlot) are in; maps (MapLibre) are still P1 — see [docs/ROADMAP.md](docs/ROADMAP.md).
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
@@ -85,7 +85,7 @@ status table in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/PRD.md](docs/PRD.md) — features F1–F8, acceptance criteria, MVP scope
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, data model, physics, Strava integration, compliance
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phase status + the recommended execution order
-- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §35
+- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §40
 - [docs/STITCH-PROMPTS-v5.md](docs/STITCH-PROMPTS-v5.md) — Google Stitch prompt source (historical reference)
 
 ## Deploy (zero-cost)

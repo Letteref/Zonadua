@@ -1,4 +1,4 @@
-# Stitch Prompts — GowsLab (v5.1 "Crimson Clean", 1 Okt 2026)
+# Stitch Prompts — Zonadua (v5.1 "Crimson Clean", 1 Okt 2026)
 
 > Cara pakai: tempel satu prompt ke Google Stitch, hasilnya dipakai sebagai **inspirasi poles** —
 > implementasi tetap lewat sistem token di `src/app.css`. Sengaja **tanpa aturan ukuran & layout**
@@ -8,13 +8,13 @@
 
 ## 0. Sistem visual (tempelkan di awal setiap prompt / jadikan style reference)
 
-> GowsLab — aplikasi performa bersepeda local-first. Tema "Crimson Clean": kanvas abu netral sangat terang (#F9F9F9), kartu putih bersudut membulat dengan bayangan lembut, aksen merah terang sporty (#E8102E) yang energik tapi terkendali. Satu momen "monolith" gelap per layar: kartu grafite (#141519) dengan semburat merah ember yang naik dari satu sudut — dipakai untuk kartu paling penting di layar itu (readiness, angka besar, rencana balapan). Tipografi Plus Jakarta Sans tegas dan atletik; angka besar tabular; label kecil uppercase dengan letter-spacing. Chip status tinted: AMAN hijau, WASPADA amber, KRITIS merah. Navigasi bawah: pil gelap mengambang, ikon-only, tab aktif berupa pill merah dengan label. Nuansa keseluruhan: kokpit atlet yang bersih — data intens, tidak gaduh.
+> Zonadua — aplikasi performa bersepeda local-first. Tema "Crimson Clean": kanvas abu netral sangat terang (#F9F9F9), kartu putih bersudut membulat dengan bayangan lembut, aksen merah terang sporty (#E8102E) yang energik tapi terkendali. Satu momen "monolith" gelap per layar: kartu grafite (#141519) dengan semburat merah ember yang naik dari satu sudut — dipakai untuk kartu paling penting di layar itu (readiness, angka besar, rencana balapan). Tipografi Plus Jakarta Sans tegas dan atletik; angka besar tabular; label kecil uppercase dengan letter-spacing. Chip status tinted: AMAN hijau, WASPADA amber, KRITIS merah. Navigasi bawah: pil gelap mengambang, ikon-only, tab aktif berupa pill merah dengan label. Nuansa keseluruhan: kokpit atlet yang bersih — data intens, tidak gaduh.
 
 ---
 
 ## 1. Dashboard — Today
 
-> Rancang ulang layar "Today" GowsLab dengan sistem visual di atas. Konten wajib tersedia: sapaan personal untuk atlet Andi, satu kartu monolith gelap berisi **readiness 40%** berbentuk ring merah dengan label "RECOVER FIRST", form (TSB) −11, CTL 22 · ATL 33, serta baris ringkas waktu 5.8h / jarak 124 km / stres 313 TSS minggu ini. Di bawahnya: metrik FTP 275 W (+17 W dari 4 bulan lalu), power-to-weight 4.0 W/kg, fitness 22, kartu form −11 TSB yang menonjol dengan gradasi merah, grafik TSS harian 7 hari dengan garis target 450, tren CTL vs ATL 90 hari dengan sparkline form 30 hari, dan pengingat: chain wear 100% KRITIS serta balapan "Bukit Barisan 200" 42 hari lagi. Eksplorasi bebas cara mengomposisi semua ini — kandidat ide: bento asimetris, satu kolom dengan monolith dominan, atau kartu ring yang memimpin hierarki.
+> Rancang ulang layar "Today" Zonadua dengan sistem visual di atas. Konten wajib tersedia: sapaan personal untuk atlet Andi, satu kartu monolith gelap berisi **readiness 40%** berbentuk ring merah dengan label "RECOVER FIRST", form (TSB) −11, CTL 22 · ATL 33, serta baris ringkas waktu 5.8h / jarak 124 km / stres 313 TSS minggu ini. Di bawahnya: metrik FTP 275 W (+17 W dari 4 bulan lalu), power-to-weight 4.0 W/kg, fitness 22, kartu form −11 TSB yang menonjol dengan gradasi merah, grafik TSS harian 7 hari dengan garis target 450, tren CTL vs ATL 90 hari dengan sparkline form 30 hari, dan pengingat: chain wear 100% KRITIS serta balapan "Bukit Barisan 200" 42 hari lagi. Eksplorasi bebas cara mengomposisi semua ini — kandidat ide: bento asimetris, satu kolom dengan monolith dominan, atau kartu ring yang memimpin hierarki.
 
 ## 2. Rides
 

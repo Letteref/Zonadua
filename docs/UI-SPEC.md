@@ -1,4 +1,16 @@
-# UI Spec — GowsLab
+# UI Spec — Zonadua
+
+> **Catatan nama (3 Okt 2026):** aplikasi sebelumnya bernama **GowsLab** dan kini **Zonadua**.
+> Dua hal sengaja tidak ditulis ulang menjadi nama baru, karena keduanya mencatat fakta
+> historis, bukan keputusan yang masih berlaku:
+> - Nama artefak Google Stitch yang sudah dihapus dari repo (`gowslab_dashboard`,
+>   `gowslab_rides_split_cockpit_variant`, dst.) dan folder `references/stitch_gowslab_*`.
+> - Kunci penyimpanan lama (`gowslab.seeded`, `gowslab.wiped`) yang kini dibaca sebagai
+>   *fallback* oleh `zonadua.seeded` / `zonadua.wiped`, plus tag backup `app: "gowslab"` yang
+>   masih diterima importer.
+>
+> Nama database IndexedDB berubah `gowslab` → `zonadua` **tanpa migrasi**: data lama tidak
+> ikut terbawa.
 
 > **⚠️ v5.1 — "Crimson Clean" (1 Okt 2026, keputusan user):** aksen diganti dari oranye ke **merah terang sporty `#E8102E`** dan kanvas dari krem ke **netral bersih `#F9F9F9`**. Artefak Google Stitch tetap terhapus dari repo — UI original 100%, siap dipoles Stitch bila diminta. Kartu putih, tile netral `#F1F2F4`, **monolith gelap `#141519`** untuk kartu angka/chart, teks tinta `#17181C`, **nav pil mengambang putih** dengan tombol **+** merah di tengah.
 
@@ -69,7 +81,7 @@ Setiap halaman diaudit terukur (WCAG kontras via computed styles):
 - **Skala teks (pakai skala ini, bukan ukuran mentah Stitch):** display 40/800/-0.03em (32 mobile) · metric-hero 56/800/-0.04em (44 mobile) · metric-lg 32/700 · metric-md 20/700 · body 16/14 · kicker 11/700/0.12em uppercase · label 12/600.
 - **Bentuk:** kartu 24px, kontrol 12–16px, pill/lingkaran 9999px. Bottom clearance 88px di bawah nav kapsul.
 - **Chart (uPlot):** stroke 2px `#FF4D00` + area fade `rgba(255,77,0,0.25)→0`, garis pembanding dotted hairline, axis label kecil abu — angka detail per layar mengikuti blueprint §4.
-- **Icons:** Lucide 1.5px, rounded.
+- **Icons:** Hugeicons, stroke 1.5px (lihat §36 untuk poundsnya).
 
 ## 2. Aturan Adopsi Hasil Stitch
 
@@ -200,7 +212,7 @@ Setiap halaman diaudit terukur (WCAG kontras via computed styles):
 4. "STRAVA": connected card — avatar chip, "@handle", "LAST SYNCED {t} · {n} RIDES", tombol SYNC NOW `#FF4D00` / DISCONNECT ghost + note kebijakan 7 hari.
 5. "AI PROVIDER": chip model + masked key + VERIFIED chip + "TEST CONNECTION".
 6. "DATA & STORAGE": export · import · clear streams ("est. {MB} saved", dihitung) · **Erase all data = satu-satunya blok merah `#FF0000` + "DOUBLE-CONFIRM" chip**.
-7. "ABOUT": GOWSLAB + version + tagline + Privacy/Licenses links + **banner "ALL PERFORMANCE COMPUTATIONS OCCUR ON-DEVICE. NO TELEMETRY IS TRACKED OR SOLD."** (S#11 — identitas produk, wajib ada).
+7. "ABOUT": ZONADUA + version + tagline + Privacy/Licenses links + **banner "ALL PERFORMANCE COMPUTATIONS OCCUR ON-DEVICE. NO TELEMETRY IS TRACKED OR SOLD."** (S#11 — identitas produk, wajib ada).
 
 ## 5. Aturan Cross-Cutting
 
@@ -344,11 +356,11 @@ Temuan & perbaikan (prinsip: nol angka statis §5, kejujuran visual):
 
 ## 14. Capsule dock & monolith browser-chrome (1 Okt 2026) — menunggu pilihan
 
-- **User memberi file referensi VeloClub** (club_feed_modern_editorial_suite/code.html) dan meminta nav bar-nya dijadikan acuan + monolith browser-chrome sebagai referensi hero card, dengan warna disesuaikan ke token GowsLab.
+- **User memberi file referensi VeloClub** (club_feed_modern_editorial_suite/code.html) dan meminta nav bar-nya dijadikan acuan + monolith browser-chrome sebagai referensi hero card, dengan warna disesuaikan ke token Zonadua.
 - **Mockup baru**: [mockups/fab-notch.html](../mockups/fab-notch.html) — struktur 1:1 dari referensi, diverifikasi DOM:
   - **A — Capsule dock**: bar kapsul gelap; **pill aktif = ikon + label dengan bg putih-transparan rgba(255,255,255,.14)** (bukan fill crimson); tab lain ikon redup 50%; **tombol + solid crimson (glow) di UJUNG KANAN** bar — bukan FAB tengah. Dua kondisi: Home & Rides aktif. Bentrokan pill × FAB hilang total karena + pindah ke kanan dan hanya ada satu momen crimson.
   - **B — Varian sporty**: pill aktif fill crimson `#D50F26` + glow, tombol + jadi **ink monokrom** (plus rose) — tetap satu momen aksen.
-  - **C — Monolith hero browser-chrome**: kartu gelap dengan chrome atas (lampu crimson/kuning/hijau + address pill `gowslab.app/weekly-load` + dot LIVE pulse), 3 metrik mini (CTL/TSB/TSS), spline area crimson + badge peak `#D50F26`, axis labels. Kandidat hero Dashboard & live cockpit Race.
+  - **C — Monolith hero browser-chrome**: kartu gelap dengan chrome atas (lampu crimson/kuning/hijau + address pill `zonadua.app/weekly-load` + dot LIVE pulse), 3 metrik mini (CTL/TSB/TSS), spline area crimson + badge peak `#D50F26`, axis labels. Kandidat hero Dashboard & live cockpit Race.
 - **Interaksi tetap**: tombol + membuka speed-dial Routes/Race; Escape/klik-luar utuh.
 - **Status**: menunggu pilihan "eksekusi A/B/C" (bisa kombinasi, mis. A + C).
 
@@ -390,7 +402,7 @@ Temuan & perbaikan (prinsip: nol angka statis §5, kejujuran visual):
 
 - **Permintaan**: adaptasi monolith hero dashboard ke bahasa browser-chrome kartu "Statistik Klub" (referensi VeloClub) + penyesuaian kartu statistik putih.
 - **Mockup**: [mockups/hero-chrome.html](../mockups/hero-chrome.html) — data sample dari dashboard nyata (readiness 40%, TSB −11, CTL 22 · ATL 33, 5.8h · 124km · 313 TSS):
-  - **H1 — Address bar**: hero saat ini + baris chrome 32px (lampu crimson/kuning/hijau + address pill `gowslab.app/today` + dot LIVE). Risiko terendah.
+  - **H1 — Address bar**: hero saat ini + baris chrome 32px (lampu crimson/kuning/hijau + address pill `zonadua.app/today` + dot LIVE). Risiko terendah.
   - **H2 — Window tabs fungsional**: chrome berisi tab Today/Form/Load (aktif dot crimson) yang mengganti isi kartu; address pill berisi konteks pekan. Butuh state kartu — cocok saat M2.
   - **S1 — Chrome dots**: tiga dot mini di sudut tiles putih (crimson + hairline) memanggil chrome di skala mikro; tile flare memakai dots putih.
   - **S2 — URL-pill label**: label tiles jadi pill "alamat" (`ftp / threshold`, `power / kg`, …) dengan ikon gembok mini; di tile flare versi putih-transparan.
@@ -999,11 +1011,11 @@ Setiap tabel dijaga `count() === 0`, jadi mengosongkan semuanya membuat boot ber
 terbedakan dari kunjungan pertama. Hasilnya: 24 ride demo, 2 sepeda, dan riwayat berat
 kembali **detik** setelah dialog menjanjikan *"this cannot be undone"*.
 
-Perbaikannya adalah penanda `localStorage` (`gowslab.wiped`), **bukan** di Dexie — karena wipe
+Perbaikannya adalah penanda `localStorage` (`zonadua.wiped`), **bukan** di Dexie — karena wipe
 itu sendiri menghapus setiap tabel, termasuk tempat penandanya akan tinggal. `localStorage`
 bertahan, jadi "hapus semua" sekarang benar-benar berarti semua.
 
-Penanda `gowslab.seeded` ditambahkan sekaligus: boot berikutnya melewati `ensureSeeded()` dan
+Penanda `zonadua.seeded` ditambahkan sekaligus: boot berikutnya melewati `ensureSeeded()` dan
 `backfillMetrics()` sepenuhnya, yang juga menghapus pekerjaan startup yang berulang.
 
 ### 30.4 Lighthouse 12 menghapus kategori PWA
@@ -1402,7 +1414,7 @@ yang salah dengan yakin. Karena itulah separuh dari file ini adalah penolakan.
 ### Status: mesin siap, belum ada tombolnya
 
 `calibrate.ts` dipanggil dari mana saja lewat `calibrateFromTrack`, tetapi **belum ada
-layar yang menawarkannya**. Itu disengaja untuk commit ini:logika-nya teruji, dan
+layar yang menawarkannya**. Itu disengaja untuk commit ini: logika-nya teruji, dan
 menyambungkannya ke UI adalah pekerjaan tersendiri dengan konsekuensi E2E sendiri.
 
 Yang **tidak boleh** terjadi saat disambungkan: menimpa `Crr`/`CdA` milik pembalap
@@ -1412,8 +1424,423 @@ kecepatan, jumlah sample, dan peringatan — persis seperti yang dikembalikan fu
 ### Yang ini tidak memperbaiki
 
 Kotak golden test ±7 % **tetap kosong**. Kalibrasi menghapus asumsi yang paling kabur,
-tetapi masih ada yang tidak bisa diukur dari satu ride:ftp orang berubah, cuaca berubah,
-dan'"
-Constant Power adalah model yang tidak pernah tepat untuk manusia. Harness di
+tetapi masih ada yang tidak bisa diukur dari satu ride: ftp orang berubah, cuaca berubah,
+dan Constant Power adalah model yang tidak pernah tepat untuk manusia. Harness di
 [validation/rides](validation/rides/README.md) sekarang punya alasan yang jauh lebih baik
 untuk menyimpan `rider.crr`/`rider.cda` hasil ukur — dan itu sebabnya.
+## §36 — Zonadua, Hugeicons, dan nama yang dihapus dari greeting
+
+Tiga perubahan yang satu sumber: **apa yang disebut aplikasi ini, dan apa yang digambarnya.**
+
+### 1. GowsLab → Zonadua
+
+Nama yang dilihat user berubah total: judul dokumen, `manifest.webmanifest` (PWA),
+`package.json`, mockup, dan dokumen. Yang **tidak** ikut, karena bukan branding:
+
+- **Nama database IndexedDB berubah `gowslab` → `zonadua`, tanpa migrasi.** Data lama tidak
+  terbawa. Ini konsekuensi yang harus disadari, bukan sampingan.
+- **Kunci localStorage dibaca dua-duanya.** `zonadua.wiped` dan `zonadua.seeded` jadi nama
+  baru, tapi `flag()` di [seed.ts](../src/lib/data/seed.ts) masih membaca `gowslab.wiped` /
+  `gowslab.seeded` sebagai fallback. Tanpa ini, setiap pembalap yang sudah pernah menekan
+  "Delete all data" akan kehilangan penandanya — dan karena semua tabel dijaga `count() === 0`,
+  seeder akan melihat database kosong sebagai luncuran pertama dan **24 ride demo akan
+  kembali diam-diam**, persis bug §30. Sekadar mengganti nama konstanta tanpa fallback
+  akan menghidupkan lagi bug yang sudah ditutup.
+
+  Karena itu fallback itu **diuji**, di `seed-flags.test.ts` — termasuk kasus yang paling
+  mudah salah: `gowslab.seeded` **tidak** boleh dianggap sebagai persetujuan untuk
+  mengisi ulang database yang dikosongkan; hanya `wiped` yang bisa menahan seeding.
+  Bukti menangkap regresi: `LEGACY_WIPE_FLAG` dicabut dari pemanggilan `flag()` → tes
+  *"still honours a wipe recorded under the pre-rename key"* gagal dengan
+  `expected false to be true`, sementara empat tes lain tetap hijau. Dipulihkan.
+- **Backup JSON menerima tag `app` lama maupun baru** ([Settings.svelte](../src/lib/routes/settings/Settings.svelte)),
+  supaya file ekspor versi sebelumnya masih bisa diimpor.
+
+### 2. Lucide → Hugeicons
+
+Hugeicons (MIT), bukan Lucide (ISC). Keduanya viewBox 24px garis putus-putus, jadi `size` dan
+`strokeWidth` tidak berubah artinya — `strokeWidth` tetap satuan viewBox, jadi `1.8` masih
+setebal yang sama.
+
+Tiga hal yang menentukan bentuk migrasinya:
+
+- **`strokeWidth` harus selalu diteruskan.** Data Hugeicons menyematkan `stroke-width="1.5"`
+  ke setiap path, dan renderer **hanya** menimpanya kalau prop `strokeWidth` ada. Kalau
+  prop itu dilewatkan, seluruh ikon terkunci di 1.5 dan hierarki bobot yang dipakai UI
+  (1.5 chrome · 1.8 konten · 2 peringatan) ikut rata. [Icon.svelte](../src/lib/components/Icon.svelte)
+  selalu mengirimnya; itulah alasannya ia ada.
+- **Ikon dipanggil dengan nama, bukan import.** `CircleButton` dan `StatusChip` sudah
+  menerima `icon` sebagai nama; ini melanjutkan konvensi itu. 53 nama tinggal di satu file
+  ([icons.ts](../src/lib/icons.ts)) — inventaris lengkapnya terbaca dalam satu layar, bukan
+  tersebar di empat belas file.
+- **Tree-shaking tetap aman** karena setiap ikon diimpor lewat subpath
+  (`@hugeicons/core-free-icons/Calendar03Icon`), bukan lewat barrel. Paketnya berisi 12.145
+  ikon; bundle hanya membawa 52 glif.
+
+`'alert-triangle'` dan `'triangle-alert'` sengaja berbagi satu glif. Lucide mengirim keduanya sebagai
+alias dari satu segitiga, jadi memberi mereka bentuk berbeda di sini berarti mengarang
+pembedaan yang tidak pernah ada.
+
+Audit: 53 nama terdaftar → **52 glif unik**, pasangan di atas satu-satunya duplikasi. Tujuh
+halaman dirender satu per satu: **0 SVG ikon kosong**, semua ikon tepat pada ukuran atributnya.
+Bundle 461 kB / 154 kB gzip.
+
+### 3. Nama dihapus dari greeting Dashboard
+
+Greeting pernah jadi dua baris: `GOOD MORNING,` lalu nama pembalap dalam aksen crimson italic.
+Baris kedua itu mengisi teks terbesar di aplikasi — dan **nilainya tidak bisa diedit di
+mana pun**. `athlete.name` di-seed sebagai `Andi`, tidak ada field Settings yang menulisnya,
+dan tidak ada layar lain yang membacanya.
+
+Artinya setiap pembalap aplikasi ini melihat **nama orang lain** di layar pembuka. Itu bukan
+pilihan gaya; itu kebohongan di posisi paling terlihat, dan satu-satunya jalan memperbaikinya
+adalah kolom nama di Settings.
+
+Keputusan user: **hapus**. Headline jadi satu baris `GOOD MORNING`, prop `name` dibuang dari
+`EditorialHeader`. Yang hilang: aksen crimson di header itu. Yang hilang juga: satu kebohongan.
+
+Diukur di 320 px: lebar judul tersedia **176 px** (280 px konten dikurangi 88 px ikon aksi),
+`GOOD MORNING` butuh **248 px** → membungkus ke `GOOD` / `MORNING`, dua baris, tanpa overflow
+horizontal. Bentuk sebelum ini wrap pada `GOOD MORNING,` (259 px) — jadi bentuknya tidak
+memburuk.
+
+**Catatan:** `athlete.name` kini tidak dibaca layar mana pun. Kolomnya masih ada di skema dan
+masih diisi seed, tapi tidak terlihat. Kalau nama suatu saat dikembalikan, jalurnya harus lewat
+field Settings lebih dulu — menaruh teks nama kembali sebelum ada yang bisa menuliskannya
+hanya mengulang kesalahan yang sama.
+
+### Yang tidak diubah
+
+Nama artefak Google Stitch yang sudah dihapus (`gowslab_dashboard`,
+`gowslab_rides_split_cockpit_variant`, `references/stitch_gowslab_*`) tetap tertulis di §4.
+Itu nama file yang benar-benar pernah ada, dan menuliskannya ulang jadi "zonadua" akan
+memalsukan catatan keputusan.
+
+## §37 — Hero Dashboard: ring jadi gauge, kolom form jadi satu blok
+
+Laporan: *"round chart dan detail fitness & detraining terlihat tidak center / kurang enak
+dilihat."* Dua keluhan, satu sebab yang sama — **baris atas hero monolith tidak terbaca
+sebagai satu kesatuan.**
+
+### Yang diukur dulu, bukan ditebak
+
+`preview_screenshot` gagal terus ("no frames"), jadi semua di bawah diukur lewat
+`getBoundingClientRect` di halaman. Pada 390 px (kartu 350, konten 310):
+
+| Yang diukur | Angka |
+|---|---|
+| Pusat cincin | x **96**, y **273** |
+| Kotak kolom kanan | x 172, w 178, y 224, h 97 |
+| Pusat kolom kanan | y **273** |
+| Arc nilai | `stroke-dasharray` **82.94 / 276.46** → **30%** dari lingkaran penuh |
+| Baris trio | pusat kolom di 92 / 195 / 298 |
+
+Jadi kotak kolom memang sudah rata tengah — `items-center` bekerja. Yang tidak rata tengah
+adalah **isi**nya.
+
+### 1. Cincin: dari lingkaran penuh jadi gauge 240°
+
+Arc 30% pada lingkaran tertutup dimulai dari 12 jam dan berputar searah jarum jam, jadi
+seluruh massanya mengumpul di kuadran kanan-atas sementara angka −16 duduk di pusat persis.
+Mata membaca **angka** sebagai pihak yang meleset, bukan arc-nya.
+
+Diganti jadi **busur 240° dengan bagian bawah terbuka**:
+
+- Dua ujung terbuka = TSB **−40** dan **+40**.
+- Puncak busur (12 jam) = TSB **0**, ditandai garis tick.
+- Simetris terhadap sumbu vertikal **secara konstruksi**, bukan kebetulan.
+
+Ini juga satu-satunya cara jujur menggambar skala ±40 yang jadi acuan angkanya. Lingkaran
+penuh tidak punya tempat untuk tick, sehingga skalanya tak terlihat — dan itulah cara arc 30%
+terbaca sebagai "readiness 30%", persis metrik rekaan yang §36 cabut dari bawahnya.
+
+Diketahui ulang di layar: track `184.31 / 276.46` (tepat 240°) diputar `rotate(150 56 56)`,
+arc nilai `55.29` = 30% × 240° = 72°, berakhir di 222° — berhenti sebelum 270° (puncak)
+karena TSB-nya negatif, dan itu memang yang benar.
+
+`stroke-linecap="round"` tetap menggambar sebuah titik untuk dash panjang nol, jadi busur nilai
+**dikosongkan sepenuhnya** saat `ringFrac === 0`. Tanpa itu gauge terbaca "sedikit form" ketika
+jawaban jujurnya "belum ada".
+
+### 2. Kolom kanan: satu ritme, bukan dua fragmen
+
+Sebelumnya dua potongan yang tidak berhubungan: label 10px di atas angka 28px, lalu baris
+11px uppercase di atas kalimat 11px — dengan **nama pita ("DETRAINING") berbobot sama dengan
+ukurannya** ("ATL 39"). Pita itulah yang acted-on; ATL adalah konteks.
+
+- Kedua label kini 10px / `tracking-wider`, satu ukuran.
+- Pita form diberi warna per pita (`FORM_TONES`) dan weight `font-extrabold`; angka ATL turun
+  ke `text-on-mono-dim` 11px sebagai baris pendukung.
+- Garis rambut `border-t` memisahkannya, jadi kolom terbaca sebagai satu kesatuan yang terbagi
+  dua, bukan teks yang kebetulan berdekatan.
+
+**Warna status di monolith:** `text-aman` / `text-warn` / `text-kritis` adalah token permukaan
+**terang** (`#0a7450` dan sejenisnya) dan hilang di atas `#141519`. Hero memakai hex yang sama
+dengan palet `dark` milik `StatusChip`, bukan membuat set ketiga.
+
+### 3. "24 rides with power" dikeluarkan dari hero
+
+Bukan informasi form, pecah jadi dua baris yang berantakan di 320 px, dan kartu Power curve sudah
+menyebutkannya di bawah fit yang memang dikuatkan oleh angka itu. Hero adalah form dan beban;
+provenance tinggal bersama datanya.
+
+Dampak terukur di 320 px: kolom 108px, **nol baris terbungkus**, `doc.scrollWidth ==
+clientWidth`, dan tinggi kartu tetap konstan antar ketiga tab hero (170 / 170 / 170).
+
+### Tes
+
+Dua tes E2E baru (`dashboard hero form gauge`):
+
+1. Sweep track harus 240° (bukan 360°), rotasi track dan arc harus sama-sama
+   `rotate(150 56 56)`, ada tick, dan tick tegak di sumbu vertikal serta tepat membentang dari
+   tepi dalam ke tepi luar pita cincin (`r ± strokeWidth/2`).
+2. Pusat baris ring dan pusat kolom fitness harus sama dalam 1 px.
+
+**Bukti menangkap regresi:** `GAUGE_ARC` dikembalikan jadi `CIRC` dan `GAUGE_START` jadi
+`-90` → tes pertama gagal dengan pesan *"the gauge is a closed ring again"*, `Expected: 240`,
+`Received: 360`. Tes kedua tetap hijau, karena memang tidak menyangkut busur — keduanya jujur
+tentang apa yang mereka awasi. Dipulihkan.
+
+### Catatan
+
+Dua dari tiga assertion tick sempat ditulis dengan penalaran yang salah (salah tangkap
+`match(/\d+/g)` pada `"rotate(150 56 56)"`, lalu membalik arah perbandingan y karena tepi luar
+cincin justru punya y lebih kecil). Semuanya tertangkap tes, tapi suspeito: yang pertama akan
+lolos sebagai assertion yang selalu benar.
+
+## §38 — Sisi kanan hero jadi kartu, dan audit centring trio
+
+Dua permintaan. Yang pertama mengubah tampilan, yang kedua **tidak mengubah apa pun** —
+dan itu hasil yang layak dicatat, karena "sudah center?" adalah pertanyaan yang jawabannya
+tidak boleh diasumsikan.
+
+### 1. Kolom longgar di sebelah ring → dua kartu
+
+Keluhan: sisi kanan hero "kosong dan kurang dinamis". Penyebabnya terukur — kontennya
+menempel di tepi kiri kotak yang **dua kali lebih lebar dari yang dibutuhkannya**, jadi
+separuh lebar hero jadi ruang mati.
+
+Kartu mengikuti bentuk blok statistik yang sudah dipakai di app ini (label → angka → satuan,
+dalam tile gelap yang sedikit terangkat), sehingga hero memakai bahasa visual yang sama
+dengan halaman lain. Yang berubah secara nyata:
+
+- **Pita form pindah ke bawah ring, jadi jadi pil.** Ring sudah memegang pembacaan form;
+  nama pita milik sana, bukan di kolom beban. Ini juga yang memberi ruang bagi kartu untuk
+  memuat angka saja — dan itulah yang membuat separuh kanan hero finally punya isi.
+- **`unit` dipisah dari `value`**, bukan digabung jadi "CTL 23". Di 320 px kolomnya 108 px
+  dan string gabungan membungkus.
+- **`content-center`, bukan `items-stretch`**: kartu tetap tinggi alaminya dan duduk di
+  garis tengah ring, supaya barisnya tidak terlihat seperti ring 112 px di samping dua
+  balok pendek dengan ukuran berbeda.
+
+### 2. Yang tidak muat, lalu harus turun
+
+Tile pertama memotong label di 320 px. Angkanya: tile 50 px, konten **36 px**, dan "FITNESS"
+saja terukur **39 px** di ukuran itu — jadi ikon + label memang tidak mungkin muat, bukan
+hanya perlu diperkecil.
+
+Perbaikannya berjenjang, bukan diperkecil seragam:
+
+| Lebar | Label | Ikon | Terpotong |
+|---|---|---|---|
+| 320 px | 8px, tracking mati | disembunyikan | 0 |
+| 360 px | 9px, `tracking-wider` | 11 px | 0 |
+| 430 px | 9px, `tracking-wider` | 11 px | 0 |
+
+Memotong label akan lebih buruk daripada kolom kosong yang digantikannya, karena pembalap
+lagi tidak bisa tahu angka itu apa.
+
+### 3. Audit centring: trio sudah benar, keduanya
+
+Diperiksa dengan `Range.getBoundingClientRect()` pada **teks**nya, bukan pada kotaknya —
+`text-center` yang menocentangkan kotak akan selalu terlihat benar, sementara yang perlu
+dibuktikan adalah teksnya ikut ke tengah.
+
+| | Lebar baris | Titik tengah baris | Offset label vs pusat kolom |
+|---|---|---|---|
+| **Today** — Time / Distance / Stress | 310 | 195 | **0 / 0 / 0** |
+| **Form** — Fitness / Fatigue / Form | 310 | 195 | **0 / 0 / 0** |
+
+Nilai dan label punya pusat yang sama persis dengan pusat kolomnya di keenam sel. Jadi
+**tidak ada yang perlu diubah di sana**, dan tidak saya ubah. Menempelkan kartu pada trio
+yang sudah benar justru akan meminta pekerjaan yang tidak dibenarkan.
+
+### Tes
+
+Tiga tes E2E baru (`the load tiles read in full at 320 / 360 / 430 px`): label tidak
+terpotong (`scrollWidth - clientWidth <= 0`), tile tidak meluber, tinggi kedua tile sama,
+pusat grid sama dengan pusat ring dalam 1 px, dan dokumen tidak overflow.
+
+**Bukti menangkap regresi:** label dipaksa kembali ke `text-[9px] tracking-wider` dengan
+ikon selalu tampil → tes 320 px gagal dengan pesan *"Fitness is clipped to 21px of the 39px
+it needs"*. Tes 360 dan 430 tetap hijau, karena di kedua lebar itu memang tidak ada yang
+terpotong — tes itu jujur soal apa yang mereka awasi, bukan sekadar gagal bersama. Dipulihkan.
+
+## §39 — "FATIGUE" bukan pengganti "DETRAINING", dan pita form jadi keterangan
+
+Laporan: *"kenapa muncul fatigue pada monolith? karena sebelumnya yang saya lihat adalah
+detraining. dan sekarang posisi peletakan detraining menjadi sangat aneh."*
+
+Dua tuduhan, dan hanya satu yang benar — tapi yang benar itu fundamental.
+
+### 1. Kata baru itu bukan penggantian
+
+`FATIGUE` **tidak** menggantikan `DETRAINING`. Keduanya memang berbeda dan keduanya sudah ada
+sebelum §38, keduanya menempel jadi satu blok:
+
+| | apa itu | sumber | sudah ada di mana |
+|---|---|---|---|
+| `FATIGUE` / `ATL` | **angka** beban akut | `pmc.ts` | sudah tertulis di tab Form sebagai "Fatigue ATL" |
+| `DETRAINING` | **pita**, interpretasi dari TSB | `formState(tsb)` | sudah tertulis di hero sebelum §38 |
+
+Jadi tidak ada metrik baru. Yang berubah pada §38 adalah bahwa keduanya dipisah agar jelas
+mana angka dan mana tafsirnya — dan pemisahan itulah yang membuat `DETRAINING` samar, karena
+ia dijadikan pil kecil bertuliskan hal yang sama dalam warna berbeda.
+
+### 2. Yang benar: penempatan pita form
+
+Aturan dasarnya: **label menempel pada bendanya.** Pita form menafsirkan angka TSB, jadi ia
+harus menempel pada angka itu. Versi §38 meletakkannya sebagai **pil berborder dan ber-fill**
+di bawah ring — dan chrome itulah yang membuatnya terasa melayang. Border + fill mengubah
+keterangan menjadi benda tersendiri, sehingga baris hero terbaca sebagai *empat* objek, bukan
+ring, dua kartu, dan keterangan dari ring.
+
+Diperbaiki dengan menghapus chrome-nya, bukan dengan memindahkannya:
+
+- Di dalam ring, label `FORM TSB` menjadi `TSB` saja. Sekarang anatomi ring sama persis dengan
+  kartu di sebelahnya: **angka + satuan** (`−16` / `TSB`). Nama metriknya hidup di keterangan
+  di bawah dan di `aria-label` gauge.
+- Pita jadi **teks polos berwarna** di garis tengah ring, menempel 4px di bawah lingkaran.
+
+**Pil tidak bisa masuk ke dalam ring.** Dihitung: nama pita terpanjang `RECOVER FIRST`-lebar
+**93 px** pada tipe keterangan, sedangkan tali dalam ring (chord) adalah 78 px di titik
+tengah dan hanya **61 px** di tempat baris ketiga harus duduk. Jadi keterangan memang harus
+di luar — tapi harus tetap muat di kolom ring 112 px, dan 93 < 112, jadi muat di semua lebar
+tanpa menyentuh kartu.
+
+### 3. Audit centring: strip bawah memang sudah benar, dan dikunci tes
+
+Diperiksa dengan `Range` pada **teksnya**. Tiga lebar, dua tab, dua elemen per sel (label dan
+nilai):
+
+| Lebar | Today (Time/Distance/Stress) | Form (Fitness/Fatigue/Form) |
+|---|---|---|
+| 320 px | **0 / 0 / 0** | **0 / 0 / 0** |
+| 390 px | **0 / 0 / 0** | **0 / 0 / 0** |
+| 430 px | **0 / 0 / 0** | **0 / 0 / 0** |
+
+Offset 0 berarti pusat teks = pusat selnya, persis. **Tidak ada yang diubah di sana.** Yang
+perubahan adalah sekarang ada tes yang menjaganya, supaya tidak bisa melenceng diam-diam.
+
+### Tes
+
+Empat tes E2E baru:
+
+1. **Keterangan, bukan chip** — harus tidak terpotong, harus di garis tengah gauge dalam 1 px,
+   `border-width` harus `0px` dan `background` harus transparan. Border dan fill diassert
+   eksplisit karena itulah yang membuat versi sebelumnya terasa salah tempat.
+2. **Nama pita terpanjang muat** — `RECOVER FIRST` diukur dengan tipe keterangan yang sungguhan,
+   karena data seed hanya pernah menghasilkan `DETRAINING`, yaitu satu-satunya pita yang lolos.
+3–4. **Centring strip** di tab Today dan tab Form, toleransi 1 px.
+
+**Bukti menangkap regresi:** pil `rounded-pill border` + fill dikembalikan → tes pertama
+gagal dengan pesan *"the caption has a border again — it is a chip, not a caption"*.
+Dipulihkan.
+
+### Catatan arsitektur yang ditemukan sambil menulis tes
+
+Ketiga panel tab berbagi **satu** `#hero-pane`; `aria-labelledby`-nya menunjuk tab yang
+aktif, dan ketiga isinya ditumpuk dalam satu sel grid dengan `opacity-0` + `inert`. Itu pola
+tabpanel yang sah, tapi panel-panel itu tidak punya identitas sendiri — satu-satunya
+handle struktural mereka adalah urutan tab. Tes memakai urutan itu, bukan selector, karena
+selector akan gagal untuk alasan yang salah. Kalau panel dibersihkan terpisah nanti, tesnya
+perlu ditulis ulang; itu konsekuensi yang perlu dicatat.
+
+## §40 — Baris atas hero jadi satu grid
+
+Laporan: *"posisi peletak detraining masih janggal."* Kali ketiga, dan kali ini saya berhenti
+menambal posisinya.
+
+### Dua penempatan yang sudah ditolak, dan kenapa keduanya salah
+
+| Versi | Bentuk | Kenapa gagal |
+|---|---|---|
+| §38 | pil `border` + `fill` di bawah ring | chrome membuatnya jadi benda tersendiri, bukan keterangan |
+| §39 | teks polos berwarna di bawah ring | tetap baris yatim: tidak ada kolom yang memuatnya |
+
+Keduanya salah karena satu sebab yang sama: **sebaris teks berwarna dengan sendirian di
+sebelah dan lingkaran 112 px di atasnya tidak punya kolom.** Menempelkannya ke lingkaran
+bukan memperbaikinya — justru itulah yang membuat pembalap membacanya sebagai anotasi yang
+menggantung, bukan sebagai label.
+
+### Yang diukur sebelum mengubah struktur
+
+Pita **tidak bisa** masuk ke dalam ring, dan ini dihitung, bukan diasumsikan — tiga skenario
+diuji langsung di DOM dengan menyuntikkan baris dan membandingkannya dengan tali dalam:
+
+| Skenario | Yang dibutuhkan | Ruang tersedia | Hasil |
+|---|---|---|---|
+| nilai 26 / unit / pita 8 | `RECOVER FIRST` **71 px** | **59 px** | gagal −11 |
+| nilai 22 / unit / pita 8 | 71 px | **62 px** | gagal −8 |
+| dua baris saja | 71 px | 59–62 px | gagal −11 |
+
+Jadi pita tidak bisa pindah ke dalam. Tapi yang sebenarnya perlu berubah bukan **posisinya**,
+melainkan **strukturnya**.
+
+### Barisnya sekarang satu grid
+
+Tiga kolom, masing-masing membawa **baris label di atas dan figur di bawah**, dan ketiga
+kolom berbagi tepi atas serta tepi bawah yang sama:
+
+```
+DETRAINING      FITNESS        FATIGUE      ← baris label, satu garis
+   ╭────╮       ┌──────┐       ┌──────┐
+   │ −16 │       │  23  │       │  39  │     ← baris figur, satu garis
+   │ TSB │       │ CTL  │       │ ATL  │
+   ╰────╯       └──────┘       └──────┘
+```
+
+Pita naik ke baris label karena di sana ia **punya rekan**: `DETRAINING`, `FITNESS`, dan
+`FATIGUE` sebaris, dan tiga figur — gauge, 23, 39 — sebaris. Dengan begitu baris hero bukan lagi
+"ring, dua kartu, dan sesuatu yang menempel pada ring."
+
+Kartu juga diregangkan setinggi baris (`items-stretch`) dengan isinya didorong ke dua ujung
+(`justify-between`): label di atas, angka+satuan di bawah. Tanpa itu kartu tetap 75px di
+tengah kolom 147px, dan itu yang menghasilkan diagonal yang terasa canggung.
+
+**Detail yang menentukan:** kolom ring memakai `py-2.5` yang sama persis dengan kartu. Tanpa
+itu baris label meleset **9 px** (pusat pita 224,5 vs pusat label 233,5) — satu piksel
+padding sudah cukup untuk membuat dua baris itu tidak lurus.
+
+### Terukur
+
+| Lebar | tinggi kolom | sebaris label (spread) | sebaris figur (spread) |
+|---|---|---|---|
+| 320 px | 147 / 147 / 147 | **≤ 1 px** | **≤ 1 px** |
+| 390 px | 147 / 147 / 147 | **≤ 1 px** | **≤ 1 px** |
+| 430 px | 147 / 147 / 147 | **≤ 1 px** | **≤ 1 px** |
+
+`RECOVER FIRST` (lebar 93 px) tetap muat di kolom 112 px dan tidak menyentuh kartu di semua
+lebar. Strip bawah tetap **0 / 0 / 0**. Tinggi kartu hero tetap konstan antar ketiga tab.
+
+### Tes
+
+Tiga tes E2E baru (`the hero row is one grid at 320 / 390 / 430 px`): ketiga kolom sama
+tinggi, berbagi tepi atas dan tepi bawah, tiga label dalam toleransi 1 px, tiga figur dalam
+toleransi 1 px.
+
+Tes pita juga **diperbaiki**, bukan hanya lulus: namanya dan argumentasinya masih
+mendeskripsikan "keterangan di bawah gauge" — tata letak yang sudah tidak ada — sementara
+assertions-nya tetap hijau karena kebetulan. Menghrename assertion tanpa accompanying
+argumentasi akan meninggalkan tes yang mengunci sesuatu yang tidak lagi ada.
+
+### Jebakan yang menyesatkan
+
+Pengukuran pertama setelah restrukturisasi melaporkan label terpotong 3–4 px di 320 px, dan
+computed style menunjukkan 9 px bukan 8 px. Dua kemungkinan salah tangkap muncul sebelum
+benar: breakpoint `min-[360px]` dituduh tidak aktif (padahal Tailwind 4 menulisnya sebagai
+`@media (width >= 360px)`, bukan `min-width`), lalu CSS basi dari HMR dituduh sebagai penyebab
+sebenarnya — yang memang benar, tapi setelah satu jalur falsehood.
+
+Pelajaran: CSS basi membuat pengukuran DOM berbohong, dan mengarang penjelasan yang masuk akal
+untuk itu lebih berbahaya daripada tidak punya penjelasan.

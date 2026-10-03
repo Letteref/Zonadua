@@ -28,7 +28,7 @@ is exactly why it is separate from everything the harness can check.
 2. Get the elevation profile of the same route. Any of:
    - export the GPX from the head unit and paste the `<trkpt>` lat/alt pairs;
    - export the GPX from Strava, or
-   - open the route in GowsLab and read the profile off the route page.
+   - open the route in Zonadua and read the profile off the route page.
    The profile only needs distance and elevation — the harness resamples it itself at
    100 m, so a point every 5 km is plenty.
 3. Copy `../example-ride.json`, fill in your numbers, save it here under a descriptive

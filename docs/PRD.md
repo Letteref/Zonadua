@@ -1,4 +1,4 @@
-# PRD — GowsLab
+# PRD — Zonadua
 **Personal Cycling Performance, Estimation & Race Assistant**
 
 | | |
@@ -23,7 +23,7 @@ Aplikasi yang ada hanya menjawab sebagian: Strava menjawab #1 sebagian, ultraPac
 
 ## 2. Vision Statement
 
-> GowsLab adalah asisten latihan dan race personal yang mengubah data Strava + data tubuh + data sepeda menjadi pengetahuan yang bisa ditindaklanjuti: berapa kemampuan saya, berapa waktu finish saya di rute ini, dan apakah saya aman dari cut-off — semuanya di perangkat saya, tanpa biaya, dan tetap bekerja tanpa internet di tengah perjalanan.
+> Zonadua adalah asisten latihan dan race personal yang mengubah data Strava + data tubuh + data sepeda menjadi pengetahuan yang bisa ditindaklanjuti: berapa kemampuan saya, berapa waktu finish saya di rute ini, dan apakah saya aman dari cut-off — semuanya di perangkat saya, tanpa biaya, dan tetap bekerja tanpa internet di tengah perjalanan.
 
 ## 3. Target User
 
@@ -148,7 +148,7 @@ Statistik gabungan yang hanya bisa dihitung karena kita punya ketiga sumber data
 
 ### F5 — Built-in AI Coach · P1
 
-Asisten latihan berbasis LLM dengan konteks dari data lokal yang dihitung GowsLab.
+Asisten latihan berbasis LLM dengan konteks dari data lokal yang dihitung Zonadua.
 
 **Sub-fitur:**
 - **Weekly review otomatis:** ringkasan mingguan (jam, TSS, distribusi zona, form/TSB) + insight teks dari AI.
@@ -156,7 +156,7 @@ Asisten latihan berbasis LLM dengan konteks dari data lokal yang dihitung GowsLa
 - **Rencana latihan:** generator rencana mingguan (durasi + intensitas per sesi) berdasarkan hari tersisa ke event, CTL saat ini, dan ketersediaan waktu pengguna; dapat diadjust manual.
 - **Pre-race briefing:** rekomendasi pacing (IF target), nutrisi (g/h berdasarkan berat & durasi), dan strategi berhenti untuk event terdekat.
 - **BYO API key:** pengguna memasukkan API key sendiri (default provider: Gemini free tier; pilihan lain: OpenAI, Anthropic, OpenRouter, endpoint kompatibel OpenAI apa pun). Key disimpan lokal, request dikirim langsung dari browser.
-- **Kepatuhan Strava §5.3:** konteks AI hanya metrik turunan yang dihitung GowsLab (TSS, CTL, power curve summary, dsb.) — bukan raw stream dari Strava API. Data dari file import dan input manual tidak termasuk batasan ini, tetapi kita tetap konsisten pakai metrik ringkas.
+- **Kepatuhan Strava §5.3:** konteks AI hanya metrik turunan yang dihitung Zonadua (TSS, CTL, power curve summary, dsb.) — bukan raw stream dari Strava API. Data dari file import dan input manual tidak termasuk batasan ini, tetapi kita tetap konsisten pakai metrik ringkas.
 - Semua output AI disimpan sebagai "note" yang bisa dihapus.
 
 **User story:** *"Sebagai pesepeda, saya ingin AI yang memahami data saya memberi arahan latihan mingguan sehingga saya tidak perlu coach berbayar untuk progres."*
@@ -202,7 +202,7 @@ Tracker race-day yang menjawab "apakah saya aman dari cut-off?" dengan input min
 
 **Sub-fitur:**
 - **Setup race** dari GPX (dipakai bersama F6): jarak, start time, **cut-off waktu finish** (dan cut-off antara bila ada — bisa dari titik GPX), checkpoint definisi.
-- **Live tracking sederhana:** pengguna menekan tombol besar → "KM sekarang: [input]" pada jam tertentu → GowsLab menghitung:
+- **Live tracking sederhana:** pengguna menekan tombol besar → "KM sekarang: [input]" pada jam tertentu → Zonadua menghitung:
   - Kecepatan rata-rata aktual & kecepatan bergerak (setelah koreksi berhenti bila diisi).
   - **Proyeksi waktu finish** (dari sisa jarak × pace model + stop time).
   - **Buffer terhadap cut-off** — dalam menit dan dalam % — dengan visual aman/waspada/kritis.

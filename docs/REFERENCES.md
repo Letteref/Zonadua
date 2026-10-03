@@ -1,4 +1,4 @@
-# References — GowsLab
+# References — Zonadua
 
 Kumpulan repo open-source, produk, dan library yang menjadi rujukan fitur, algoritma, dan implementasi. Diperbarui saat riset 30 Sep 2026.
 
@@ -41,7 +41,7 @@ Visualisasi ride data + estimasi power dari fisika. **Dipinjam:**
 AI training plan generator (tri/marathon) yang menghubungkan Strava. **Dipinjam:**
 - Pola prompt coaching yang berbasis data atlet.
 - Struktur output rencana latihan mingguan.
-- **Perbedaan penting:** mereka mengirim data Strava ke LLM; kita **tidak boleh** (Strava API Policy §5.3) — kita hanya mengirim metrik turunan GowsLab.
+- **Perbedaan penting:** mereka mengirim data Strava ke LLM; kita **tidak boleh** (Strava API Policy §5.3) — kita hanya mengirim metrik turunan Zonadua.
 
 ### [section-11](https://github.com/CrankAddict/section-11) — protokol coaching AI
 "Open protocol for deterministic, auditable AI-powered endurance coaching." **Dipinjam:**
@@ -79,7 +79,7 @@ ada di `package.json`; sisanya **belum di-*install*** — jangan dibaca sebagai 
 | ✅ [Vite](https://github.com/vitejs/vite) + [vite-plugin-pwa](https://github.com/vite-pwa/vite-plugin-pwa) | Build + PWA | MIT | Workbox di bawah kap |
 | ✅ [Tailwind CSS 4](https://github.com/tailwindlabs/tailwindcss) | Styling | MIT | |
 | ✅ [@fontsource-variable/plus-jakarta-sans](https://github.com/fontsource/fontsource) | Font | OFL-1.1 | Self-host variable font — **lisensi ikut di-_ship_** |
-| ✅ [@lucide/svelte](https://github.com/lucide-icons/lucide) | Icons | ISC | Tree-shakeable |
+| ✅ [Hugeicons](https://github.com/hugeicons/hugeicons) | Icons | MIT | Subpath per ikon — tree-shakeable |
 | ✅ [uPlot](https://github.com/leeoniya/uPlot) | Charts | MIT | ~45 KB, canvas, sangat cepat |
 | 📋 [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) | Map | BSD-3 | **Belum terpasang** — butuh Peta/M6 |
 | ✅ [Dexie.js 4](https://github.com/dexie/Dexie.js) | IndexedDB wrapper | Apache-2.0 | liveQuery reaktif |
@@ -111,7 +111,7 @@ Legenda: ✅ terpasang · 📋 direncanakan/kandidat.
 
 ## 5. Catatan Lisensi untuk Kita
 
-> **Status 2 Okt 2026.** GowsLab memakai **MIT** ([LICENSE](../LICENSE)). Ketentuannya:
+> **Status 2 Okt 2026.** Zonadua memakai **MIT** ([LICENSE](../LICENSE)). Ketentuannya:
 > referensi di bawah ini dipakai untuk **fitur, algoritma, dan formula** — **tidak ada kode
 > yang disalin** dari satu pun repo. Verifikasi: tidak ada identifier khas GoldenCheetah
 > (`PLT_`, `peakTorque`, `best5s`, `reverseMetric`) di `src/`. Font Plus Jakarta Sans
@@ -121,7 +121,7 @@ Legenda: ✅ terpasang · 📋 direncanakan/kandidat.
 
 - **Jangan copy kode** dari GoldenCheetah (GPL-2.0) — hanya ambil formula & konsep (formula metrik adalah pengetahuan umum, publikasi TrainingPeaks/Coggan). **Sudah diverifikasi:** hanya formula yang diambil.
 - Library yang dipilih semuanya MIT/BSD/Apache/OFL — aman untuk proyek pribadi dan open-source.
-- Jika GowsLab akan open-source: pilih MIT atau Apache-2.0, hindari dependency GPL di bundle klien.
+- Jika Zonadua akan open-source: pilih MIT atau Apache-2.0, hindari dependency GPL di bundle klien.
 - Data pengguna tetap milik pengguna: local-first memastikan itu; tanpa tracking analitik pihak ketiga.
 
 ## 6. Prioritas Belajar (kalau waktu terbatas)
