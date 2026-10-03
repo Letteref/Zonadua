@@ -1756,7 +1756,7 @@ handle struktural mereka adalah urutan tab. Tes memakai urutan itu, bukan select
 selector akan gagal untuk alasan yang salah. Kalau panel dibersihkan terpisah nanti, tesnya
 perlu ditulis ulang; itu konsekuensi yang perlu dicatat.
 
-## §40 — Baris atas hero jadi satu grid
+## §40 — Baris atas hero jadi satu grid (digantikan oleh §41)
 
 Laporan: *"posisi peletak detraining masih janggal."* Kali ketiga, dan kali ini saya berhenti
 menambal posisinya.
@@ -1767,6 +1767,8 @@ menambal posisinya.
 |---|---|---|
 | §38 | pil `border` + `fill` di bawah ring | chrome membuatnya jadi benda tersendiri, bukan keterangan |
 | §39 | teks polos berwarna di bawah ring | tetap baris yatim: tidak ada kolom yang memuatnya |
+
+> **Dikoreksi oleh §41 (bagian terakhir dokumen ini) — baca itu sebelum memakai tabel ini.** Baris §38 di atas **tidak lagi berlaku**: pita ber-border yang dicatat sebagai gagal di sini justru **dipakai kembali**, dengan dua perbedaan yang memperbaiki sebab kegagalannya alih-alih mengulanginya — hanya **nama pita** yang diwarnai (chrome-nya netral, sama persis dengan dua kartu di sebelahnya), dan lebarnya mengikuti garis di bawahnya sehingga ia punya tepi yang jelas alih-alih mengambang di tengah kartu. Grid tiga kolom yang §40 pasang di bawah ini juga sudah ditinggalkan; §41 mencatat kenapa.
 
 Keduanya salah karena satu sebab yang sama: **sebaris teks berwarna dengan sendirian di
 sebelah dan lingkaran 112 px di atasnya tidak punya kolom.** Menempelkannya ke lingkaran
@@ -1844,3 +1846,131 @@ sebenarnya — yang memang benar, tapi setelah satu jalur falsehood.
 
 Pelajaran: CSS basi membuat pengukuran DOM berbohong, dan mengarang penjelasan yang masuk akal
 untuk itu lebih berbahaya daripada tidak punya penjelasan.
+
+---
+
+## §41 — Pita form jadi pil selebar garis, dan ketiga pane berhenti di satu baris
+
+Laporan: *"pasang pill DETRAINING selebar garis di bawahnya"*, lalu *"turunkan baris
+fitness-fatigue-form agar tidak menyisakan ruang"*, lalu satu pertanyaan yang tidak meminta
+perubahan apa pun: *"apakah istilah datanya sudah ramah untuk cyclist pemula?"*
+
+Bagian ini menggantikan §40. Tiga hal berubah bersamaan karena ketiganya soal satu hal yang
+sama — apa yang sebenarnya diukur pembalap di layar, bukan apa yang diukur kode.
+
+### §40 ditinggalkan: pita bukan kolom ketiga
+
+§40 menjawab keluhan "posisi pita janggal" dengan menaruh pita sebagai baris label kolom
+pertama pada grid tiga kolom. Itu menjawab pertanyaan yang salah. Pita adalah **keterangan
+tentang seluruh kartu** — bagaimana bentuk bergerak minggu ini — bukan label milik satu kolom,
+dan menempelkannya ke kolom pertama justru menegaskan bahwa ia milik ring.
+
+Yang dipakai sekarang: barisnya berdiri sendiri, selebar kartu, dengan pita di dalamnya dan
+perubahan 7 hari di sebelahnya, lalu **garis penutup di bawahnya**, baru trio mingguan.
+
+### Pil: ukurannya diambil dari garis, bukan dari isinya
+
+Pita jadi pil `w-full` dengan `px-4 py-[5px]` dan `rounded-pill`. Dibuat selebar teksnya
+sendiri (versi pertama), ia jadi chip sempit yang mengambang di kartu lebar — dan dua hal yang
+harus dibaca menyilang, nama pita dan perubahan 7 hari, duduk di tengah kekosongan. Garis di
+bawahnya sudah persis selebar ini, jadi pil mengambil ukurannya dari garis itu, dan keduanya
+bertumpuk sebagai satu blok.
+
+Chrome-nya **netral dan identik dengan dua kartu di atasnya** — `border-[#2b2d33]`,
+`bg-[#23252c]/60`. Yang diwarnai hanya **nama pitanya**, dari `FORM_TONES`. Pil berwarna pita
+adalah kesalahan §38, dan warna di chrome-nya itulah yang membuatnya terbaca sebagai benda
+asing alih-alih keterangan. Terukur di 320, 390 dan 430 px: `leftGap 0`, `rightGap 0`, lebar
+pil sama dengan lebar garis, tinggi 24 px, chrome identik dengan kartu (`chromeMatchesCards:
+true`).
+
+### Kartu berdiri di sumbu busur, bukan di sumbu kotaknya
+
+Busur 240° tidak mengisi kotak 112 px-nya. Bentuk yang tercetak membentang dari **y 7** (49 px
+di atas sumbu, yaitu radius ditambah setengah stroke) sampai **y 83** (titik di 30° dan 150°,
+22 px di bawah sumbu, ditambah kepala bulat). Pusat massanya di **y 45**, sedangkan pusat kotak
+di **y 56**.
+
+Apa pun yang diletakkan di sebelah ring dan diukur terhadap kotaknya akan terbaca 11 px terlalu
+rendah, karena pembalap melihat busurnya, bukan kotaknya. `ARC_RISE` (11 px) adalah selisih itu,
+dan ia **diturunkan dari geometri**, bukan diketik, supaya tidak bisa melenceng dari ring yang
+dijelaskannya. Terukur: pusat kartu **227,5**, tengah busur tercetak **227,6** → selisih
+**0,1 px**.
+
+### Baris status diukur dari kartu, bukan dari kotak ring
+
+Baris status dulu mengikuti kotak 112 px dan mendarat **46,5 px** di bawah kartu, dengan garis
+ring masih berjalan di sisi kiri celah itu. Sekarang ia mengikuti kartu, pada jarak tetap
+`STATUS_GAP` = **20 px**. Terukur: kartu → pita = 20 px.
+
+### Ketiga pane berhenti di satu baris
+
+Ketiga pane berbagi satu sel grid, jadi kartu setinggi pane tertingginya — pane Today. Pane Form
+dan Load lebih pendek, dan selisihnya jatuh **ke bawah**, bukan ke dalam chart:
+
+| Pane | Chart sebelum | Sisa udara mati | Chart sesudah |
+|---|---|---|---|
+| Form (sparkline) | 96 px (dirender 86,7) | **22,3 px** | **109 px** |
+| Load (bar + label hari) | 112 px | **59 px** | **171 px** |
+
+Chart-nya sekarang menyerap sisa itu (`flex-1`), dan tingginya dibaca balik dari elemen
+(`bind:clientWidth`/`bind:clientHeight`) alih-alih ditulis 191,5 px — tinggi itu ditentukan pane
+tertinggi, yang ikut bergerak bersama pembungkusan label dan skala tipografi.
+
+Pane Today awalnya **tidak** ikut mengisi sel, dan itu bug laten: selama ia kebetulan jadi yang
+tertinggi, tidak ada yang terlihat. Begitu pane lain tumbuh melewatinya lewat `h-full`, kartu
+bertambah tinggi dan baris terakhir pane Today tertinggal **4–5 px** di atas tepi bawah sementara
+dua tab lain sudah di garis. Ia kini `h-full flex flex-col` dengan penyangga `flex-1` sebelum
+trio, sehingga invariannya tidak lagi bergantung pada siapa yang tertinggi.
+
+### Pita tidak diklaim kalau tidak ada beban
+
+`computePmc` sengaja menelusuri jendelanya dari CTL=ATL=0, jadi pembalap yang belum pernah
+bersepeda tetap mendapat kurva penuh berisi nol — dan `formState(0)` adalah `balanced`. Kartu
+itu karena itu memberi tahu orang yang belum pernah latihan bahwa fitness dan fatigue-nya
+**seimbang sempurna**, lengkap dengan `+0 pts / 7d`. Zeronya aritmetika yang benar; cara
+membacanya yang tidak.
+
+`hasPmcLoad()` menguji **serinya**, bukan daftar aktivitasnya, sehingga tidak mungkin berbeda
+pendapat dengan kurva yang digambar di sebelahnya, dan ride yang lebih tua dari jendela tidak
+bisa membuatnya mengaku ada beban yang tidak ditampilkan chart. Hasilnya di 320 px: pita
+`NO DATA` dengan tone netral `rgb(155, 161, 170)`, ring dan kedua kartu berisi `—`, dan tidak ada
+klaim 7 hari. `formState` sendiri **tidak disentuh** — tesnya masih menegaskan
+`formState(0) === 'balanced'`, karena nol yang terukur adalah bacaan yang sah. Hanya nol yang
+**tidak ada** yang salah.
+
+### Jebakan: datum yang salah membuat tes berbohong selama beberapa iterasi
+
+Tujuh assertion mengukur **pusat kotak 112 px** (`tier1.children[0]`) dan melaporkan
+*"a tile sits -11px off the ring's centre line"*. Angka itu tidak ada di layar. Karena tesnya
+merah, ia dilaporkan sebagai "tes usang" dan dibiarkan — dan justru itu biayanya: suite yang
+merah permanen di pane yang sedang diperiksa membuat setiap klaim visual berikutnya diragukan,
+termasuk yang benar, dan saya sempat meragukan `ARC_RISE` yang ternyata bekerja.
+
+Perbaikannya bukan menurunkan ambang, melainkan **mengukur benda yang benar**: `gaugeArcMid()`
+dan `gaugeArcBottom()` menyampel rentang `stroke-dasharray` yang tercetak, termasuk kepala bulat
+`stroke-linecap="round"` yang menambah setengah lebar stroke di luar setiap ujung terbuka.
+
+Dua kesalahan pengukuran saya sendiri, dicatat supaya tidak diulang:
+
+1. **`getPointAtLength` menelusuri seluruh lingkaran, termasuk celah bawah yang tidak dicat.**
+   Sampling seluruh path melaporkan pusat **lingkaran** (238,5) dan diam-diam merusak hal yang
+   sedang diuji. Harus dibatasi ke panjang dash.
+2. **Beberapa tes hero tidak menunggu seeder** (`waitForSeed`) dan membaca hero yang dibangun
+   dari jendela nol — persis keadaan yang sekarang **ditolak** untuk digambar. Tes-tes itu lulus
+   karena alasan yang salah; satu di antaranya bahkan lulus hanya karena busurnya masih digambar
+   dari nol rekaan. Ketika data layer berhenti menggambarnya, tes itu gagal dan menyingkap
+   balapan yang selama itu diam.
+
+### Bukti menangkap regresi
+
+Mengembalikan `hasLoad` ke `true` (bug aslinya) → gagal dengan
+`a rider with no rides was given a form band` · `Expected: "NO DATA"` · `Received: "BALANCED +0
+pts / 7d"`. Melepas `h-full` dari pane Form → gagal dengan `the Form pane's last row stops 46px
+short` (320 px), `28px` (390 px), `18px` (430 px). Keduanya dipulihkan setelah terbukti.
+
+Satu assertion **diganti, bukan dilunakkan**: tes yang menuntut pita tidak punya border sama
+sekali bertentangan dengan pil yang diminta, dan tidak bisa dipenuhi bersamaan. Penggantinya
+lebih ketat — chrome pil harus **sama persis** dengan dua kartu di sebelahnya, dan jaraknya
+diukur dari **dasar busur tercetak**, bukan dari kotak 112 px yang menjulur ~17 px melewatinya.
+
+Suite E2E: **56 tes hijau**, dari 8 merah yang semuanya berada di pane ini.

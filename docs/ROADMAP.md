@@ -11,9 +11,16 @@ Estimasi adalah *effort relatif*, bukan janji kalender.
 > Ringkasan yang sama ada di [README.md](../README.md#status).
 
 **Kesenjangan yang pernah tercatat sudah tertutup.** App pernah rebuilt dari mockup dengan UI
-jauh mendahului logic; hari ini M0–M4 terverifikasi oleh gerbang (275 tes unit · 14 tes E2E ·
+jauh mendahului logic; hari ini M0–M4 terverifikasi oleh gerbang (337 tes unit · 56 tes E2E ·
 typecheck 0 error · build hijau). Yang tersisa bukan catch-up visual melainkan **kalibrasi
 pascalarace** — lihat DoD M4.
+
+> **Cara membaca angka di halaman ini.** Hanya kalimat di atas yang mengklaim keadaan
+> **sekarang**. Angka tes di dalam baris tabel per fase — `109 tes hijau`, `66 tes`,
+> `284 tes unit · 17 tes E2E` — adalah **potret saat fase itu ditutup**, dan sengaja tidak
+> diperbarui: menggantinya dengan angka hari ini berarti memalsukan kapan fase itu benar-benar
+> lulus. `38/38 E2E hijau` di bagian impor power dan `3 tes E2E + 9 tes unit` di bagian M0 juga
+> potret seperti itu, bukan hitungan terkini.
 
 | Phase | State | Bukti di repo |
 | --- | --- | --- |
@@ -293,7 +300,7 @@ harus selalu tampil bersama RMS, rentang kecepatan, jumlah sample, dan peringata
 > `sustainAt(…, horizonSec)` menjawab "apakah plan pace masih bisa dipegang" — termasuk di
 > tooltip crosshair dan kartu `W′ at this pace`. Detail model: `UI-SPEC §26`.
 > **Slice 4 (v6.6):** DoD E2E Playwright + uji offline tertutup — `tests/e2e/race.spec.ts`
-> (14 tes) mengendarai cockpit dengan `page.clock`, memeriksa konsistensi buffer, memverifikasi
+> (17 tes) mengendarai cockpit dengan `page.clock`, memeriksa konsistensi buffer, memverifikasi
 > aplikasi tetap mem-*project* saat offline, menjaga pita readout tetap di atas plot (§28), dan
 > mengukur latensi input checkpoint. Detail: `UI-SPEC §27`.
 > **Sisa M4:** tidak ada — seluruh DoD terverifikasi (284 tes unit · 17 tes E2E). Kodeksi
@@ -310,7 +317,7 @@ harus selalu tampil bersama RMS, rentang kecepatan, jumlah sample, dan peringata
 
 **Definition of done:**
 - [x] E2E: setup race 200 km → simulasi input checkpoint → buffer & proyeksi benar (fixture waktu,
-      `page.clock`, 14 tes di `tests/e2e/race.spec.ts`)
+      `page.clock`, 17 tes di `tests/e2e/race.spec.ts`)
 - [x] Semua fitur race jalan dengan network offline (Playwright `context.setOffline` — proyeksi
       tetap koheren, dan checkpoint yang di-*log* offline bertahan setelah reload)
 - [x] Pasca-race: simpan hasil aktual vs estimasi — kartu **Past races · estimate vs

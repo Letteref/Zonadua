@@ -36,7 +36,7 @@ Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
 > mean-max curve + CP/W' fit, time in zones), `course.ts` (GPX/TCX), `units.ts`, `trend.ts`,
 > and the M3 solver pair `physics.ts` + `pacing.ts` (power→speed → finish time → checkpoints →
-interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **327 unit tests** (325 passing, 2 waiting on a real device ride) and **38 Playwright E2E tests**.
+interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **337 unit tests** (335 passing, 2 waiting on a real device ride) and **56 Playwright E2E tests**.
 Still missing: everything in M5 — the AI Coach has no LLM call, and Strava sync has no backend.
 
 ## Commands
@@ -85,7 +85,7 @@ status table in [docs/ROADMAP.md](docs/ROADMAP.md).
 - [docs/PRD.md](docs/PRD.md) — features F1–F8, acceptance criteria, MVP scope
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, data model, physics, Strava integration, compliance
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phase status + the recommended execution order
-- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §40
+- [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §41
 - [docs/STITCH-PROMPTS-v5.md](docs/STITCH-PROMPTS-v5.md) — Google Stitch prompt source (historical reference)
 
 ## Deploy (zero-cost)
@@ -108,8 +108,10 @@ provide: Cloudflare credentials for the preview deploy, a phone for the Android 
 real device on the same route for the ±7 % golden test. That last one now has its instrument in
 place — drop a ride into `validation/rides/` and `npm test` projects it through the app's own
 planner and fails past ±7 %, per ride and on the mean ([docs/validation](validation/rides/README.md)) —
-but the box stays unticked until a real ride fills it. Design work is at **v6.9**
-(see [docs/UI-SPEC.md](docs/UI-SPEC.md)):
+but the box stays unticked until a real ride fills it. The design work is recorded as numbered
+sections in [docs/UI-SPEC.md](docs/UI-SPEC.md), currently up to **§41**. (The version labels in
+those headings stop at v7.2 — §34 onward is numbered but unversioned, so the section number is
+the reliable index and the version is not.):
 
 | Phase | State |
 | --- | --- |
@@ -117,7 +119,7 @@ but the box stays unticked until a real ride fills it. Design work is at **v6.9*
 | M1 data in | **Done** — GPX/TCX parser (`domain/course.ts`, 16 fixture tests) writing activity + compressed streams + odometer update, bike/component CRUD, profile, weight/FTP logs, zone editor (F2-AC4), weight+FTP overlay trend chart (F2-AC2), imperial units (`domain/units.ts`) used across 4 screens, JSON backup/restore, delete-all. E2E-measured: 200 km GPX imports in **59 ms**, and the export → wipe → import round trip returns a byte-identical database — a check that immediately caught two real bugs |
 | M2 metrics | **Done** — `domain/metrics.ts` (NP/IF/TSS FTP-aware), `pmc.ts` (CTL/ATL/TSB), `power-curve.ts` (mean-max + CP/W′ fit by damped Gauss-Newton), `zones.ts` (Coggan bands + time in zones). Dashboard has a Power curve card; rides open at `#/rides/:id`. Measured with 524 activities in the database, a dashboard tab switch runs in **11.7 ms** worst case |
 | M3 estimator | **Done** — `domain/physics.ts` (gravity + rolling + aero + drivetrain loss, bisection speed solver) and `domain/pacing.ts` (IF target, stop policy, checkpoint ETAs with `legKph` + buffer vs cut-off, chart series), 66 tests. `AVG_KMH = 30` is gone: a 200,4 km / 1 345 m route solves to 6h 47m at 31,9 km/h, legs read 23,7 km/h climbing vs 40,8 km/h descending, and a 25 km/h headwind projects 19h 33m with a "too slow to be credible" warning. The profile card is an interactive uPlot chart: altitude area + solved-speed line on twin scales, with a crosshair tooltip reading km, grade, speed, elapsed and clock time |
-| M4 race mode | **Done** — setup, live cockpit and checkpoint logging to Dexie all work offline. `domain/race.ts` (cut-off buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt`) judges the ride against the fitted CP/W′ rather than a constant average: the hero BUFFER / PROJECTED FINISH / REQUIRED AVG come from the solved plan (`RACE_KM` and `AVG_KMH` are gone), the crosshair reports `±n min vs <cut-off>` anywhere on the profile, and the "3 slowest sectors" come from the solver instead of hard-coded names. 14 Playwright E2E tests cover buffer arithmetic, offline operation and the readout geometry. Finished races are reported against their own estimate (a **Past races · estimate vs actual** card), and the correction is deliberately *not* fed back into the next plan — one race is not enough evidence to bend the solver |
+| M4 race mode | **Done** — setup, live cockpit and checkpoint logging to Dexie all work offline. `domain/race.ts` (cut-off buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt`) judges the ride against the fitted CP/W′ rather than a constant average: the hero BUFFER / PROJECTED FINISH / REQUIRED AVG come from the solved plan (`RACE_KM` and `AVG_KMH` are gone), the crosshair reports `±n min vs <cut-off>` anywhere on the profile, and the "3 slowest sectors" come from the solver instead of hard-coded names. 17 Playwright E2E tests cover buffer arithmetic, offline operation and the readout geometry. Finished races are reported against their own estimate (a **Past races · estimate vs actual** card), and the correction is deliberately *not* fed back into the next plan — one race is not enough evidence to bend the solver |
 | M5 AI coach | **Stub** — chat persisted to `ai_notes`, no LLM call. App correctly stays fully functional without a key (F5-AC1) |
 | M6 Strava/cloud | **Not started** — no backend in the repo; `sync_state` stays empty. P1, out of MVP scope |
 
