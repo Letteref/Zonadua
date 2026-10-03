@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import {
@@ -14,23 +15,7 @@
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
   import TrendChart from '$lib/components/TrendChart.svelte';
-  import {
-    Check,
-    Download,
-    Upload,
-    Trash2,
-    KeyRound,
-    RefreshCw,
-    Ruler,
-    CloudSun,
-    Plug,
-    AlertTriangle,
-    X,
-    Plus,
-    Trash,
-    RotateCcw
-  } from '@lucide/svelte';
-
+  
   // ---------- form state (hydrated once from Dexie) ----------
   let hydrated = $state(false);
   // full FTP history, not just the newest row — the trend chart needs the whole series
@@ -79,7 +64,7 @@
       }
       hydrated = true;
     } catch (err) {
-      console.error('[gowslab] settings load failed:', err);
+      console.error('[zonadua] settings load failed:', err);
     }
   })();
 
@@ -90,7 +75,7 @@
       await db.athlete.put(a);
       showToast('Profile saved');
     } catch (err) {
-      console.error('[gowslab] saveProfile failed:', err);
+      console.error('[zonadua] saveProfile failed:', err);
       showToast('Could not save profile');
     }
   }
@@ -103,7 +88,7 @@
       await db.weight_log.put(rec);
       showToast(`Weight ${kg} kg logged`);
     } catch (err) {
-      console.error('[gowslab] logWeight failed:', err);
+      console.error('[zonadua] logWeight failed:', err);
     }
   }
 
@@ -124,7 +109,7 @@
           : `FTP ${ftp} W logged — applies from today`
       );
     } catch (err) {
-      console.error('[gowslab] logFtp failed:', err);
+      console.error('[zonadua] logFtp failed:', err);
       showToast('Could not log FTP');
     }
   }
@@ -180,7 +165,7 @@
       });
       showToast(`Zones saved — v${version}`);
     } catch (err) {
-      console.error('[gowslab] saveZones failed:', err);
+      console.error('[zonadua] saveZones failed:', err);
       showToast('Could not save zones');
     }
   }
@@ -192,7 +177,7 @@
       zoneStops = t.stops.map((s) => ({ ...s }));
       showToast('Zones reset to Coggan 8-zone');
     } catch (err) {
-      console.error('[gowslab] resetZones failed:', err);
+      console.error('[zonadua] resetZones failed:', err);
     }
   }
 
@@ -202,7 +187,7 @@
       await db.settings.put({ ...cur, ...patch, updatedAt: Date.now() });
       showToast(msg);
     } catch (err) {
-      console.error('[gowslab] savePrefs failed:', err);
+      console.error('[zonadua] savePrefs failed:', err);
     }
   }
 
@@ -237,17 +222,17 @@
       // extended; reading it off `db.tables` cannot.
       const dump: Record<string, unknown[]> = {};
       for (const t of db.tables) dump[t.name] = await t.toArray();
-      const payload = { app: 'gowslab', schema: 2, exportedAt: new Date().toISOString(), data: dump };
+      const payload = { app: 'zonadua', schema: 2, exportedAt: new Date().toISOString(), data: dump };
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `gowslab-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `zonadua-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       // clears the bell's backup-overdue reminder (PRD §10)
       await savePrefs({ lastBackupAt: Date.now() }, 'Backup downloaded');
     } catch (err) {
-      console.error('[gowslab] backup failed:', err);
+      console.error('[zonadua] backup failed:', err);
       showToast('Backup failed');
     }
   }
@@ -260,12 +245,17 @@
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text()) as { app?: string; data?: Record<string, unknown[]> };
-      if (parsed.app !== 'gowslab' || !parsed.data) throw new Error('Not a GowsLab backup');
+      // Accept both the old `gowslab` tag and the current one. Renaming the app must not turn
+      // every backup a rider already exported into a file the app refuses to open — the
+      // payload is the rider's own training history, and there is no undo for "wrong
+      // file, sorry".
+      if ((parsed.app !== 'zonadua' && parsed.app !== 'gowslab') || !parsed.data)
+        throw new Error('Not a Zonadua backup');
       // Restoring is a merge, not a replace: the table set comes from the file so a backup
       // written before a new table existed still restores cleanly.
       for (const tn of Object.keys(parsed.data)) {
         if (!db.tables.some((t) => t.name === tn)) {
-          console.warn('[gowslab] backup contains unknown table, skipped:', tn);
+          console.warn('[zonadua] backup contains unknown table, skipped:', tn);
         }
       }
       const tableNames = Object.keys(parsed.data ?? {}) as string[];
@@ -279,7 +269,7 @@
       });
       showToast('Backup restored — data merged');
     } catch (err) {
-      console.error('[gowslab] restore failed:', err);
+      console.error('[zonadua] restore failed:', err);
       showToast('Restore failed — invalid backup file');
     }
   }
@@ -296,7 +286,7 @@
       location.hash = '#/';
       location.reload();
     } catch (err) {
-      console.error('[gowslab] wipe failed:', err);
+      console.error('[zonadua] wipe failed:', err);
       showToast('Wipe failed');
       wipeStep = 0;
     }
@@ -487,7 +477,7 @@
                 onclick={() => removeZone(i)}
                 aria-label="Remove {band.name}"
               >
-                <Trash size={15} strokeWidth={1.8} />
+                <Icon name="trash" size={15} strokeWidth={1.8} />
               </button>
             {/if}
           </li>
@@ -496,7 +486,7 @@
 
       {#if !zoneCheck.ok}
         <p class="flex items-center gap-1.5 text-[11px] font-semibold text-kritis">
-          <AlertTriangle size={13} strokeWidth={2} /> {zoneCheck.reason}
+          <Icon name="alert-triangle" size={13} strokeWidth={2} /> {zoneCheck.reason}
         </p>
       {/if}
 
@@ -506,7 +496,7 @@
           onclick={addZone}
           disabled={zoneStops.length >= 10}
         >
-          <Plus size={12} strokeWidth={2.5} class="inline mr-1" /> Zone
+          <Icon name="plus" size={12} strokeWidth={2.5} class="inline mr-1" /> Zone
         </button>
         <button
           class="h-9 px-3.5 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40 active:scale-[0.98] transition-transform"
@@ -519,7 +509,7 @@
           class="ml-auto h-9 px-3 rounded-pill bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink-dim hover:text-ink"
           onclick={resetZones}
         >
-          <RotateCcw size={12} strokeWidth={2.2} class="inline mr-1" /> Reset
+          <Icon name="rotate-ccw" size={12} strokeWidth={2.2} class="inline mr-1" /> Reset
         </button>
       </div>
       <p class="text-[11px] font-medium text-ink-dim">
@@ -533,7 +523,7 @@
       <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-dim">Preferences</span>
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5 min-w-0">
-          <Ruler size={17} strokeWidth={1.5} class="text-ink-dim shrink-0" />
+          <Icon name="ruler" size={17} strokeWidth={1.5} class="text-ink-dim shrink-0" />
           <span class="text-[13px] font-semibold text-ink">Units</span>
         </div>
         <div class="flex rounded-pill bg-tile border border-hairline p-0.5">
@@ -571,7 +561,7 @@
       </div>
       <div class="flex items-center justify-between gap-3 border-t border-hairline pt-3">
         <div class="flex items-center gap-2.5 min-w-0">
-          <CloudSun size={17} strokeWidth={1.5} class="text-ink-dim shrink-0" />
+          <Icon name="cloud-sun" size={17} strokeWidth={1.5} class="text-ink-dim shrink-0" />
           <div class="flex flex-col min-w-0">
             <span class="text-[13px] font-semibold text-ink">Weather-aware pacing</span>
             <span class="text-[10px] text-ink-dim">Open-Meteo adjustment in Route estimator</span>
@@ -596,7 +586,7 @@
     <section class="rounded-card bg-surface border border-hairline p-4 elevation-card flex flex-col gap-3">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <KeyRound size={17} strokeWidth={1.5} class="text-aman" />
+          <Icon name="key-round" size={17} strokeWidth={1.5} class="text-aman" />
           <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-dim">AI coach key</span>
         </div>
         {#if aiKey}
@@ -636,7 +626,7 @@
             class="h-10 flex-1 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
             onclick={saveKey}
           >
-            <Check size={15} strokeWidth={2.4} />
+            <Icon name="check" size={15} strokeWidth={2.4} />
             Save key
           </button>
           <button
@@ -655,7 +645,7 @@
             class="h-10 flex-1 rounded-pill bg-tile border border-hairline text-ink text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:border-hairline-strong transition-colors"
             onclick={testKey}
           >
-            <Plug size={15} strokeWidth={1.8} />
+            <Icon name="plug" size={15} strokeWidth={1.8} />
             Test key
           </button>
           {#if aiKey}
@@ -666,7 +656,7 @@
                 void saveKey();
               }}
             >
-              <X size={15} strokeWidth={1.8} />
+              <Icon name="x" size={15} strokeWidth={1.8} />
             </button>
           {/if}
         </div>
@@ -677,7 +667,7 @@
     <section class="rounded-card bg-surface border border-hairline p-4 elevation-card flex flex-col gap-2.5">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <RefreshCw size={17} strokeWidth={1.5} class="text-signal" />
+          <Icon name="refresh-cw" size={17} strokeWidth={1.5} class="text-signal" />
           <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-dim">Strava sync</span>
         </div>
         <StatusChip label={lastSync ? `Last sync ${lastSync}` : 'Never synced'} status={lastSync ? 'aman' : 'neutral'} />
@@ -689,7 +679,7 @@
         class="h-10 w-full rounded-pill bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-hairline-strong transition-colors"
         onclick={() => showToast(`Sync stored locally · ${bikeCount} bikes · file import stays primary`)}
       >
-        <RefreshCw size={14} strokeWidth={1.8} />
+        <Icon name="refresh-cw" size={14} strokeWidth={1.8} />
         Re-sync now
       </button>
     </section>
@@ -702,14 +692,14 @@
           class="h-11 rounded-2xl bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-hairline-strong transition-colors"
           onclick={backupJson}
         >
-          <Download size={15} strokeWidth={1.8} />
+          <Icon name="download" size={15} strokeWidth={1.8} />
           Backup JSON
         </button>
         <button
           class="h-11 rounded-2xl bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-hairline-strong transition-colors"
           onclick={() => restoreInput?.click()}
         >
-          <Upload size={15} strokeWidth={1.8} />
+          <Icon name="upload" size={15} strokeWidth={1.8} />
           Restore
         </button>
       </div>
@@ -720,13 +710,13 @@
           class="h-11 w-full rounded-2xl border border-kritis/40 bg-kritis/5 text-kritis text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-kritis/10 transition-colors"
           onclick={() => (wipeStep = 1)}
         >
-          <Trash2 size={15} strokeWidth={1.8} />
+          <Icon name="trash-2" size={15} strokeWidth={1.8} />
           Delete all data
         </button>
       {:else if wipeStep === 1}
         <div class="rounded-2xl border border-kritis/40 bg-kritis/5 p-3.5 flex flex-col gap-2.5">
           <div class="flex items-start gap-2">
-            <AlertTriangle size={17} strokeWidth={1.8} class="text-kritis shrink-0 mt-0.5" />
+            <Icon name="alert-triangle" size={17} strokeWidth={1.8} class="text-kritis shrink-0 mt-0.5" />
             <p class="text-[12px] font-bold text-kritis leading-relaxed">
               This erases every bike, ride, route and race on this device. Export a backup first — this cannot be undone.
             </p>
@@ -779,14 +769,14 @@
       {/if}
     </section>
 
-    <p class="text-center text-xs text-ink-dim">GowsLab · local-first · your data never leaves this device except AI requests you trigger.</p>
+    <p class="text-center text-xs text-ink-dim">Zonadua · local-first · your data never leaves this device except AI requests you trigger.</p>
   {/if}
 </div>
 
 {#if toast}
   <div class="fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px)+8px)] z-[55] mx-auto max-w-md px-5">
     <div class="flex items-center justify-center gap-2 rounded-pill bg-mono text-on-mono px-4 py-2.5 elevation-raised">
-      <Check size={15} strokeWidth={2.2} class="text-aman" />
+      <Icon name="check" size={15} strokeWidth={2.2} class="text-aman" />
       <span class="text-[11px] font-bold uppercase tracking-wider">{toast}</span>
     </div>
   </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Check, TriangleAlert, OctagonAlert, Lock } from '@lucide/svelte';
-
+  import Icon from '$lib/components/Icon.svelte';
+  
   type Status = 'aman' | 'waspada' | 'kritis' | 'neutral' | 'signal';
 
   let {
@@ -32,13 +32,13 @@
   style="color:{c.fg};border:1px solid {c.border};background:{c.bg};"
 >
   {#if icon === 'check'}
-    <Check size={12} />
+    <Icon name="check" size={12} />
   {:else if icon === 'warn'}
-    <TriangleAlert size={12} />
+    <Icon name="triangle-alert" size={12} />
   {:else if icon === 'alert'}
-    <OctagonAlert size={12} />
+    <Icon name="octagon-alert" size={12} />
   {:else if icon === 'lock'}
-    <Lock size={12} />
+    <Icon name="lock" size={12} />
   {/if}
   {label}
 </span>

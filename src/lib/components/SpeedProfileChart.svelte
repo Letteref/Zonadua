@@ -15,9 +15,9 @@
                       buffer and feasibility instead of just terrain
 -->
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import type { Snippet } from 'svelte';
-  import { X } from '@lucide/svelte';
-  import uPlot from 'uplot';
+    import uPlot from 'uplot';
   import 'uplot/dist/uPlot.min.css';
   import { clockOf, durationOf, type PlanSeriesPoint } from '$lib/domain/pacing';
 
@@ -478,7 +478,7 @@
                   onclick={clearPin}
                   aria-label="Clear pinned point"
                 >
-                  <X size={11} strokeWidth={2.5} />
+                  <Icon name="x" size={11} strokeWidth={2.5} />
                 </button>
               {/if}
             </div>

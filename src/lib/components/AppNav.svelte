@@ -1,22 +1,23 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
+  import type { IconName } from '$lib/icons';
   import { fly } from 'svelte/transition';
   import { tick } from 'svelte';
-  import { Gauge, Activity, Bike, Sparkles, Map as MapIcon, Timer, Plus, ArrowUpRight } from '@lucide/svelte';
-  import { route, type RouteName } from '$lib/router.svelte';
+    import { route, type RouteName } from '$lib/router.svelte';
 
   /** v5.6.4 capsule dock: active tab = SLIDING white pill (measured, animates between tabs),
    *  icon+title white; inactive icon-only dim; quick-action plus at right edge in halo ring,
    *  ink idle → crimson when active/open (+ rotates to ×); plan panel instead of dial pills. */
-  const items: { name: RouteName; label: string; icon: typeof Gauge }[] = [
-    { name: 'dashboard', label: 'Home', icon: Gauge },
-    { name: 'rides', label: 'Rides', icon: Activity },
-    { name: 'gear', label: 'Gear', icon: Bike },
-    { name: 'coach', label: 'Coach', icon: Sparkles }
+  const items: { name: RouteName; label: string; icon: IconName }[] = [
+    { name: 'dashboard', label: 'Home', icon: 'gauge' },
+    { name: 'rides', label: 'Rides', icon: 'activity' },
+    { name: 'gear', label: 'Gear', icon: 'bike' },
+    { name: 'coach', label: 'Coach', icon: 'sparkles' }
   ];
 
-  const dial: { name: RouteName; label: string; sub: string; icon: typeof MapIcon }[] = [
-    { name: 'routes', label: 'Routes', sub: 'Route library & GPX plans', icon: MapIcon },
-    { name: 'race', label: 'Race', sub: 'Live tracker & pacing', icon: Timer }
+  const dial: { name: RouteName; label: string; sub: string; icon: IconName }[] = [
+    { name: 'routes', label: 'Routes', sub: 'Route library & GPX plans', icon: 'map' },
+    { name: 'race', label: 'Race', sub: 'Live tracker & pacing', icon: 'timer' }
   ];
 
   let fabOpen = $state(false);
@@ -81,7 +82,6 @@
         aria-hidden="true"
       ></div>
       {#each items as item (item.name)}
-          {@const Icon = item.icon}
           {@const active = route.name === item.name}
           <a
             bind:this={tabEls[item.name]}
@@ -93,7 +93,7 @@
           title={item.label}
           aria-current={active ? 'page' : undefined}
         >
-          <Icon size={active ? 20 : 22} strokeWidth={active ? 2 : 1.5} />
+          <Icon name={item.icon} size={active ? 20 : 22} strokeWidth={active ? 2 : 1.5} />
           {#if active}
             <!-- v5.6.1: highlight aktif = PUTIH pada icon & title -->
             <span in:fly={{ y: 4, duration: 140 }} class="text-xs font-bold tracking-tight">{item.label}</span>
@@ -116,7 +116,6 @@
               <span class="text-[9px] font-semibold text-ink-dim/70">2 destinations</span>
             </div>
             {#each dial as d (d.name)}
-              {@const Icon = d.icon}
               {@const active = route.name === d.name}
               <a
                 href="#/{d.name}"
@@ -132,13 +131,13 @@
                     ? 'bg-crimson-fill text-white'
                     : 'bg-tile text-ink group-hover:bg-surface'}"
                 >
-                  <Icon size={17} strokeWidth={1.8} />
+                  <Icon name={d.icon} size={17} strokeWidth={1.8} />
                 </span>
                 <span class="flex min-w-0 flex-1 flex-col leading-tight">
                   <span class="text-[13px] font-bold {active ? 'text-crimson-deep' : 'text-ink'}">{d.label}</span>
                   <span class="truncate text-[10px] text-ink-dim">{d.sub}</span>
                 </span>
-                <ArrowUpRight
+                <Icon name="arrow-up-right"
                   size={14}
                   strokeWidth={1.8}
                   class="shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 {active
@@ -160,7 +159,7 @@
             aria-expanded={fabOpen}
             onclick={() => (fabOpen = !fabOpen)}
           >
-            <Plus size={22} strokeWidth={2.2} />
+            <Icon name="plus" size={22} strokeWidth={2.2} />
           </button>
         </div>
       </div>

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { ChevronLeft, Clock, Mountain, Zap, Route as RouteIcon, Heart } from '@lucide/svelte';
-  import SectionCard from '$lib/components/SectionCard.svelte';
+  import Icon from '$lib/components/Icon.svelte';
+    import SectionCard from '$lib/components/SectionCard.svelte';
   import PowerCurveChart from '$lib/components/PowerCurveChart.svelte';
   import StatTile from '$lib/components/StatTile.svelte';
   import StatTrio from '$lib/components/StatTrio.svelte';
   import LegendPill from '$lib/components/LegendPill.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import { allActivities, appSettings, ftpSeries, powerCurves, powerZones } from '$lib/data/queries.svelte';
-  import { db } from '$lib/data/db';
+  import { db, activityProvenance } from '$lib/data/db';
   import { decodeStream, extractPower, type PowerTrace } from '$lib/data/streams';
   import { ftpOnDate } from '$lib/domain/metrics';
   import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
@@ -88,7 +88,7 @@
       <span class="kicker block">Ride not found</span>
       <p class="text-sm text-ink-dim">This activity is no longer in your local database.</p>
       <a href="#/rides" class="inline-flex items-center gap-1 text-sm font-bold text-crimson-deep">
-        <ChevronLeft size={16} strokeWidth={2} /> Back to rides
+        <Icon name="chevron-left" size={16} strokeWidth={2} /> Back to rides
       </a>
     </div>
   {:else}
@@ -98,12 +98,12 @@
         href="#/rides"
         class="inline-flex items-center gap-1 rounded-pill bg-surface border border-hairline px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-dim elevation-card"
       >
-        <ChevronLeft size={14} strokeWidth={2} /> Rides
+        <Icon name="chevron-left" size={14} strokeWidth={2} /> Rides
       </a>
       <div>
         <div class="flex items-center gap-2">
           <span class="kicker">{fmtDate(activity.date)}</span>
-          <StatusChip label={activity.source} status="neutral" />
+          <StatusChip label={activityProvenance(activity)} status="neutral" />
           {#if activity.commute}
             <StatusChip label="Commute" status="neutral" />
           {/if}
@@ -122,23 +122,23 @@
             <span class="h-2.5 w-2.5 rounded-pill bg-[#22c55e]/85"></span>
           </div>
           <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono-dim">
-            {activity.source} · {activity.movingSec > 0 ? 'moving' : 'no time'}
+            {activityProvenance(activity)} · {activity.movingSec > 0 ? 'moving' : 'no time'}
           </span>
         </div>
       {/snippet}
       <div class="grid grid-cols-3 divide-x divide-white/10 text-center">
         <div class="flex flex-col items-center px-1">
-          <RouteIcon size={16} strokeWidth={1.8} class="text-on-mono-dim" />
+          <Icon name="route" size={16} strokeWidth={1.8} class="text-on-mono-dim" />
           <span class="mt-1.5 text-metric-md text-tabular text-on-mono">{formatDistance(activity.distanceKm, unit).split(' ')[0]}</span>
           <span class="text-[9px] font-bold uppercase tracking-wider text-on-mono-dim">{formatDistance(activity.distanceKm, unit).split(' ')[1]}</span>
         </div>
         <div class="flex flex-col items-center px-1">
-          <Clock size={16} strokeWidth={1.8} class="text-on-mono-dim" />
+          <Icon name="clock" size={16} strokeWidth={1.8} class="text-on-mono-dim" />
           <span class="mt-1.5 text-metric-md text-tabular text-on-mono">{fmtDuration(activity.movingSec)}</span>
           <span class="text-[9px] font-bold uppercase tracking-wider text-on-mono-dim">moving</span>
         </div>
         <div class="flex flex-col items-center px-1">
-          <Zap size={16} strokeWidth={1.8} class="text-rose" />
+          <Icon name="zap" size={16} strokeWidth={1.8} class="text-rose" />
           <span class="mt-1.5 text-metric-md text-tabular text-on-mono">{activity.np ?? '—'}</span>
           <span class="text-[9px] font-bold uppercase tracking-wider text-on-mono-dim">NP watts</span>
         </div>
@@ -232,7 +232,7 @@
         </ul>
         <div class="mt-3 pt-3 border-t border-hairline flex items-center justify-between text-[11px]">
           <span class="flex items-center gap-1.5 font-medium text-ink-dim">
-            <Mountain size={13} strokeWidth={1.8} /> {fmtNum(zones.avgPower, 0)} W average
+            <Icon name="mountain" size={13} strokeWidth={1.8} /> {fmtNum(zones.avgPower, 0)} W average
           </span>
           {#if ftpDate}
             <span class="font-semibold text-ink-dim">zones vs FTP {ftpDate.value} W</span>
@@ -254,7 +254,7 @@
 
     {#if ftpDate}
       <p class="flex items-center justify-center gap-1.5 pt-1 text-center text-[11px] font-medium text-ink-dim">
-        <Heart size={13} strokeWidth={1.8} />
+        <Icon name="heart" size={13} strokeWidth={1.8} />
         IF and TSS scored against FTP {ftpDate.value} W, measured {ftpDate.date}
       </p>
     {/if}

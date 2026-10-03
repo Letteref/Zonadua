@@ -25,6 +25,40 @@ async function openApp(page: Page, hash = '#/'): Promise<void> {
 }
 
 /**
+ * The vertical centre of the gauge's **painted** arc — the datum the rider actually sees.
+ *
+ * The arc is a 240° dash on a 112px circle, so it does not fill its box: the open ends stop at
+ * 30° and 150°, the painted mass spans y 7..83 of the box, and its centre sits 11px above the
+ * box's centre. Anything set beside the ring is aligned to the box and therefore reads 11px low
+ * against the circle. The component compensates with `ARC_RISE`, and this measures the thing it
+ * is compensating for, so the tests can check the compensation rather than restate it.
+ *
+ * The extent is sampled off the dash itself rather than the circle. `getPointAtLength` walks the
+ * whole circle including the unpainted gap at the bottom, so sampling the full path reports the
+ * *circle's* centre and quietly re-breaks the very thing being asserted. `stroke-linecap="round"`
+ * paints a further half stroke-width past each open end, which is included here.
+ */
+async function gaugeArcMid(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const circle = document.querySelector('#hero-pane svg[role="img"] circle');
+    if (!circle) return NaN;
+    const dash = Number(circle.getAttribute('stroke-dasharray')?.split(' ')[0] ?? 0);
+    const half = Number(circle.getAttribute('stroke-width') ?? 0) / 2;
+    const matrix = circle.getScreenCTM();
+    if (!matrix || !(dash > 0)) return NaN;
+    const at = (len: number) => {
+      const p = circle.getPointAtLength(len);
+      return new DOMPoint(p.x, p.y).matrixTransform(matrix).y;
+    };
+    let top = Infinity;
+    for (let i = 0; i <= 400; i++) top = Math.min(top, at((dash * i) / 400));
+    // The open ends take the round cap, which reaches half a stroke-width further down.
+    const bottom = Math.max(at(0), at(dash)) + half;
+    return (top - half + bottom) / 2;
+  });
+}
+
+/**
  * Wait for the first-launch seed to finish.
  *
  * The seed writes bikes, components, weight/FTP history and activities asynchronously after
@@ -57,7 +91,7 @@ async function waitForSeed(page: Page, timeoutMs = 25_000): Promise<Record<strin
 async function dumpState(page: Page): Promise<Record<string, unknown[]>> {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('gowslab');
+      const req = indexedDB.open('zonadua');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -102,7 +136,7 @@ function gpxFor(km: number, name: string): string {
     pts.push(`<trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"><ele>${ele}</ele></trkpt>`);
   }
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="gowslab-e2e" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="zonadua-e2e" xmlns="http://www.topografix.com/GPX/1/1">
 <trk><name>${name}</name><trkseg>${pts.join('')}</trkseg></trk></gpx>`;
 }
 
@@ -279,7 +313,7 @@ test.describe('M1 — data in', () => {
     // The distance must be real, not a point count mistaken for kilometres.
     const stored = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('gowslab');
+        const req = indexedDB.open('zonadua');
         req.onsuccess = () => res(req.result);
         req.onerror = () => rej(req.error);
       });
@@ -322,7 +356,7 @@ test.describe('M1 — data in', () => {
 
     const stored = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('gowslab');
+        const req = indexedDB.open('zonadua');
         req.onsuccess = () => res(req.result);
         req.onerror = () => rej(req.error);
       });
@@ -370,7 +404,7 @@ test.describe('M1 — data in', () => {
 
     const before = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('gowslab');
+        const req = indexedDB.open('zonadua');
         req.onsuccess = () => res(req.result);
         req.onerror = () => rej(req.error);
       });
@@ -409,7 +443,7 @@ test.describe('M1 — data in', () => {
 
     const after = await page.evaluate(async (id) => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('gowslab');
+        const req = indexedDB.open('zonadua');
         req.onsuccess = () => res(req.result);
         req.onerror = () => rej(req.error);
       });
@@ -446,7 +480,7 @@ test.describe('M1 — data in', () => {
     // Persisted...
     const stored = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('gowslab');
+        const req = indexedDB.open('zonadua');
         req.onsuccess = () => res(req.result);
         req.onerror = () => rej(req.error);
       });
@@ -554,7 +588,7 @@ test.describe('M2 — the dashboard stays responsive with a full season of rides
     // activity *count*, and seeding 500 compressed traces would test IndexedDB instead.
     const seeded = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('gowslab');
+        const req = indexedDB.open('zonadua');
         req.onsuccess = () => res(req.result);
         req.onerror = () => rej(req.error);
       });
@@ -944,4 +978,728 @@ test.describe('audit — hierarchy across the app', () => {
     // ...and the primary is still the primary.
     expect(hero!.columns[0].valueFs).toBeGreaterThan(hero!.columns[1].valueFs);
   });
+});
+
+test.describe('dashboard hero form gauge', () => {
+  /**
+   * The hero ring is a 240° gauge with its bottom open, not a full-circle progress ring.
+   *
+   * As a closed circle it read as a percentage — 30% of the circumference for a TSB of −16 —
+   * which threw the arc's mass into the upper right while the figure sat dead centre, so the
+   * eye took the *number* for the thing that was off-centre. It also had nowhere to mark the
+   * midpoint of the ±40 scale, which is why a 30% arc could be misread as "30% readiness" —
+   * the exact invented metric §36 removed from under it.
+   *
+   * These assertions are on the geometry rather than on the pixels, because that is what
+   * actually changed: a full ring would fail on the sweep, and a gauge missing its midpoint
+   * would fail on the tick.
+   */
+  test('the form ring is a 240-degree gauge with a marked midpoint, not a closed progress ring', async ({
+    page
+  }) => {
+    await openApp(page, '#/');
+    // The seed has to land first. The gauge's value arc is drawn from the PMC, so reading it
+    // before the rides exist measures an arc built from the all-zero window — which is
+    // exactly the state the dashboard now refuses to draw, and which used to pass this test
+    // only because a fabricated zero still produced a plausible-looking sweep.
+    await waitForSeed(page);
+    await page.getByText(/Fitness \(CTL\)/i).first().waitFor({ timeout: 20_000 });
+
+    const gauge = await page.evaluate(() => {
+      const svg = document.querySelector('#hero-pane svg[role="img"]');
+      if (!svg) return null;
+      const circles = [...svg.querySelectorAll('circle')];
+      const track = circles[0];
+      const arc = circles[1];
+      const tick = svg.querySelector('line');
+      if (!track) return null;
+
+      const sweep = (c: SVGCircleElement | undefined) => {
+        if (!c) return 0;
+        const [dash, circumference] = c.getAttribute('stroke-dasharray')?.split(' ').map(Number) ?? [0, 0];
+        return circumference ? (dash / circumference) * 360 : 0;
+      };
+
+      return {
+        trackSweep: sweep(track),
+        arcSweep: sweep(arc),
+        trackRotation: track.getAttribute('transform'),
+        arcRotation: arc?.getAttribute('transform') ?? null,
+        hasTick: !!tick,
+        tickX: tick?.getAttribute('x1') ?? null,
+        tickY1: tick ? Number(tick.getAttribute('y1')) : null,
+        tickY2: tick ? Number(tick.getAttribute('y2')) : null,
+        cx: Number(track.getAttribute('cx')),
+        cy: Number(track.getAttribute('cy')),
+        r: Number(track.getAttribute('r')),
+        strokeWidth: Number(track.getAttribute('stroke-width'))
+      };
+    });
+
+    expect(gauge, 'the hero form ring was not found').not.toBeNull();
+    // 240°, not 360° — a closed ring is a percentage, which is the reading this replaced.
+    expect(gauge!.trackSweep, 'the gauge is a closed ring again').toBeCloseTo(240, 1);
+    // Both arcs start from the same end, so the fill reads against the track rather than
+    // against the top of the circle.
+    expect(gauge!.arcRotation).toBe(gauge!.trackRotation);
+    expect(gauge!.trackRotation).toBe('rotate(150 56 56)');
+    // The value arc never exceeds the gauge it is drawn on.
+    expect(gauge!.arcSweep).toBeLessThanOrEqual(240.1);
+    // A midpoint tick is what makes the ±40 scale legible; without it the arc is decoration.
+    expect(gauge!.hasTick, 'the TSB 0 midpoint tick is missing').toBe(true);
+    // The tick marks the middle of the sweep, so it has to sit on the vertical axis above the
+    // centre — anywhere else and the ±40 scale has no reference point.
+    expect(gauge!.tickX, 'the midpoint tick is off the vertical axis').toBe(String(gauge!.cx));
+    // Above the centre (SVG y grows downward), spanning exactly the stroke band: y1 is the
+    // inner edge, y2 the outer one.
+    expect(gauge!.tickY2!, 'the midpoint tick is not above the centre').toBeLessThan(gauge!.cy);
+    expect(gauge!.cy - gauge!.tickY1!, 'the tick does not start at the inner edge of the band').toBe(
+      gauge!.r - gauge!.strokeWidth / 2
+    );
+    expect(gauge!.cy - gauge!.tickY2!, 'the tick does not reach the outer edge of the band').toBe(
+      gauge!.r + gauge!.strokeWidth / 2
+    );
+  });
+
+  /**
+   * The ring's figure and the column beside it share a centre line.
+   *
+   * `items-center` already centres the boxes, so this guards the thing that actually reads:
+   * that the two halves of the row are presented as one unit rather than as two objects
+   * happening to sit next to each other.
+   */
+  test('the form figure and the fitness column share a centre line', async ({ page }) => {
+    await openApp(page, '#/');
+    await waitForSeed(page);
+    await page.getByText(/Fitness \(CTL\)/i).first().waitFor({ timeout: 20_000 });
+
+    const column = await page.evaluate(() => {
+      const line = document.querySelector('#hero-pane')?.children[0]?.children[0];
+      if (!line) return null;
+      const r = [...line.children][1]!.getBoundingClientRect();
+      return Math.round(r.y + r.height / 2);
+    });
+
+    expect(column, 'the hero ring row was not found').not.toBeNull();
+    const arc = Math.round(await gaugeArcMid(page));
+    expect(
+      Math.abs(arc - column!),
+      `the fitness column sits ${arc - column!}px off the painted arc's centre line`
+    ).toBeLessThanOrEqual(1);
+  });
+/**
+   * The two load tiles beside the form gauge.
+   *
+   * They replaced a single loose column whose content sat at the far left of a box twice as
+   * wide as it needed, which is what made the right half of the hero look empty. The shape
+   * they follow — label, figure, unit — is the club-stat block used elsewhere in the app.
+   *
+   * The failure this guards is truncation. At 320px a tile is 50px wide with 36px of content,
+   * and "FITNESS" alone measures 39px there, so the first version of these tiles rendered
+   * "Fitne…" and "Fatig…" — worse than the empty column it replaced, because the rider could
+   * no longer read what the number was. The label now drops to 8px with the tracking off and
+   * the icon is dropped entirely below 360px, which is the only arrangement that fits.
+   */
+  for (const width of [320, 360, 430]) {
+    test(`the load tiles read in full at ${width} px`, async ({ page }) => {
+      await openApp(page, '#/');
+      await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+      await page.setViewportSize({ width, height: 900 });
+
+      const tiles = await page.evaluate(() => {
+        const row = document.querySelector('#hero-pane')?.children[0]?.children[0];
+        if (!row) return null;
+        const grid = row.children[1];
+        const cells = [...grid.querySelectorAll(':scope > div')];
+        const range = document.createRange();
+        const cellData = cells.map((c) => {
+          const label = c.querySelector('span');
+          if (!label) return null;
+          range.selectNodeContents(label);
+          return {
+            text: label.textContent.trim(),
+            needs: label.scrollWidth,
+            has: label.clientWidth,
+            iconShown: !!c.querySelector('svg')?.getBoundingClientRect().width,
+            overflowing: c.scrollWidth - c.clientWidth
+          };
+        });
+        const gridBox = grid.getBoundingClientRect();
+        return {
+          cellData,
+          gridCentre: Math.round(gridBox.y + gridBox.height / 2),
+          heights: cells.map((c) => Math.round(c.getBoundingClientRect().height)),
+          docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+        };
+      });
+
+      expect(tiles, 'the hero load tiles were not found').not.toBeNull();
+      expect(tiles!.cellData.length, 'expected exactly two load tiles').toBe(2);
+      // Nothing clipped. A truncated label is worse than no tile at all.
+      for (const c of tiles!.cellData) {
+        expect(c, 'a tile is missing its label').not.toBeNull();
+        expect(
+          c!.needs - c!.has,
+          `"${c!.text}" is clipped to ${c!.has}px of the ${c!.needs}px it needs`
+        ).toBeLessThanOrEqual(0);
+        expect(c!.overflowing, `"${c!.text}" tile overflows its box`).toBeLessThanOrEqual(0);
+      }
+      expect(tiles!.docOverflow, 'the hero overflows the viewport').toBeLessThanOrEqual(0);
+      // Equal tiles — the pair has to read as a pair, not as a big one and a small one.
+      expect(new Set(tiles!.heights).size, `uneven tile heights: ${tiles!.heights}`).toBe(1);
+      // ...and the pair sits on the **painted arc's** centre line, not the 112px box's.
+      const arc = Math.round(await gaugeArcMid(page));
+      expect(
+        Math.abs(arc - tiles!.gridCentre),
+        `the tiles sit ${arc - tiles!.gridCentre}px off the painted arc's centre line`
+      ).toBeLessThanOrEqual(1);
+    });
+  }/**
+ * The form band is the status line of the hero, not a chip and not a caption hanging off the gauge.
+ *
+ * It has now been rejected in three places, and each rejection was measured rather than felt:
+ * a bordered pill below the ring, plain coloured text below the ring, and finally the label row
+ * of a three-column grid. The third attempt failed for a different reason than the first two —
+ * sharing a column's label row forced the load tiles to stretch to the ring's height, which
+ * opened a 72px hole inside each one and put their bottom edge exactly on the divider below.
+ *
+ * What is left is a line in its own right, spanning the card between two rules: the band on the
+ * left, the week's change opposite it. It has peers, it has a purpose — it is the tier that
+ * answers "how is this moving" — and it no longer has to borrow a column to belong to.
+ *
+ * It still cannot live inside the gauge: "RECOVER FIRST" needs about 70px and the ring's inner
+ * chord is about 60px where a second line falls. That is why it is a full-width line instead.
+ */
+  test('the form band is the status line of the hero — below the gauge, unadorned, unclipped', async ({
+    page
+  }) => {
+    await openApp(page, '#/');
+    await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+
+    const band = await page.evaluate(() => {
+      const today = document.querySelector('#hero-pane')?.children[0];
+      if (!today) return null;
+      const tier1 = today.children[0];
+      const status = today.children[1];
+      const label = status.children[0];
+      if (!(label instanceof HTMLElement) || !(status instanceof HTMLElement)) return null;
+      const cs = getComputedStyle(label);
+      const card = getComputedStyle(tier1.children[1].children[0]);
+      const labelBox = label.getBoundingClientRect();
+
+      // Measure the longest band name in the label's own type, since the seeded data only ever
+      // produces "DETRAINING" — the one that would break this is "RECOVER FIRST".
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;';
+      probe.style.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      probe.style.letterSpacing = cs.letterSpacing;
+      document.body.appendChild(probe);
+      probe.textContent = 'RECOVER FIRST';
+      const widest = Math.round(probe.getBoundingClientRect().width);
+      probe.remove();
+
+      return {
+        text: label.textContent.trim(),
+        clipped: label.scrollWidth - label.clientWidth,
+        borderWidth: cs.borderTopWidth,
+        background: cs.backgroundColor,
+        // The pill has to be the same object as the two cards above it: same border colour and
+        // width, same fill. A band-coloured chip is the mistake this replaced.
+        chromeMatchesCards:
+          cs.borderTopColor === card.borderTopColor &&
+          cs.borderTopWidth === card.borderTopWidth &&
+          cs.backgroundColor === card.backgroundColor,
+        // A status line lives below the figures it describes: it starts under the gauge rather
+        // than inside it. Horizontal overlap with the ring column is meaningless now — the pill
+        // spans the card's full measure by design, the same as the rule under it — so what has
+        // to hold is that it clears the **painted** arc. The assertion below is taken from
+        // `gaugeArcBottom`, because the 112px box runs about 17px past the arc into the gap
+        // below the dash and would report a clearly-separated band as overlapping the gauge.
+        pillTop: Math.round(labelBox.top),
+        // The band shares its line with the 7-day change, so the row has to have room for the
+        // longest band name plus that figure.
+        widest,
+        statusWidth: Math.round(status.getBoundingClientRect().width),
+        changeWidth: Math.round(
+          (status.children[1] as HTMLElement | undefined)?.getBoundingClientRect().width ?? 0
+        )
+      };
+    });
+
+    expect(band, 'the form band status line was not found').not.toBeNull();
+    expect(band!.clipped, `"${band!.text}" is clipped`).toBeLessThanOrEqual(0);
+    // A label is text, not a chip. Reintroducing the fill or the border is what made the
+    // The band is a pill by request. The two assertions this replaces demanded the *opposite* —
+    // no border, no fill — and were written for the plain-text label that was rejected. They
+    // could not be satisfied together with the pill the rider was actually asked to see, so
+    // rather than weaken them into meaninglessness they are replaced by what the pill has to do
+    // instead: the chrome it wears must be the chrome of the two cards beside it, and the band
+    // name must still fit inside it. The geometry assertions below are unchanged.
+    expect(band!.borderWidth, 'the band pill lost its border').not.toBe('0px');
+    expect(band!.background, 'the band pill lost its fill').not.toBe('rgba(0, 0, 0, 0)');
+    expect(band!.chromeMatchesCards, 'the pill no longer matches the load cards\' chrome').toBe(true);
+    const arcBottom = await gaugeArcBottom(page);
+    expect(
+      band!.pillTop - Math.round(arcBottom),
+      `"${band!.text}" sits ${band!.pillTop - Math.round(arcBottom)}px from the bottom of the painted arc`
+    ).toBeGreaterThan(0);
+    expect(
+      band!.widest + band!.changeWidth - band!.statusWidth,
+      `"RECOVER FIRST" needs ${band!.widest}px and the change figure ${band!.changeWidth}px in a ${band!.statusWidth}px status line`
+    ).toBeLessThanOrEqual(0);
+  });
+
+/**
+ * The lowest painted pixel of the gauge's arc — the edge anything below the gauge must clear.
+ *
+ * The 112px box continues past the painted arc by about 17px, because the dash stops at 30° and
+ * 150° and the circle's own bottom falls in the open gap. Measuring clearance from the box
+ * reports a band that is comfortably below the gauge as overlapping it.
+ */
+async function gaugeArcBottom(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const circle = document.querySelector('#hero-pane svg[role="img"] circle');
+    if (!circle) return NaN;
+    const dash = Number(circle.getAttribute('stroke-dasharray')?.split(' ')[0] ?? 0);
+    const half = Number(circle.getAttribute('stroke-width') ?? 0) / 2;
+    const matrix = circle.getScreenCTM();
+    if (!matrix || !(dash > 0)) return NaN;
+    const at = (len: number) => {
+      const p = circle.getPointAtLength(len);
+      return new DOMPoint(p.x, p.y).matrixTransform(matrix).y;
+    };
+    return Math.max(at(0), at(dash)) + half;
+  });
+}
+
+/**
+ * The three-up strip under the hero, on both tabs.
+   *
+   * Audited rather than changed: measured with `Range` on the text, not on the boxes, because
+   * `text-center` on a box always looks right whether or not the text inside it followed. Both
+   * strips measured a 0px offset on every cell, label and value alike, so nothing here was
+   * edited — this test exists so that a future change cannot drift away from it unnoticed.
+   */
+  for (const [tab, labels] of [
+    ['today', ['Time', 'Distance', 'Stress']],
+    ['form', ['Fitness', 'Fatigue', 'Form']]
+  ] as const) {
+    test(`the ${tab} strip centres every label and figure on its cell`, async ({ page }) => {
+      await openApp(page, '#/');
+      await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+      if (tab === 'form') await page.getByRole('tab', { name: /form/i }).click();
+      await page.waitForTimeout(300);
+
+      const strip = await page.evaluate((wanted) => {
+        const pane = document.querySelector('#hero-pane');
+        // The tab buttons live in the chrome strip, which is a sibling of the pane, so the tab
+        // order has to be read from the document rather than from the pane.
+        const tabs = [...document.querySelectorAll('[role=tab]')];
+        const index = tabs.findIndex((t) => t.id === `hero-tab-${wanted}`);
+        // The three panels share one grid cell and carry no id of their own, so they are reached by
+        // the tab order rather than by a selector. Their order is the tab order, which is the only
+        // structural handle they have.
+        const tabPanel = index >= 0 ? pane?.children[index] : null;
+        if (!tabPanel) return null;
+        const rows = [...tabPanel.querySelectorAll('div')].filter((d) =>
+          d.className.includes('grid-cols-3')
+        );
+        const row = rows[0];
+        if (!row) return null;
+        const range = document.createRange();
+        return [...row.children].map((cell) => {
+          const centre = cell.getBoundingClientRect().x + cell.getBoundingClientRect().width / 2;
+          return [...cell.children].map((part) => {
+            range.selectNodeContents(part);
+            const box = range.getBoundingClientRect();
+            return Math.round(box.x + box.width / 2 - centre);
+          });
+        });
+      }, tab);
+
+      expect(strip, `the ${tab} strip was not found`).not.toBeNull();
+      expect(strip!.length, `expected three cells in the ${tab} strip`).toBe(3);
+      const offenders: string[] = [];
+      strip!.forEach((cell, i) => {
+        cell.forEach((offset, j) => {
+          if (Math.abs(offset) > 1) offenders.push(`${labels[i]} ${j === 0 ? 'label' : 'figure'} is ${offset}px off`);
+        });
+      });
+      expect(offenders.join('; '), 'cells are not centred on their own text').toBe('');
+    });
+  }
+/**
+ * The load tiles are compact objects beside the ring, not columns stretched to match it.
+ *
+ * This is the failure the rider actually reported: the tiles were too tall, their bottom edge
+ * landed exactly on the divider below — touching it, which reads as a mistake rather than a
+ * layout — and they sat 8px off the ring's centre line. Every one of those was arithmetic, and
+ * all three came from the same two decisions: stretching the tiles to the gauge's height, then
+ * spreading label and figure to opposite ends of that height.
+ *
+ * So the properties asserted here are geometric, not decorative: a tile is no taller than its
+ * three lines need, no hole opens between its label and its figure, its vertical centre is the
+ * ring's vertical centre, and there is daylight between its bottom edge and the rule below.
+ *
+ * Measured at the three widths the hero has to survive, because each of those is one pixel of
+ * padding away from drifting while the page still looks deliberate in a browser.
+ */
+for (const width of [320, 390, 430]) {
+  test(`the load tiles stay compact and aligned to the ring at ${width} px`, async ({ page }) => {
+    await openApp(page, '#/');
+    await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+    await page.setViewportSize({ width, height: 900 });
+
+    const tiles = await page.evaluate(() => {
+      const today = document.querySelector('#hero-pane')?.children[0];
+      if (!today) return null;
+      const tier1 = today.children[0];
+      const status = today.children[1];
+      const ring = tier1.children[0].getBoundingClientRect();
+      const tiles = [...tier1.children[1].querySelectorAll(':scope > div')];
+      if (tiles.length !== 2) return null;
+
+      const centreY = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return r.y + r.height / 2;
+      };
+
+      return tiles.map((tile) => {
+        const lines = [...tile.children];
+        if (lines.length !== 3) return null;
+        const [label, figure, unit] = lines.map((el) => el.getBoundingClientRect());
+        return {
+          height: Math.round(tile.getBoundingClientRect().height),
+          // A gap inside the tile means the three lines were pushed apart instead of set on a
+          // rhythm. Two pixels of margin, not seventy.
+          labelToFigure: Math.round(figure.top - label.bottom),
+          figureToUnit: Math.round(unit.top - figure.bottom),
+          // Alignment: the tile's own centre against the ring's.
+          // The tile's own centre. The gauge's centre is measured separately by `gaugeArcMid`, against
+          // the painted arc; comparing against the 112px box would report an 11px error that is
+          // not on screen.
+          tileCentre: Math.round(centreY(tile)),
+          // Air between the tile and the status rule below it. Zero means they are touching,
+          // which is the collision the rider reported.
+          airToRule: Math.round(status.getBoundingClientRect().top - tile.getBoundingClientRect().bottom)
+        };
+      });
+    });
+
+    expect(tiles, 'the hero load tiles were not found').not.toBeNull();
+    expect(tiles!.filter(Boolean).length, 'a tile is missing one of its three lines').toBe(2);
+    for (const t of tiles!) {
+      expect(t!.height, `a tile is ${t!.height}px tall — it has been stretched`).toBeLessThanOrEqual(80);
+      expect(t!.labelToFigure, `${t!.labelToFigure}px hole between the label and the figure`).toBeLessThanOrEqual(8);
+      expect(t!.figureToUnit, `${t!.figureToUnit}px hole between the figure and the unit`).toBeLessThanOrEqual(8);
+      // The datum is the painted arc, measured by `gaugeArcMid`. Comparing to the ring's 112px box
+      // instead reports an 11px error that is not on screen: the dash does not fill its box, and
+      // the tiles are aligned to the arc precisely because of that.
+      const arc = Math.round(await gaugeArcMid(page));
+      expect(
+        Math.abs(arc - t!.tileCentre),
+        `a tile sits ${arc - t!.tileCentre}px off the painted arc's centre line`
+      ).toBeLessThanOrEqual(1);
+      expect(t!.airToRule, 'a tile is touching the status rule below it').toBeGreaterThanOrEqual(8);
+    }
+    expect(new Set(tiles!.map((t) => t!.height)).size, `uneven tile heights: ${tiles!.map((t) => t!.height)}`).toBe(1);
+  });
+}
+
+/**
+ * The form band pill: as wide as the rule under it, and coloured on the name only.
+ *
+ * Two things went wrong here, and they are asserted separately because they are separate
+ * decisions that happened to be made in the same edit.
+ *
+ * The first was the colour. Tinting the whole chip by band put a yellow pill next to two grey
+ * ones, which reads as a warning those two are exempt from — the band is not a warning, it is
+ * the rider's form. So the chip is neutral chrome, verified here to be the *same* border, fill
+ * and border width as the two load cards, and only the name inside it carries the tone.
+ *
+ * The second was the width. A pill sized to its own text was a narrow chip adrift in a 310px
+ * card, with the two things the rider is meant to read across sitting in the middle of a lot
+ * of nothing. The pill now takes its measure from the rule directly beneath it, so the two
+ * lines stack as one block: the pill's left and right edges are the rule's left and right
+ * edges, not a centring calculation that happens to agree today.
+ *
+ * The band name is tinted from `FORM_TONES`, whose hexes are the `StatusChip` `dark` palette.
+ * The table below pins the mapping for every band rather than guarding one of them behind an
+ * `if`: a conditional on which band the seed happens to produce is a test that silently
+ * asserts nothing the day the seed shifts, which is exactly what happened when this was first
+ * written with a `nameText === 'DETRAINING'` guard and the regression proof went green.
+ *
+ * One honest collision: the `balanced` tone is `#f7f8fa`, the same as the plain text token, so
+ * a neutral name cannot be told apart from a toned one while the form is balanced. That is the
+ * design being right rather than the test being weak — highlighting "balanced" would be
+ * shouting about the absence of news — and the chip assertion above still covers that case.
+ */
+for (const width of [320, 390, 430]) {
+  test(`the form band pill spans the rule below it and tints only its name at ${width} px`, async ({
+    page
+  }) => {
+    await openApp(page, '#/');
+    await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+    await page.setViewportSize({ width, height: 900 });
+
+    const pill = await page.evaluate(() => {
+      const today = document.querySelector('#hero-pane')?.children[0];
+      if (!today) return null;
+      const row = today.children[0];
+      const status = today.children[1];
+      // The rule below is the trio's top border, and the trio's border box *is* that rule's
+      // extent — so one rect measures the line itself rather than a proxy for it.
+      const rule = today.children[2];
+      const chip = status.children[0];
+      const name = chip.children[0];
+      const grid = row.children[1];
+
+      const chipBox = chip.getBoundingClientRect();
+      const ruleBox = rule.getBoundingClientRect();
+      const statusBox = status.getBoundingClientRect();
+      const cardStyle = getComputedStyle(grid.children[0]);
+      const chipStyle = getComputedStyle(chip);
+
+      return {
+        text: chip.textContent.replace(/\s+/g, ' ').trim(),
+        nameText: name.textContent.trim(),
+        nameColor: getComputedStyle(name).color,
+        nameClipped: name.scrollWidth - name.clientWidth,
+        chipClipped: chip.scrollWidth - chip.clientWidth,
+        height: Math.round(chipBox.height),
+        // The pill's own edges against the rule's, in whole pixels so subpixel layout
+        // differences do not read as a break.
+        leftGap: Math.round(ruleBox.x - chipBox.x),
+        rightGap: Math.round(ruleBox.right - chipBox.right),
+        width: Math.round(chipBox.width),
+        ruleWidth: Math.round(ruleBox.width),
+        centreDelta: Math.round(
+          chipBox.x + chipBox.width / 2 - (statusBox.x + statusBox.width / 2)
+        ),
+        // Chrome, so "the pill is the same object as the two cards" stays a fact.
+        chipChrome: {
+          border: chipStyle.borderTopColor,
+          borderWidth: chipStyle.borderTopWidth,
+          fill: chipStyle.backgroundColor
+        },
+        cardChrome: {
+          border: cardStyle.borderTopColor,
+          borderWidth: cardStyle.borderTopWidth,
+          fill: cardStyle.backgroundColor
+        }
+      };
+    });
+
+    expect(pill, 'the form band pill was not found').not.toBeNull();
+    // The pill is the same measure as the line under it, edge for edge.
+    expect(pill!.leftGap, `the pill starts ${pill!.leftGap}px inside the rule`).toBe(0);
+    expect(pill!.rightGap, `the pill ends ${pill!.rightGap}px short of the rule`).toBe(0);
+    expect(pill!.width - pill!.ruleWidth, 'the pill and the rule are not the same width').toBe(0);
+    expect(pill!.centreDelta, 'the pill is not centred on the card').toBe(0);
+    // Big enough to read as a chip rather than a hairline: it was 18px and looked like a
+    // stray label with a border on it.
+    expect(pill!.height, `the pill is only ${pill!.height}px tall`).toBeGreaterThanOrEqual(22);
+    expect(pill!.chipClipped, 'the pill is clipped').toBeLessThanOrEqual(0);
+    expect(pill!.nameClipped, `"${pill!.nameText}" is clipped`).toBeLessThanOrEqual(0);
+
+    // The chip is neutral, and neutral the same way the two load cards are. A band-coloured
+    // chip is what this replaced, so both halves are asserted: the chrome matches the cards,
+    // and the chrome is not the tone.
+    expect(pill!.chipChrome, 'the pill no longer matches the load cards\' chrome').toEqual(
+      pill!.cardChrome
+    );
+    const BAND_TONE: Record<string, string> = {
+      'RECOVER FIRST': 'rgb(255, 138, 146)',
+      DETRAINING: 'rgb(255, 179, 90)',
+      BALANCED: 'rgb(247, 248, 250)',
+      BUILDING: 'rgb(255, 77, 94)',
+      PEAKED: 'rgb(255, 77, 94)',
+      'NO DATA': 'rgb(155, 161, 170)'
+    };
+    expect(
+      BAND_TONE[pill!.nameText],
+      `"${pill!.nameText}" is not a known form band name`
+    ).toBeDefined();
+    expect(
+      pill!.nameColor,
+      `"${pill!.nameText}" is painted ${pill!.nameColor}, not its form band tone`
+    ).toBe(BAND_TONE[pill!.nameText]);
+  });
+}
+
+/**
+ * The hero is one card with three panes in a single grid cell, so the card is exactly as tall
+ * as its tallest pane — the Today pane. The Form and Load panes were shorter than that and let
+ * the difference fall where it fell: 22px of dead air under the Form chart and 59px under the
+ * Load bars, with the fitness/fatigue/form trio and the day labels floating above it.
+ *
+ * Both charts now take the slack (`flex-1`, height bound back off the element) and the closing
+ * rows sit on the bottom edge of the cell. That gives the panes a shared bottom line with the
+ * Today pane, which is the part a rider can actually see: switching tabs must not move the last
+ * line of the card.
+ *
+ * The measurements are taken with the pane visible but the other two still in the DOM, because
+ * the grid cell only has its final height once all three are present. Tab order is asserted too
+ * — `children[0]` is Today, `[1]` is Form, `[2]` is Load — so a reordered pane fails here rather
+ * than silently measuring the wrong one.
+ */
+for (const width of [320, 390, 430]) {
+  test(`every hero tab ends on the same line and spends its height on the chart at ${width} px`, async ({
+    page
+  }) => {
+    await openApp(page, '#/');
+    // The Today pane carries the week's change in its status pill, and that pill is shorter
+    // without it — so an unseeded read measures a different card height than the rider sees.
+    await waitForSeed(page);
+    await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole('tab', { name: 'Today' }).click();
+    await page.waitForTimeout(200);
+
+    const tabs = await page.evaluate(() => {
+      const grid = document.getElementById('hero-pane');
+      if (!grid) return null;
+      const gb = grid.getBoundingClientRect();
+      // The deepest last child that actually has a box: the Today pane has no single column
+      // wrapper, so its first child is one tier, not the whole pane.
+      const lastRow = (el: Element) => {
+        let cur: Element = el;
+        let last: Element = el;
+        for (let i = 0; i < 12; i++) {
+          const kids = [...cur.children].filter((c) => c.getBoundingClientRect().height > 0);
+          if (!kids.length) break;
+          last = kids[kids.length - 1]!;
+          cur = last;
+        }
+        return last;
+      };
+      return {
+        cellHeight: Math.round(gb.height),
+        panes: [...grid.children].map((p, i) => {
+          const last = lastRow(p);
+          const lb = last.getBoundingClientRect();
+          const inner = p.firstElementChild!;
+          return {
+            i,
+            // 0 when the pane's content fills the cell, i.e. no dead air at the foot.
+            slack: Math.round(gb.height - inner.getBoundingClientRect().height),
+            gapToBottom: Math.round(gb.bottom - lb.bottom),
+            overflow: p.scrollHeight - p.clientHeight
+          };
+        }),
+        // Chart heights, which are the whole point: 96px and 112px before, the leftover after.
+        formChartH: Math.round(
+          grid.children[1]!.querySelector('.flex-1')!.getBoundingClientRect().height
+        ),
+        loadChartH: Math.round(
+          grid.children[2]!.querySelector('.flex-1')!.getBoundingClientRect().height
+        )
+      };
+    });
+
+    expect(tabs, 'the hero pane was not found').not.toBeNull();
+    const byPane = new Map(tabs!.panes.map((p) => [p.i, p]));
+
+    for (const [i, name] of [
+      [0, 'Today'],
+      [1, 'Form'],
+      [2, 'Load']
+    ] as const) {
+      const p = byPane.get(i)!;
+      expect(
+        p.gapToBottom,
+        `the ${name} pane's last row stops ${p.gapToBottom}px short of the card's bottom edge`
+      ).toBe(0);
+      expect(p.overflow, `the ${name} pane overflows its cell`).toBeLessThanOrEqual(0);
+    }
+
+    // The Today pane is not a single column, so its slack is measured through its last row,
+    // which the assertion above already did. Form and Load are columns and can be measured whole.
+    expect(byPane.get(1)!.slack, 'the Form pane leaves dead air above its closing row').toBe(0);
+    expect(byPane.get(2)!.slack, 'the Load pane leaves dead air above its closing row').toBe(0);
+
+    // The slack went into the charts, not just out of sight. 96 and 112 are the fixed heights
+    // that used to strand the space below them.
+    expect(tabs!.formChartH, 'the Form chart did not grow into the freed space').toBeGreaterThanOrEqual(100);
+    expect(tabs!.loadChartH, 'the Load bars did not grow into the freed space').toBeGreaterThanOrEqual(130);
+  });
+}
+
+/**
+ * A rider who has never ridden must not be told their fitness and fatigue are "BALANCED".
+ *
+ * `computePmc` walks its window from CTL=ATL=0 on purpose, so an empty window still produces a
+ * full-length curve of zeros, and `formState(0)` is `balanced`. The hero was therefore showing
+ * a confident band to someone who had never trained — and `+0 pts / 7d` beside it, which is
+ * the same false claim with a number attached. The zero is real arithmetic; the reading of it
+ * is not, and a beginner meeting the app on their first morning is exactly who gets hurt by it.
+ *
+ * The rides are cleared from IndexedDB and the document reloaded, so the dashboard recomputes
+ * from an empty table the way a genuine first launch would. The seeder runs only on first
+ * launch, so the demo rides do not come back.
+ *
+ * `NO DATA` is asserted by name *and* by tone: the label is the rider-facing truth, and the
+ * neutral grey is what stops it reading as a fifth training state.
+ */
+test('a rider with no rides in the window is told NO DATA rather than a form band', async ({
+  page
+}) => {
+  await openApp(page, '#/');
+  await waitForSeed(page);
+
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('zonadua');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const names = Array.from(db.objectStoreNames);
+    const store = names.find((n) => n.toLowerCase().includes('activit'));
+    if (!store) throw new Error(`no activities store among ${names.join(', ')}`);
+    await new Promise<void>((resolve, reject) => {
+      const req = db.transaction(store, 'readwrite').objectStore(store).clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  });
+
+  await openApp(page, '#/');
+  await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
+
+  const hero = await page.evaluate(() => {
+    const today = document.querySelector('#hero-pane')?.children[0];
+    if (!today) return null;
+    const chip = today.querySelector('.rounded-pill');
+    const name = chip?.firstElementChild ?? null;
+    const texts = [...today.querySelectorAll('p')].map((p) => p.textContent.trim());
+    return {
+      // The gauge's figure is a sibling of the <svg>, not inside it, so it is found by its
+      // own caption rather than by a descendant selector that would silently match nothing.
+      ring:
+        [...today.querySelectorAll('p')]
+          .find((p) => p.textContent.trim() === 'Form TSB')
+          ?.previousElementSibling?.textContent.trim() ?? null,
+      band: chip?.textContent.replace(/\s+/g, ' ').trim() ?? null,
+      bandColor: name ? getComputedStyle(name as Element).color : null,
+      // The two figures sit between their own label and their own unit, so they can be picked
+      // out by their neighbours rather than by position.
+      tileValues: texts.filter((t, i) => texts[i - 1] === 'Fitness' || texts[i - 1] === 'Fatigue'),
+      pageText: document.body.textContent ?? ''
+    };
+  });
+
+  expect(hero, 'the hero pane was not found').not.toBeNull();
+  expect(hero!.band, 'a rider with no rides was given a form band').toBe('NO DATA');
+  expect(hero!.ring, 'the gauge reported a form value with no rides in the window').toBe('—');
+  expect(
+    hero!.tileValues,
+    'the load tiles reported a fitness or fatigue figure with no rides in the window'
+  ).toEqual(['—', '—']);
+  // The neutral grey, so it does not read as a fifth training state alongside the real bands.
+  expect(hero!.bandColor, 'the no-data band is painted a band tone').toBe('rgb(155, 161, 170)');
+  expect(
+    hero!.pageText,
+    'the page still claims a 7-day form change with no rides in the window'
+  ).not.toContain('pts / 7d');
+});
 });

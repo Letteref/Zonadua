@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
@@ -21,24 +22,7 @@ import {
 } from '$lib/domain/race';
 import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
 import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
-  import {
-    ChevronLeft,
-    Lock,
-    Check,
-    Timer,
-    Plus,
-    Trash2,
-    Luggage,
-    Coffee,
-    Pencil,
-    ChevronRight,
-    Minus,
-    Mountain,
-    ShieldAlert,
-    Activity,
-    Flag
-  } from '@lucide/svelte';
-
+  
   // ---------- setup state (persisted to Dexie) ----------
   let raceId = $state<string | null>(null);
   let liveMode = $state(false);
@@ -75,7 +59,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
         routeId = r.routeId;
       }
     } catch (err) {
-      console.error('[gowslab] race load failed:', err);
+      console.error('[zonadua] race load failed:', err);
     }
   })();
 
@@ -292,7 +276,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       }
       enterLive();
     } catch (err) {
-      console.error('[gowslab] saveAndStart failed:', err);
+      console.error('[zonadua] saveAndStart failed:', err);
     }
   }
 
@@ -316,7 +300,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
     }
     const sub = liveQuery(() => db.race_logs.where('raceId').equals(id).sortBy('at')).subscribe({
       next: (rows) => (logs = rows),
-      error: (e) => console.error('[gowslab] race_logs liveQuery error:', e)
+      error: (e) => console.error('[zonadua] race_logs liveQuery error:', e)
     });
     return () => sub.unsubscribe();
   });
@@ -458,7 +442,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       await db.race_logs.put(entry);
       kmInput = '';
     } catch (err) {
-      console.error('[gowslab] logCheckpoint failed:', err);
+      console.error('[zonadua] logCheckpoint failed:', err);
     }
   }
 
@@ -475,7 +459,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       liveMode = false;
       raceId = null;
     } catch (err) {
-      console.error('[gowslab] finishRace failed:', err);
+      console.error('[zonadua] finishRace failed:', err);
     }
   }
 
@@ -505,7 +489,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           type="text"
           bind:value={name}
         />
-        <Pencil size={18} strokeWidth={1.5} class="text-ink-dim shrink-0 ml-2" />
+        <Icon name="pencil" size={18} strokeWidth={1.5} class="text-ink-dim shrink-0 ml-2" />
       </div>
     </section>
 
@@ -530,7 +514,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           href="#/routes"
           class="text-crimson-deep text-[11px] font-bold tracking-wider uppercase flex items-center gap-0.5 shrink-0 px-2 py-1.5 rounded-lg bg-surface border border-hairline-strong hover:bg-hairline transition-all"
         >
-          Change <ChevronRight size={14} strokeWidth={1.5} />
+          Change <Icon name="chevron-right" size={14} strokeWidth={1.5} />
         </a>
       </div>
     </section>
@@ -548,10 +532,10 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
         </div>
         <div class="flex items-center gap-2 pt-1 border-t border-hairline/60">
           <button class="flex-1 h-9 rounded-xl bg-raised hover:bg-hairline border border-hairline-strong text-ink grid place-items-center transition-all" onclick={() => (startMin = (startMin + 1425) % 1440)} aria-label="Decrease start time">
-            <Minus size={18} strokeWidth={1.5} />
+            <Icon name="minus" size={18} strokeWidth={1.5} />
           </button>
           <button class="flex-1 h-9 rounded-xl bg-raised hover:bg-hairline border border-hairline-strong text-ink grid place-items-center transition-all" onclick={() => (startMin = (startMin + 15) % 1440)} aria-label="Increase start time">
-            <Plus size={18} strokeWidth={1.5} />
+            <Icon name="plus" size={18} strokeWidth={1.5} />
           </button>
         </div>
       </section>
@@ -566,10 +550,10 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
         </div>
         <div class="flex items-center gap-2 pt-1 border-t border-hairline/60">
           <button class="flex-1 h-9 rounded-xl bg-raised hover:bg-hairline border border-hairline-strong text-ink grid place-items-center transition-all" onclick={() => (cutoffMin = Math.max(120, cutoffMin - 30))} aria-label="Decrease cutoff">
-            <Minus size={18} strokeWidth={1.5} />
+            <Icon name="minus" size={18} strokeWidth={1.5} />
           </button>
           <button class="flex-1 h-9 rounded-xl bg-raised hover:bg-hairline border border-hairline-strong text-ink grid place-items-center transition-all" onclick={() => (cutoffMin = Math.min(1440, cutoffMin + 30))} aria-label="Increase cutoff">
-            <Plus size={18} strokeWidth={1.5} />
+            <Icon name="plus" size={18} strokeWidth={1.5} />
           </button>
         </div>
       </section>
@@ -612,7 +596,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
                 {selected ? 'Selected' : 'Standby'}
               </span>
               {#if selected}
-                <Check size={18} strokeWidth={1.5} class="text-signal" />
+                <Icon name="check" size={18} strokeWidth={1.5} class="text-signal" />
               {:else}
                 <span class="h-4 w-4 rounded-pill border border-ink-dim"></span>
               {/if}
@@ -625,7 +609,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
         <div class="flex items-center justify-between bg-raised p-2.5 rounded-2xl border border-hairline">
           <div class="flex items-center gap-2">
-            <Luggage size={18} strokeWidth={1.5} class="text-ink-dim" />
+            <Icon name="luggage" size={18} strokeWidth={1.5} class="text-ink-dim" />
             <span class="text-xs text-ink font-medium">Packed cargo</span>
           </div>
           <div class="flex items-center gap-1.5">
@@ -636,7 +620,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
         </div>
         <div class="flex items-center justify-between bg-raised p-2.5 rounded-2xl border border-hairline">
           <div class="flex items-center gap-2">
-            <Coffee size={18} strokeWidth={1.5} class="text-ink-dim" />
+            <Icon name="coffee" size={18} strokeWidth={1.5} class="text-ink-dim" />
             <div class="flex flex-col">
               <span class="text-xs text-ink font-medium">Aid stops</span>
               <span class="text-[9px] text-ink-dim">{Math.round(stopsMin / 10)} CP stops planned</span>
@@ -662,7 +646,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           <div class="bg-raised border border-hairline p-3 rounded-2xl flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 rounded-lg bg-aman/15 text-aman border border-aman/30 grid place-items-center shrink-0">
-                <Check size={17} strokeWidth={1.5} />
+                <Icon name="check" size={17} strokeWidth={1.5} />
               </div>
               <div class="flex flex-col">
                 <div class="flex items-center gap-1.5">
@@ -679,7 +663,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
               onclick={() => (checkpoints = checkpoints.filter((_, j) => j !== i))}
               aria-label="Remove checkpoint"
             >
-              <Trash2 size={17} strokeWidth={1.5} />
+              <Icon name="trash-2" size={17} strokeWidth={1.5} />
             </button>
           </div>
         {/each}
@@ -688,7 +672,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
         class="w-full py-2.5 bg-raised/60 hover:bg-raised border border-dashed border-hairline-strong rounded-2xl text-ink-dim hover:text-crimson-deep hover:border-signal/50 flex items-center justify-center gap-1.5 transition-all"
         onclick={() => (checkpoints = [...checkpoints, { km: 175, cutoffMin: 705, label: 'CP3 Bukittinggi' }])}
       >
-        <Plus size={17} strokeWidth={1.5} />
+        <Icon name="plus" size={17} strokeWidth={1.5} />
         <span class="text-[11px] font-bold uppercase tracking-wider">Add checkpoint cut-off</span>
       </button>
     </section>
@@ -717,7 +701,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
     <!-- 3 slowest sectors -->
     <SectionCard kicker="3 slowest sectors">
       {#snippet right()}
-        <ShieldAlert size={15} strokeWidth={1.5} class="text-kritis" />
+        <Icon name="shield-alert" size={15} strokeWidth={1.5} class="text-kritis" />
       {/snippet}
       <div class="flex flex-col gap-2">
         {#if slowestSectors.length === 0}
@@ -729,7 +713,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           <div class="flex items-center justify-between bg-raised border border-hairline p-2.5 rounded-2xl">
             <div class="flex items-center gap-2.5">
               <div class="w-7 h-7 rounded-lg grid place-items-center shrink-0 {s.tone === 'signal' ? 'bg-signal/15 text-signal border border-signal/30' : s.tone === 'aman' ? 'bg-aman/15 text-aman border border-aman/30' : 'bg-surface text-ink-dim border border-hairline-strong'}">
-                <Mountain size={16} strokeWidth={1.5} />
+                <Icon name="mountain" size={16} strokeWidth={1.5} />
               </div>
               <div class="flex flex-col">
                 <span class="text-xs font-bold text-ink">{s.name}</span>
@@ -811,7 +795,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       class="mt-1 w-full h-14 rounded-pill bg-crimson-fill text-white text-sm tracking-wider uppercase font-black flex items-center justify-center gap-2 glow-signal active:scale-[0.98] transition-all"
       onclick={saveAndStart}
     >
-      <Timer size={20} strokeWidth={1.5} />
+      <Icon name="timer" size={20} strokeWidth={1.5} />
       Start race mode
     </button>
   {:else}
@@ -825,13 +809,13 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
             onclick={backToSetup}
             aria-label="Back to setup"
           >
-            <ChevronLeft size={18} strokeWidth={1.6} />
+            <Icon name="chevron-left" size={18} strokeWidth={1.6} />
           </button>
           <span
             class="flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-pill bg-white/10 px-3 py-1 text-[10px] font-bold text-on-mono/80"
             title="{name} — race telemetry window"
           >
-            <Lock size={10} strokeWidth={1.6} class="shrink-0 opacity-60" />
+            <Icon name="lock" size={10} strokeWidth={1.6} class="shrink-0 opacity-60" />
             <span class="truncate">{name}</span>
           </span>
           <span class="flex items-center gap-1.5 shrink-0" aria-hidden="true">
@@ -999,7 +983,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
           disabled={!kmInput}
           onclick={logCheckpoint}
         >
-          <Plus size={18} strokeWidth={2.4} />
+          <Icon name="plus" size={18} strokeWidth={2.4} />
           Log
         </button>
       </div>
@@ -1087,11 +1071,11 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       class="w-full h-14 rounded-pill bg-surface border border-hairline-strong text-ink text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
       onclick={finishRace}
     >
-      <Flag size={18} strokeWidth={1.8} class="text-crimson-deep" />
+      <Icon name="flag" size={18} strokeWidth={1.8} class="text-crimson-deep" />
       Finish &amp; save result
     </button>
     <p class="text-center text-xs text-ink-dim flex items-center justify-center gap-1.5">
-      <Activity size={14} strokeWidth={1.5} />
+      <Icon name="activity" size={14} strokeWidth={1.5} />
       Works fully offline · screen stays awake in live mode
     </p>
   {/if}

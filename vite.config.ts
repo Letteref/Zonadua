@@ -17,8 +17,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'GowsLab — Cycling Performance Lab',
-        short_name: 'GowsLab',
+        name: 'Zonadua — Cycling Performance Lab',
+        short_name: 'Zonadua',
         description:
           'Local-first cycling performance, route estimation and race-day tracking. All data stays on your device.',
         theme_color: '#f9f9f9',

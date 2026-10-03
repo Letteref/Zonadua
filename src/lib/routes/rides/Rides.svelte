@@ -1,23 +1,22 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import CircleButton from '$lib/components/CircleButton.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import { recentActivities, allActivities, computeWeek, activeBike, powerCurves } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
-  import { db, type Activity } from '$lib/data/db';
+  import { db, activityProvenance, type Activity } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { decimateTrack, parseCourse } from '$lib/domain/course';
   import { deflateJson, extractPower } from '$lib/data/streams';
   import { ftpOnDate, rideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
   import { distanceUnit, formatDistance, formatElevation, type UnitSystem } from '$lib/domain/units';
   import { appSettings } from '$lib/data/queries.svelte';
-  import { CheckCircle2, LoaderCircle, X } from '@lucide/svelte';
-
+  
   type Filter = 'all' | 'rides' | 'commutes' | 'power';
   let filter = $state<Filter>('all');
   let query = $state('');
-  let searchOpen = $state(false);
   let importInput: HTMLInputElement | null = $state(null);
   let importing = $state(false);
   let toast: string | null = $state(null);
@@ -137,7 +136,7 @@
           });
           ok++;
         } catch (err) {
-          console.error('[gowslab] import failed:', file.name, err);
+          console.error('[zonadua] import failed:', file.name, err);
         }
       }
       showToast(
@@ -156,8 +155,15 @@
 </script>
 
 <div class="mx-auto max-w-md px-5 pt-8 space-y-5">
+  <!--
+    The search button used to sit in the header slot, next to the import button, and it
+    cost the headline more width than it could spare — "EVERY WATT COUNTS" was being
+    clipped by a 44 px circle. Search is not a header action anyway: it is a way of
+    narrowing the list below, so it belongs next to the list. It now sits under the
+    "This week" hero, always visible rather than behind a toggle, which also removes the
+    second click that the old design asked for before you could type anything.
+  -->
   <EditorialHeader kicker="Your rides" headline="Every watt counts" sub="From the last import —" accent="and the archive.">
-    <CircleButton icon="search" label="Search rides" active={searchOpen} onclick={() => (searchOpen = !searchOpen)} />
     <CircleButton icon="file-up" label="Import GPX/TCX/FIT" onclick={() => importInput?.click()} />
   </EditorialHeader>
 
@@ -170,22 +176,6 @@
     onchange={onImportPick}
     aria-label="Import GPX or TCX files"
   />
-
-  {#if searchOpen}
-    <div class="h-11 rounded-pill bg-surface border border-hairline flex items-center px-4 elevation-card">
-      <input
-        class="w-full bg-transparent text-sm font-semibold text-ink placeholder-ink-dim/60 outline-none"
-        type="search"
-        placeholder="Search ride name…"
-        bind:value={query}
-      />
-      {#if query}
-        <button class="text-ink-dim hover:text-ink" onclick={() => (query = '')} aria-label="Clear search">
-          <X size={16} strokeWidth={1.8} />
-        </button>
-      {/if}
-    </div>
-  {/if}
 
   <!--
     One rhythm, three figures, one action.
@@ -221,6 +211,23 @@
     </div>
   </div>
 
+  <!-- Search sits here, under the stats it filters and above the list it narrows. -->
+  <div class="h-11 rounded-pill bg-surface border border-hairline flex items-center gap-2 px-4 elevation-card">
+    <Icon name="search" size={15} strokeWidth={1.8} class="text-ink-dim shrink-0" />
+    <input
+      class="w-full min-w-0 bg-transparent text-sm font-semibold text-ink placeholder-ink-dim/60 outline-none [&::-webkit-search-cancel-button]:appearance-none"
+      type="search"
+      placeholder="Search ride name…"
+      aria-label="Search ride name"
+      bind:value={query}
+    />
+    {#if query}
+      <button class="shrink-0 text-ink-dim hover:text-ink" onclick={() => (query = '')} aria-label="Clear search">
+        <Icon name="x" size={16} strokeWidth={1.8} />
+      </button>
+    {/if}
+  </div>
+
   <div class="flex gap-2 overflow-x-auto scrollbar-none">
     {#each [['all', 'All'], ['rides', 'Rides'], ['commutes', 'Commutes'], ['power', 'With power']] as [key, label] (key)}
       <button
@@ -253,7 +260,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="m12 17.5 3-9 3 5.5"/><path d="M15 8.5h-5l-2 5.5"/><path d="m8 17.5 5-9"/></svg>
               </div>
               <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-pill bg-tile border border-hairline px-1.5 text-[9px] font-bold uppercase tracking-wider text-ink-dim">
-                {a.source}
+                {activityProvenance(a)}
               </span>
             </div>
             <div class="min-w-0 flex-1">
@@ -286,10 +293,10 @@
   <div class="fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px)+8px)] z-[55] mx-auto max-w-md px-5">
     <div class="flex items-center justify-center gap-2 rounded-pill bg-mono text-on-mono px-4 py-2.5 elevation-raised">
       {#if importing}
-        <LoaderCircle size={15} strokeWidth={2} class="animate-spin text-rose" />
+        <Icon name="loader-circle" size={15} strokeWidth={2} class="animate-spin text-rose" />
         <span class="text-[11px] font-bold uppercase tracking-wider">Parsing files…</span>
       {:else}
-        <CheckCircle2 size={15} strokeWidth={2} class="text-aman" />
+        <Icon name="check-circle" size={15} strokeWidth={2} class="text-aman" />
         <span class="text-[11px] font-bold uppercase tracking-wider">{toast}</span>
       {/if}
     </div>

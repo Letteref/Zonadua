@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
@@ -6,8 +7,7 @@
   import { convertDistance, distanceUnit, type UnitSystem } from '$lib/domain/units';
   import { db, type BikeComponent, type Bike } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
-  import { Wrench, Plus, Pencil, RotateCcw, Trash2, Check, X } from '@lucide/svelte';
-
+  
   const bikes = $derived(allBikesWithComponents.current ?? []);
 
   // Primary bike first, then the rest
@@ -84,7 +84,7 @@
       // plain object only: Dexie/IndexedDB cannot structured-clone $state proxies
       await db.components.put(rec);
     } catch (err) {
-      console.error('[gowslab] saveComponent failed:', err);
+      console.error('[zonadua] saveComponent failed:', err);
     }
     sheetOpen = false;
   }
@@ -94,7 +94,7 @@
     try {
       await db.components.update(comp.id, { installedAtOdoKm: odoKm, updatedAt: Date.now() });
     } catch (err) {
-      console.error('[gowslab] service failed:', err);
+      console.error('[zonadua] service failed:', err);
     }
   }
 
@@ -108,7 +108,7 @@
     try {
       await db.components.delete(comp.id);
     } catch (err) {
-      console.error('[gowslab] remove failed:', err);
+      console.error('[zonadua] remove failed:', err);
     }
     confirmId = null;
   }
@@ -126,7 +126,7 @@
         }
       });
     } catch (err) {
-      console.error('[gowslab] setActive failed:', err);
+      console.error('[zonadua] setActive failed:', err);
     }
   }
 </script>
@@ -219,7 +219,7 @@
           class="mt-1 h-9 w-full rounded-pill bg-tile border border-hairline-strong text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-ink active:scale-[0.98] transition-all"
           onclick={() => setActive(bike)}
         >
-          <Check size={14} strokeWidth={2.2} />
+          <Icon name="check" size={14} strokeWidth={2.2} />
           Set as active bike
         </button>
       </section>
@@ -233,7 +233,7 @@
           class="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-crimson-deep bg-surface border border-hairline rounded-pill px-2.5 py-1 hover:border-hairline-strong transition-colors"
           onclick={() => openAdd(bike.id)}
         >
-          <Plus size={13} strokeWidth={2.4} />
+          <Icon name="plus" size={13} strokeWidth={2.4} />
           Add
         </button>
       </div>
@@ -245,7 +245,7 @@
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="grid h-9 w-9 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim shrink-0">
-                    <Wrench size={17} strokeWidth={1.5} />
+                    <Icon name="wrench" size={17} strokeWidth={1.5} />
                   </div>
                   <div class="min-w-0">
                     <p class="text-sm font-bold tracking-tight truncate">{w.comp.name}</p>
@@ -280,14 +280,14 @@
                       class="h-7 px-2.5 rounded-lg bg-kritis text-white grid place-items-center text-[10px] font-extrabold uppercase tracking-wider"
                       onclick={() => remove(w.comp)}
                     >
-                      <Check size={13} strokeWidth={2.4} />
+                      <Icon name="check" size={13} strokeWidth={2.4} />
                     </button>
                     <button
                       class="h-7 px-2.5 rounded-lg bg-tile border border-hairline grid place-items-center text-ink-dim"
                       onclick={() => (confirmId = null)}
                       aria-label="Cancel delete"
                     >
-                      <X size={13} strokeWidth={2} />
+                      <Icon name="x" size={13} strokeWidth={2} />
                     </button>
                   </div>
                 </div>
@@ -301,7 +301,7 @@
                       aria-label="Service {w.comp.name}"
                       onclick={() => service(w.comp, bike.odometerKm)}
                     >
-                      <RotateCcw size={14} strokeWidth={1.8} />
+                      <Icon name="rotate-ccw" size={14} strokeWidth={1.8} />
                     </button>
                     <button
                       class="grid h-7 w-7 place-items-center rounded-lg bg-tile border border-hairline text-ink-dim hover:text-ink hover:border-hairline-strong transition-colors"
@@ -309,7 +309,7 @@
                       aria-label="Edit {w.comp.name}"
                       onclick={() => openEdit(w.comp)}
                     >
-                      <Pencil size={14} strokeWidth={1.8} />
+                      <Icon name="pencil" size={14} strokeWidth={1.8} />
                     </button>
                     <button
                       class="grid h-7 w-7 place-items-center rounded-lg bg-tile border border-hairline text-ink-dim hover:text-kritis hover:border-hairline-strong transition-colors"
@@ -317,7 +317,7 @@
                       aria-label="Delete {w.comp.name}"
                       onclick={() => remove(w.comp)}
                     >
-                      <Trash2 size={14} strokeWidth={1.8} />
+                      <Icon name="trash-2" size={14} strokeWidth={1.8} />
                     </button>
                   </div>
                 </div>
@@ -332,7 +332,7 @@
             class="h-9 px-4 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 active:scale-[0.98] transition-transform"
             onclick={() => openAdd(bike.id)}
           >
-            <Plus size={14} strokeWidth={2.4} />
+            <Icon name="plus" size={14} strokeWidth={2.4} />
             Add first component
           </button>
         </div>
@@ -367,7 +367,7 @@
         onclick={() => (sheetOpen = false)}
         aria-label="Close"
       >
-        <X size={16} strokeWidth={1.8} />
+        <Icon name="x" size={16} strokeWidth={1.8} />
       </button>
     </div>
 
@@ -425,7 +425,7 @@
       disabled={!cName.trim() || cInterval <= 0}
       onclick={saveComponent}
     >
-      <Check size={16} strokeWidth={2.4} />
+      <Icon name="check" size={16} strokeWidth={2.4} />
       {editing ? 'Save changes' : 'Add component'}
     </button>
   </div>

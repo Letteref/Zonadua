@@ -1,9 +1,10 @@
 <script lang="ts">
+  import Icon from '$lib/components/Icon.svelte';
+  import type { IconName } from '$lib/icons';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import CircleButton from '$lib/components/CircleButton.svelte';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
-  import { ChartLine, Flag, Bike as BikeIcon, Backpack, Coffee, Sun, Lock, CheckCircle2, LoaderCircle, FileUp } from '@lucide/svelte';
-  import { activeBike, appSettings, latestFtp, weightSeries } from '$lib/data/queries.svelte';
+    import { activeBike, appSettings, latestFtp, weightSeries } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
   import { db, type Race } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
@@ -107,11 +108,11 @@
   const etaFinish = $derived(plan.ok ? clockOf(plan.finishClockMin!) : '—');
 
   const setupTiles = $derived([
-    { icon: BikeIcon, label: 'Bike:', value: bike?.name ?? '—', tone: 'aman' },
-    { icon: Backpack, label: 'Cargo:', value: formatWeight(cargoKg, unit), tone: 'aman' },
-    { icon: Coffee, label: 'Stops:', value: `${stopCount} × ${stopMin} min`, tone: 'signal' },
-    { icon: Sun, label: 'Start:', value: clockOf(startMin), tone: 'signal' }
-  ] as const);
+    { icon: 'bike', label: 'Bike:', value: bike?.name ?? '—', tone: 'aman' },
+    { icon: 'backpack', label: 'Cargo:', value: formatWeight(cargoKg, unit), tone: 'aman' },
+    { icon: 'coffee', label: 'Stops:', value: `${stopCount} × ${stopMin} min`, tone: 'signal' },
+    { icon: 'sun', label: 'Start:', value: clockOf(startMin), tone: 'signal' }
+  ] as const satisfies readonly { icon: IconName; label: string; value: string; tone: string }[]);
 
   // Checkpoint rows come straight from the plan, so the table can never drift from the estimate
   const waypoints = $derived(
@@ -186,7 +187,7 @@
         `Loaded ${routeName} — ${formatDistance(ride.distanceKm, unit)} · ${formatElevation(ride.elevGainM, unit)} of climbing`
       );
     } catch (err) {
-      console.error('[gowslab] route import failed:', err);
+      console.error('[zonadua] route import failed:', err);
       showToast('Import failed — use a GPX file with trackpoints');
     } finally {
       parsing = false;
@@ -205,7 +206,7 @@
       const blobStream = new Blob([rows.pointsCompressed as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
       const xy: Array<[number, number]> = JSON.parse(await new Response(blobStream).text());
       const body = xy.map(([km, alt]) => `  <trkpt lat="0" lon="0"><ele>${alt.toFixed(1)}</ele></trkpt><!-- ${km.toFixed(2)} km -->`).join('\n');
-      const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GowsLab"><trk><name>${routeName}</name><trkseg>\n${body}\n</trkseg></trk></gpx>`;
+      const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Zonadua"><trk><name>${routeName}</name><trkseg>\n${body}\n</trkseg></trk></gpx>`;
       const url = URL.createObjectURL(new Blob([gpx], { type: 'application/gpx+xml' }));
       const a = document.createElement('a');
       a.href = url;
@@ -252,7 +253,7 @@
       showToast('Race plan saved — opening Race…');
       setTimeout(() => route.navigate('race'), 800);
     } catch (err) {
-      console.error('[gowslab] saveAsRacePlan failed:', err);
+      console.error('[zonadua] saveAsRacePlan failed:', err);
       showToast('Could not save the plan');
     }
   }
@@ -297,7 +298,7 @@
       }}
     >
       <div class="grid h-14 w-14 place-items-center rounded-pill bg-tile border border-hairline text-crimson-deep">
-        <FileUp size={24} strokeWidth={1.5} />
+        <Icon name="file-up" size={24} strokeWidth={1.5} />
       </div>
       <div class="flex flex-col gap-1">
         <h2 class="text-base font-extrabold tracking-tight text-ink">Import your event GPX</h2>
@@ -312,7 +313,7 @@
           fileInput?.click();
         }}
       >
-        <FileUp size={16} strokeWidth={2} />
+        <Icon name="file-up" size={16} strokeWidth={2} />
         Choose GPX file
       </button>
       <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">or drag &amp; drop it anywhere on this card</span>
@@ -409,7 +410,7 @@
   <section class="rounded-card bg-surface border border-hairline p-4 flex flex-col relative overflow-hidden elevation-card">
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-1.5">
-        <ChartLine size={18} strokeWidth={1.5} class="text-signal" />
+        <Icon name="chart-line" size={18} strokeWidth={1.5} class="text-signal" />
         <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-dim">Profile &amp; speed</span>
         {#if !hasRoute}<span class="text-[9px] font-extrabold uppercase tracking-wider text-ink-dim bg-tile border border-hairline rounded-pill px-2 py-0.5">Sample</span>{/if}
       </div>
@@ -470,10 +471,9 @@
       </div>
       <div class="grid grid-cols-2 gap-2">
         {#each setupTiles as t (t.label)}
-          {@const Icon = t.icon}
           <div class="p-2.5 rounded-2xl bg-raised border border-hairline flex flex-col gap-1">
             <div class="flex items-center gap-1.5 {t.tone === 'aman' ? 'text-aman' : 'text-signal'}">
-              <Icon size={16} strokeWidth={1.5} />
+              <Icon name={t.icon} size={16} strokeWidth={1.5} />
               <span class="text-[10px] font-extrabold uppercase tracking-wider text-ink-dim">{t.label}</span>
             </div>
             <span class="text-[11px] font-bold text-ink truncate text-tabular">{t.value}</span>
@@ -575,7 +575,7 @@
   <section>
     <div class="flex items-center justify-between mb-2">
       <div class="flex items-center gap-1.5">
-        <Flag size={18} strokeWidth={1.5} class="text-signal" />
+        <Icon name="flag" size={18} strokeWidth={1.5} class="text-signal" />
         <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-dim">Checkpoints &amp; control points</span>
       </div>
       <span class="text-[10px] font-extrabold uppercase text-ink-dim px-2 py-0.5 rounded bg-surface border border-hairline">solved from physics</span>
@@ -591,7 +591,7 @@
             <div class="flex flex-col min-w-0">
               <span class="truncate font-semibold text-ink text-sm flex items-center gap-1.5">
                 {w.label}
-                {#if w.isCp}<Lock size={12} strokeWidth={1.5} class="text-signal shrink-0" />{/if}
+                {#if w.isCp}<Icon name="lock" size={12} strokeWidth={1.5} class="text-signal shrink-0" />{/if}
               </span>
               <span class="text-[10px] font-extrabold uppercase tracking-wider {w.isCp ? 'text-crimson-deep' : 'text-ink-dim'}">
                 {w.grade} · {w.legKph.toFixed(1)} km/h leg
@@ -616,7 +616,7 @@
     class="w-full h-14 rounded-pill bg-crimson-fill text-white text-sm tracking-wider uppercase font-black flex items-center justify-center gap-2 glow-signal active:scale-[0.98] transition-all"
     onclick={saveAsRacePlan}
   >
-    <Flag size={20} strokeWidth={1.5} />
+    <Icon name="flag" size={20} strokeWidth={1.5} />
     Save as race plan
   </button>
 </div>
@@ -625,10 +625,10 @@
   <div class="fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px)+8px)] z-[55] mx-auto max-w-md px-5">
     <div class="flex items-center justify-center gap-2 rounded-pill bg-mono text-on-mono px-4 py-2.5 elevation-raised">
       {#if parsing}
-        <LoaderCircle size={15} strokeWidth={2} class="animate-spin text-rose" />
+        <Icon name="loader-circle" size={15} strokeWidth={2} class="animate-spin text-rose" />
         <span class="text-[11px] font-bold uppercase tracking-wider">Parsing route…</span>
       {:else}
-        <CheckCircle2 size={15} strokeWidth={2} class="text-aman" />
+        <Icon name="check-circle" size={15} strokeWidth={2} class="text-aman" />
         <span class="text-[11px] font-bold uppercase tracking-wider">{toast}</span>
       {/if}
     </div>

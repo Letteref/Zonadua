@@ -92,7 +92,7 @@ async function seedFixture(page: Page): Promise<void> {
     );
 
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('gowslab');
+      const req = indexedDB.open('zonadua');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });

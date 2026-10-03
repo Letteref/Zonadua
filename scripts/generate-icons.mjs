@@ -1,5 +1,5 @@
 /**
- * GowsLab PWA icon generator — pure Node (zero deps).
+ * Zonadua PWA icon generator — pure Node (zero deps).
  * Draws the brand mark: a chainring with the Crimson Clean signature gradient
  * (#FF4D5E → #E8102E → #B00D24) on the clean light canvas (#F9F9F9).
  * Outputs: public/pwa-192.png, public/pwa-512.png, public/apple-touch-icon.png
