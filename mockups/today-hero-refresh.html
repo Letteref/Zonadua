@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zonadua — Tab Today: 4 arah penyegaran visual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet" />
+<style>
+  /* Token persis dari src/app.css (Crimson Clean v5.1) */
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33; --track:#23252c; --tone-detrain:#ffb35a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:40px 16px 90px; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em;
+  }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 26px; line-height:1.6; }
+  .lede em { color:var(--deep); font-style:italic; font-weight:600; }
+  .lede b { color:var(--ink); }
+
+  .diag { background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--crimson);
+          border-radius:14px; padding:16px 18px; margin-bottom:30px; }
+  .diag h3 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; margin-bottom:10px; }
+  .diag ol { margin:0; padding-left:18px; }
+  .diag li { font-size:12.5px; color:var(--ink-dim); line-height:1.6; margin-bottom:7px; }
+  .diag li b { color:var(--ink); }
+
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px;
+          padding:22px 20px 14px; margin-bottom:18px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 10px 28px -14px rgba(23,24,28,.14); }
+  .mock h2 { font-size:14px; font-weight:800; letter-spacing:-.01em; margin-bottom:3px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock h2 .tag { font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+                  color:var(--ink-dim); border:1px solid var(--hairline-strong); border-radius:999px;
+                  padding:2px 8px; margin-left:8px; vertical-align:2px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.55; margin-bottom:16px; }
+  .mock p.desc b { color:var(--ink); }
+  .mock .solve { font-size:12px; color:var(--ink-dim); line-height:1.55; margin-top:12px;
+                 padding-top:12px; border-top:1px dashed var(--hairline-strong); }
+  .mock .solve b { color:var(--deep); }
+  .stage { background:var(--canvas); border-radius:18px; padding:20px 12px 22px; margin-bottom:6px; }
+  .stcap { display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:.08em;
+           text-transform:uppercase; color:var(--ink-dim); background:var(--surface);
+           border:1px solid var(--hairline); padding:3px 9px; border-radius:999px; margin-bottom:10px; }
+
+  /* ===== Monolith + browser chrome (sama seperti app) ===== */
+  .mono { border-radius:26px; background:var(--mono); color:#fff; border:1px solid rgba(255,255,255,.10);
+    overflow:hidden; box-shadow:0 10px 30px rgba(20,21,25,.25), 0 6px 28px -10px rgba(232,16,46,.18); }
+  .chrome { padding:9px 14px; background:rgba(0,0,0,.4); border-bottom:1px solid rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .lights { display:flex; gap:6px; }
+  .lights i { width:10px; height:10px; border-radius:999px; display:block; }
+  .lights i:nth-child(1) { background:var(--crimson); }
+  .lights i:nth-child(2) { background:#eab308; opacity:.85; }
+  .lights i:nth-child(3) { background:#22c55e; opacity:.85; }
+  .wtabs { display:flex; gap:2px; flex:1; justify-content:center; }
+  .wtab { font-size:9.5px; font-weight:700; letter-spacing:.04em; padding:4px 11px; border-radius:999px;
+          color:rgba(255,255,255,.55); display:flex; align-items:center; gap:4px; }
+  .wtab.on { background:rgba(255,255,255,.12); color:var(--on-mono); }
+  .wtab.on i { width:5px; height:5px; border-radius:999px; background:var(--crimson); }
+  .live { display:flex; align-items:center; gap:5px; opacity:.3; }
+  .live i { width:6px; height:6px; border-radius:999px; background:var(--crimson); }
+  .live b { font-size:9px; font-weight:800; letter-spacing:.14em; color:rgba(255,255,255,.5); }
+
+  .kbody { padding:16px; display:flex; flex-direction:column; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ===== Geometri bersama (identik dengan app: box 180, R75, stroke 12, rotate 150) ===== */
+  .gwrap { display:flex; justify-content:center; padding-top:4px; }
+  .ringbox { position:relative; width:180px; height:180px; margin-bottom:-46.5px; }
+  .rcenter { position:absolute; inset:0; display:grid; place-items:center; }
+  .rctr { text-align:center; transform:translateY(-18.75px); }
+  .fig { font-size:42px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+  .figsub { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+            color:var(--on-mono-dim); margin-top:8px; }
+  .mouth { position:absolute; top:127.5px; left:50%; transform:translate(-50%,-50%);
+           font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em;
+           white-space:nowrap; color:var(--tone-detrain); }
+  .spacer { flex:1; min-height:0; }
+  .pair { margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline-dark);
+          display:grid; grid-template-columns:1fr 1fr; text-align:center; }
+  .pair > div + div { border-left:1px solid var(--hairline-dark); }
+  .pair .k { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--on-mono-dim); }
+  .pair .v { font-size:28px; font-weight:800; line-height:1; margin-top:4px; }
+  .pair .u { font-size:10px; font-weight:600; letter-spacing:.05em; color:rgba(155,161,170,.7); margin-top:4px; }
+
+  /* Skala di rongga kiri-kanan (varian M1/M4) */
+  .slab { position:absolute; top:122px; width:30px; text-align:center; font-size:9px; font-weight:700;
+          color:rgba(155,161,170,.75); font-variant-numeric:tabular-nums; }
+  .slab.l { left:-34px; }
+  .slab.r { right:-34px; }
+  .slab.zero { top:1px; left:97px; }
+
+  /* ===== M1 — Nadi ===== */
+  .glow { position:absolute; inset:-36px; border-radius:50%; z-index:0;
+          background:radial-gradient(circle at 50% 46%, rgba(232,16,46,.32), rgba(232,16,46,0) 62%); }
+  .gwrap svg { position:relative; z-index:1; }
+  .kbody.wash { background:radial-gradient(140% 100% at 50% -12%, rgba(232,16,46,.13), rgba(232,16,46,0) 58%); }
+
+  /* ===== M2 — Panel Lebar ===== */
+  .m2 { display:flex; align-items:center; gap:18px; padding-top:4px; }
+  .m2ring { position:relative; flex:none; width:140px; height:140px; }
+  .m2ctr { position:absolute; inset:0; display:grid; place-items:center; }
+  .m2in { text-align:center; transform:translateY(-14.6px); }
+  .m2in b { font-size:34px; font-weight:800; line-height:1; letter-spacing:-.02em; display:block; }
+  .m2in span { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+               color:var(--on-mono-dim); display:block; margin-top:6px; }
+  .m2r { flex:1; min-width:0; }
+  .m2band { font-size:16px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+            color:var(--tone-detrain); line-height:1; }
+  .m2scale { display:flex; align-items:center; gap:7px; margin-top:11px; }
+  .m2scale .e { font-size:8.5px; font-weight:700; color:rgba(155,161,170,.85); font-variant-numeric:tabular-nums; }
+  .m2scale .tr { position:relative; flex:1; height:4px; border-radius:999px; background:var(--track); }
+  .m2scale .tr u { position:absolute; left:50%; top:50%; width:2px; height:10px; border-radius:2px;
+                   background:rgba(247,248,250,.32); transform:translate(-50%,-50%); }
+  .m2scale .tr i { position:absolute; left:36.25%; top:50%; width:3px; height:14px; border-radius:3px;
+                   background:var(--tone-detrain); transform:translate(-50%,-50%);
+                   box-shadow:0 0 8px rgba(255,179,90,.5); }
+  .m2rows { margin-top:11px; }
+  .m2row { display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+           padding:8px 0; border-top:1px solid var(--hairline-dark); }
+  .m2row .k { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--on-mono-dim); }
+  .m2row .n { font-size:17px; font-weight:800; }
+  .m2row .un { font-size:9px; font-weight:700; color:var(--on-mono-dim); margin-left:4px; }
+
+  /* ===== M3 — Tile Cerita ===== */
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:20px; }
+  .tile { background:var(--mono2); border:1px solid var(--hairline-dark); border-radius:14px;
+          padding:12px 8px 11px; text-align:center; }
+  .tile .k { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--on-mono-dim); }
+  .tile .v { font-size:26px; font-weight:800; line-height:1; margin-top:5px; }
+  .tile .u { font-size:10px; font-weight:600; letter-spacing:.05em; color:rgba(155,161,170,.7); margin-top:4px; }
+  .tile .tbar { width:76%; height:4px; border-radius:999px; background:var(--track); margin:10px auto 0; }
+  .tile .tbar i { display:block; height:100%; border-radius:999px; background:rgba(247,248,250,.85); }
+  .tilescap { font-size:9px; font-weight:600; letter-spacing:.04em; color:rgba(155,161,170,.55);
+              text-align:center; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Tab Today — 4 arah penyegaran visual</h1>
+  <p class="lede">
+    Data yang dipakai <b>persis yang sedang tampil di aplikasi sekarang</b>: TSB <b>−11</b> ·
+    <b>DETRAINING</b> · Fitness <b>22 CTL</b> · Fatigue <b>33 ATL</b>. K0 adalah kondisi sekarang
+    (§43) yang direproduksi setara — bukan dari ingatan — supaya perbandingannya adil.
+    Varian lain di file <em>hero-dashboard-variants.html</em> (V0–V4) dibuat sebelum busur
+    dinaikkan ke 180 px, jadi halaman ini memulai dari keadaan terkini.
+  </p>
+
+  <div class="diag">
+    <h3>Kenapa terasa kurang menarik — yang saya lihat di layar</h3>
+    <ol>
+      <li><b>Dua rongga hitam besar di kiri-kanan ring.</b> Isi kartu hanya kolom tengah
+        selebar 180 px di atas bidang ~424 px — sisanya kosong tanpa fungsi.</li>
+      <li><b>Busur tanpa skala yang terbaca.</b> Penanda 0 di puncak ada, tapi tanpa angka
+        −40/+40 panjang busur untuk −11 tidak bisa diartikan: apa 36% dari apa?</li>
+      <li><b>Empat teks menumpuk di sumbu tengah</b> (−11 → FORM TSB → DETRAINING, lalu
+        pasangan Fitness/Fatigue) — dua "baris angka" dengan perlakuan identik dan tanpa
+        cerita tambahan, jadi mata berhenti di angka pertama.</li>
+      <li><b>Bidang hitam datar.</b> Satu busur merah di atas hitam polos, tanpa kedalaman
+        (glow, segmen, tekstur) — kartu terasa sunyi dibanding kartu merah <i>Form (TSB)</i>
+        di bawahnya.</li>
+    </ol>
+  </div>
+
+  <!-- ============ K0 — kondisi sekarang ============ -->
+  <div class="mock">
+    <h2><span class="num">K0</span>Kondisi sekarang (§43) <span class="tag">pembanding</span></h2>
+    <p class="desc">Reproduksi persis yang sedang berjalan: ring 180 px, angka 42 px, nama pita
+      di dalam mulut busur, pasangan 28 px di bawah garis rambut.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="kbody">
+          <div class="gwrap">
+            <div class="ringbox">
+              <svg width="180" height="180" viewBox="0 0 180 180">
+                <defs><linearGradient id="kg0" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#ff4d5e" /><stop offset="100%" stop-color="#e8102e" />
+                </linearGradient></defs>
+                <circle cx="90" cy="90" r="75" fill="none" stroke="#23252c" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="314.16 471.24"
+                        transform="rotate(150 90 90)" />
+                <circle cx="90" cy="90" r="75" fill="none" stroke="url(#kg0)" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="113.88 471.24"
+                        transform="rotate(150 90 90)"
+                        style="filter:drop-shadow(0 2px 8px rgba(232,16,46,.55))" />
+                <line x1="90" y1="21" x2="90" y2="9" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="rcenter"><div class="rctr">
+                <p class="fig tnum">−11</p>
+                <p class="figsub">Form TSB</p>
+              </div></div>
+              <span class="mouth">Detraining</span>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div class="pair">
+            <div><p class="k">Fitness</p><p class="v tnum">22</p><p class="u">CTL</p></div>
+            <div><p class="k">Fatigue</p><p class="v tnum">33</p><p class="u">ATL</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ M1 — Nadi ============ -->
+  <div class="mock">
+    <h2><span class="num">M1</span>Nadi <span class="tag">perubahan minimal</span></h2>
+    <p class="desc">Susunan tidak disentuh sama sekali. Yang ditambah hanya <b>kedalaman dan
+      skala</b>: glow merah di belakang busur, angka −40 / 0 / +40 di rongga yang selama ini
+      kosong, dan wash crimson tipis di atas kartu. Paling dekat dengan sekarang, paling cepat
+      dieksekusi.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="kbody wash">
+          <div class="gwrap">
+            <div class="ringbox">
+              <div class="glow"></div>
+              <svg width="180" height="180" viewBox="0 0 180 180">
+                <defs><linearGradient id="kg1" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#ff4d5e" /><stop offset="100%" stop-color="#e8102e" />
+                </linearGradient></defs>
+                <circle cx="90" cy="90" r="75" fill="none" stroke="#23252c" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="314.16 471.24"
+                        transform="rotate(150 90 90)" />
+                <circle cx="90" cy="90" r="75" fill="none" stroke="url(#kg1)" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="113.88 471.24"
+                        transform="rotate(150 90 90)"
+                        style="filter:drop-shadow(0 2px 8px rgba(232,16,46,.55))" />
+                <line x1="90" y1="21" x2="90" y2="9" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="rcenter"><div class="rctr">
+                <p class="fig tnum">−11</p>
+                <p class="figsub">Form TSB</p>
+              </div></div>
+              <span class="mouth">Detraining</span>
+              <span class="slab l tnum">−40</span>
+              <span class="slab zero tnum">0</span>
+              <span class="slab r tnum">+40</span>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div class="pair">
+            <div><p class="k">Fitness</p><p class="v tnum">22</p><p class="u">CTL</p></div>
+            <div><p class="k">Fatigue</p><p class="v tnum">33</p><p class="u">ATL</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> rongga kosong (1), busur tanpa skala (2), dan kesan
+      sunyi (4) — semuanya tanpa mengubah satu baris susunan pun. <b>Trade-off jujur:</b> label
+      skala duduk di rongga kiri-kanan; di layar 320 px rongga menyempit, jadi posisinya harus
+      diukur ulang di sana sebelum dipakai.</p>
+  </div>
+
+  <!-- ============ M2 — Panel Lebar ============ -->
+  <div class="mock">
+    <h2><span class="num">M2</span>Panel Lebar <span class="tag">struktur baru</span></h2>
+    <p class="desc">Rongga kiri-kanan dijadikan <b>kolom kedua</b>: ring 140 px di kiri; kanannya
+      nama pita, skala ±40 dengan penanda posisi TSB, dan dua angka sebagai satu daftar
+      instrumen. Kartu jadi padat dan tak lagi didominasi hitam kosong.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="kbody">
+          <div class="m2">
+            <div class="m2ring">
+              <svg width="140" height="140" viewBox="0 0 140 140">
+                <defs><linearGradient id="kg2" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#ff4d5e" /><stop offset="100%" stop-color="#e8102e" />
+                </linearGradient></defs>
+                <circle cx="70" cy="70" r="58.33" fill="none" stroke="#23252c" stroke-width="9.33"
+                        stroke-linecap="round" stroke-dasharray="244.34 366.51"
+                        transform="rotate(150 70 70)" />
+                <circle cx="70" cy="70" r="58.33" fill="none" stroke="url(#kg2)" stroke-width="9.33"
+                        stroke-linecap="round" stroke-dasharray="88.67 366.51"
+                        transform="rotate(150 70 70)"
+                        style="filter:drop-shadow(0 2px 8px rgba(232,16,46,.55))" />
+                <line x1="70" y1="16.34" x2="70" y2="7" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+              <div class="m2ctr"><div class="m2in">
+                <b class="tnum">−11</b><span>Form TSB</span>
+              </div></div>
+            </div>
+            <div class="m2r">
+              <p class="m2band">Detraining</p>
+              <div class="m2scale">
+                <span class="e">−40</span>
+                <span class="tr"><u></u><i></i></span>
+                <span class="e">+40</span>
+              </div>
+              <div class="m2rows">
+                <div class="m2row">
+                  <span class="k">Fitness</span>
+                  <span><b class="n tnum">22</b><span class="un">CTL</span></span>
+                </div>
+                <div class="m2row">
+                  <span class="k">Fatigue</span>
+                  <span><b class="n tnum">33</b><span class="un">ATL</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="spacer"></div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> rongga (1), skala (2), dan penumpukan empat teks di
+      satu sumbu (3) sekaligus — pita punya ruangnya sendiri sebagai judul, bukan tamu di dalam
+      mulut busur. <b>Trade-off:</b> nama pita keluar dari mulut busur (kekhasan §42 hilang)
+      dan ring mengecil 180 → 140; ini satu-satunya varian yang menyentuh susunan.</p>
+  </div>
+
+  <!-- ============ M3 — Tile Cerita ============ -->
+  <div class="mock">
+    <h2><span class="num">M3</span>Tile Cerita <span class="tag">kedalaman</span></h2>
+    <p class="desc">Atas tetap seperti sekarang; pasangan bawah naik derajatnya jadi dua
+      <b>tile kaca</b> — tiap angka diberi bar pembanding terhadap skala 0–60, sehingga 22 dan
+      33 bukan lagi angka telanjang tapi posisi yang bisa dibaca sekilas.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="kbody">
+          <div class="gwrap">
+            <div class="ringbox">
+              <svg width="180" height="180" viewBox="0 0 180 180">
+                <defs><linearGradient id="kg3" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#ff4d5e" /><stop offset="100%" stop-color="#e8102e" />
+                </linearGradient></defs>
+                <circle cx="90" cy="90" r="75" fill="none" stroke="#23252c" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="314.16 471.24"
+                        transform="rotate(150 90 90)" />
+                <circle cx="90" cy="90" r="75" fill="none" stroke="url(#kg3)" stroke-width="12"
+                        stroke-linecap="round" stroke-dasharray="113.88 471.24"
+                        transform="rotate(150 90 90)"
+                        style="filter:drop-shadow(0 2px 8px rgba(232,16,46,.55))" />
+                <line x1="90" y1="21" x2="90" y2="9" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="rcenter"><div class="rctr">
+                <p class="fig tnum">−11</p>
+                <p class="figsub">Form TSB</p>
+              </div></div>
+              <span class="mouth">Detraining</span>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div class="tiles">
+            <div class="tile">
+              <p class="k">Fitness</p><p class="v tnum">22</p><p class="u">CTL</p>
+              <div class="tbar"><i style="width:37%"></i></div>
+            </div>
+            <div class="tile">
+              <p class="k">Fatigue</p><p class="v tnum">33</p><p class="u">ATL</p>
+              <div class="tbar"><i style="width:55%"></i></div>
+            </div>
+          </div>
+          <p class="tilescap">Bar = posisi terhadap skala 0–60 (ilustratif)</p>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> penumpukan teks (3) dan kesan sunyi (4) — dua baris
+      yang tadinya identik kini punya bentuk dan bacaan sendiri. <b>Trade-off:</b> tile
+      mengembalikan kotak yang pernah dihapus dari kartu ini; bar 0–60 adalah skala yang
+      harus dipastikan berarti (mis. rentang CTL/ATL wajar) sebelum dipakai sungguhan —
+      angkanya di mockup bersifat ilustratif.</p>
+  </div>
+
+  <!-- ============ M4 — Segmen ============ -->
+  <div class="mock">
+    <h2><span class="num">M4</span>Segmen <span class="tag">gauge baru</span></h2>
+    <p class="desc">Busur dipecah jadi <b>16 segmen</b> seperti head unit sepeda: nilai dibulatkan
+      ke segmen terdekat (6 dari 16 untuk −11), ujung rata, dan skala −40/+40 ikut ditambahkan.
+      Bentuk yang paling "alat ukur" tanpa mengubah susunan apa pun.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="kbody">
+          <div class="gwrap">
+            <div class="ringbox">
+              <svg width="180" height="180" viewBox="0 0 180 180">
+                <defs><linearGradient id="kg4" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#ff4d5e" /><stop offset="100%" stop-color="#e8102e" />
+                </linearGradient></defs>
+                <!-- 16 segmen penuh 240° (15,635 px isi + 4 px celah), ujung rata (butt) -->
+                <circle cx="90" cy="90" r="75" fill="none" stroke="#23252c" stroke-width="12"
+                        stroke-dasharray="15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 500"
+                        transform="rotate(150 90 90)" />
+                <!-- 6 segmen terisi = ringFrac 0,3625 × 16 dibulatkan -->
+                <circle cx="90" cy="90" r="75" fill="none" stroke="url(#kg4)" stroke-width="12"
+                        stroke-dasharray="15.635 4 15.635 4 15.635 4 15.635 4 15.635 4 15.635 500"
+                        transform="rotate(150 90 90)"
+                        style="filter:drop-shadow(0 2px 8px rgba(232,16,46,.55))" />
+                <line x1="90" y1="21" x2="90" y2="9" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="rcenter"><div class="rctr">
+                <p class="fig tnum">−11</p>
+                <p class="figsub">Form TSB</p>
+              </div></div>
+              <span class="mouth">Detraining</span>
+              <span class="slab l tnum">−40</span>
+              <span class="slab r tnum">+40</span>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div class="pair">
+            <div><p class="k">Fitness</p><p class="v tnum">22</p><p class="u">CTL</p></div>
+            <div><p class="k">Fatigue</p><p class="v tnum">33</p><p class="u">ATL</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> skala (2) dan kesan sunyi (4) lewat bentuk segmen yang
+      familiar dari cyclocomputer. <b>Trade-off jujur:</b> kepala busur jadi rata (butt) —
+      siluet mulut berubah; dan pembulatan ke segmen berarti angka 11,3 bisa tampil sebagai
+      6/16 = 37,5%, jadi pembulatan harus dijelaskan di UI-SPEC, bukan disembunyikan.</p>
+  </div>
+
+  <p class="lede" style="margin-top:34px">
+    Balas dengan <b>nomor varian</b> (mis. "M1 saja" atau "M2, tapi ring-nya 180 px") atau
+    campuran ("atas M4, bawah M3"). Saya bisa juga menggabungkan beberapa lalu memasangnya ke
+    <b>Dashboard.svelte</b> sungguhan beserta tes DOM-nya — atau merender ulang pilihan Anda
+    di 320 px dulu sebelum diputuskan.
+  </p>
+
+</div>
+</body>
+</html>

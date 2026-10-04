@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zonadua — Hero Dashboard: 4 arah alternatif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet" />
+<style>
+  /* Token persis dari src/app.css (Crimson Clean v5.1) */
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33; --tone-detrain:#ffb35a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:40px 16px 90px; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em;
+  }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 26px; line-height:1.6; }
+  .lede em { color:var(--deep); font-style:italic; font-weight:600; }
+  .lede b { color:var(--ink); }
+
+  .diag { background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--crimson);
+          border-radius:14px; padding:16px 18px; margin-bottom:30px; }
+  .diag h3 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.09em; margin-bottom:10px; }
+  .diag ol { margin:0; padding-left:18px; }
+  .diag li { font-size:12.5px; color:var(--ink-dim); line-height:1.6; margin-bottom:7px; }
+  .diag li b { color:var(--ink); }
+  .diag .ask { font-size:12px; color:var(--ink-dim); margin-top:12px; font-style:italic; }
+
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px;
+          padding:22px 20px 14px; margin-bottom:18px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 10px 28px -14px rgba(23,24,28,.14); }
+  .mock h2 { font-size:14px; font-weight:800; letter-spacing:-.01em; margin-bottom:3px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock h2 .tag { font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+                  color:var(--ink-dim); border:1px solid var(--hairline-strong); border-radius:999px;
+                  padding:2px 8px; margin-left:8px; vertical-align:2px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.55; margin-bottom:16px; }
+  .mock p.desc b { color:var(--ink); }
+  .mock .solve { font-size:12px; color:var(--ink-dim); line-height:1.55; margin-top:12px;
+                 padding-top:12px; border-top:1px dashed var(--hairline-strong); }
+  .mock .solve b { color:var(--deep); }
+  .stage { background:var(--canvas); border-radius:18px; padding:20px 12px 22px; margin-bottom:6px; }
+  .stcap { display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:.08em;
+           text-transform:uppercase; color:var(--ink-dim); background:var(--surface);
+           border:1px solid var(--hairline); padding:3px 9px; border-radius:999px; margin-bottom:10px; }
+
+  /* ===== Monolith + browser chrome (sama seperti app) ===== */
+  .mono { border-radius:26px; background:var(--mono); color:#fff; border:1px solid rgba(255,255,255,.10);
+    overflow:hidden; box-shadow:0 10px 30px rgba(20,21,25,.25), 0 6px 28px -10px rgba(232,16,46,.18); }
+  .chrome { padding:9px 14px; background:rgba(0,0,0,.4); border-bottom:1px solid rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .lights { display:flex; gap:6px; }
+  .lights i { width:10px; height:10px; border-radius:999px; display:block; }
+  .lights i:nth-child(1) { background:var(--crimson); }
+  .lights i:nth-child(2) { background:#eab308; opacity:.85; }
+  .lights i:nth-child(3) { background:#22c55e; opacity:.85; }
+  .wtabs { display:flex; gap:2px; flex:1; justify-content:center; }
+  .wtab { font-size:9.5px; font-weight:700; letter-spacing:.04em; padding:4px 11px; border-radius:999px;
+          color:rgba(255,255,255,.55); display:flex; align-items:center; gap:4px; }
+  .wtab.on { background:rgba(255,255,255,.12); color:var(--on-mono); }
+  .wtab.on i { width:5px; height:5px; border-radius:999px; background:var(--crimson); }
+  .live { display:flex; align-items:center; gap:5px; opacity:.3; }
+  .live i { width:6px; height:6px; border-radius:999px; background:var(--crimson); }
+  .live b { font-size:9px; font-weight:800; letter-spacing:.14em; color:rgba(255,255,255,.5); }
+
+  .monobody { padding:16px; display:flex; flex-direction:column; gap:14px; }
+  .monobody.snug { gap:11px; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ===== V0 — apa yang ada sekarang ===== */
+  .hero { display:flex; align-items:center; gap:12px; }
+  .ringwrap { position:relative; flex:none; width:112px; height:112px; }
+  .ringtxt { position:absolute; inset:0; display:grid; place-items:center; text-align:center; }
+  .ringtxt b { font-size:26px; font-weight:800; line-height:1; display:block; }
+  .ringtxt span { font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+                  color:var(--on-mono-dim); display:block; margin-top:6px; }
+  .cards { flex:1; min-width:0; display:grid; grid-template-columns:1fr 1fr; gap:8px;
+           transform:translateY(-11px); }
+  .card { border:1px solid var(--hairline-dark); background:rgba(35,37,44,.6); border-radius:12px;
+          padding:8px 6px; text-align:center; }
+  .card .k { font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+             color:var(--on-mono-dim); }
+  .card .v { font-size:20px; font-weight:800; line-height:1; margin-top:4px; }
+  .card .u { font-size:9px; font-weight:600; letter-spacing:.06em; color:rgba(155,161,170,.7); margin-top:4px; }
+  .v0pill { display:flex; align-items:center; justify-content:center; gap:8px;
+            border:1px solid var(--hairline-dark); background:rgba(35,37,44,.6);
+            border-radius:999px; padding:5px 16px; }
+  .v0pill b { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+              color:var(--tone-detrain); }
+  .v0pill s { width:1px; height:12px; background:var(--hairline-dark); }
+  .v0pill em { font-size:11px; font-weight:700; font-style:normal; color:var(--on-mono-dim); }
+  .trio { display:grid; grid-template-columns:1fr 1fr 1fr; text-align:center;
+          border-top:1px solid var(--hairline-dark); padding-top:12px; }
+  .trio .k { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .trio .v { font-size:16px; font-weight:800; margin-top:2px; }
+  .trio > div + div { border-left:1px solid var(--hairline-dark); }
+
+  /* ===== V1 — Putusan Dulu ===== */
+  .v1band { font-size:22px; font-weight:800; letter-spacing:.02em; text-transform:uppercase;
+            color:var(--tone-detrain); line-height:1; }
+  .v1sub { font-size:11px; font-weight:700; color:var(--on-mono-dim); margin-top:7px; }
+  .scale { display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .scale .e { font-size:9px; font-weight:700; color:rgba(155,161,170,.85); font-variant-numeric:tabular-nums; }
+  .scale .track { position:relative; flex:1; height:4px; border-radius:999px; background:#23252c; }
+  .scale .track i { position:absolute; top:50%; width:2px; height:12px; border-radius:2px;
+                    background:var(--tone-detrain); transform:translate(-50%,-50%); }
+  .scale .track u { position:absolute; top:50%; width:2px; height:8px; border-radius:2px;
+                    background:rgba(247,248,250,.32); transform:translate(-50%,-50%); }
+  .v1row { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; text-align:center;
+           border-top:1px solid var(--hairline-dark); padding-top:12px; }
+  .v1row .k { font-size:9px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .v1row .v { font-size:17px; font-weight:800; margin-top:3px; }
+  .v1row .v.rose { color:var(--rose); }
+  .v1row > div + div { border-left:1px solid var(--hairline-dark); }
+
+  /* ===== V2 — Satu Angka ===== */
+  .v2 { display:flex; align-items:center; gap:16px; }
+  .v2pos { flex:none; }
+  .v2pos b { font-size:42px; font-weight:800; line-height:.9; letter-spacing:-.03em; display:block; }
+  .v2pos span { font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+                color:var(--on-mono-dim); display:block; margin-top:7px; }
+  .v2div { width:1px; align-self:stretch; background:var(--hairline-dark); }
+  .v2stack { flex:1; display:flex; flex-direction:column; gap:11px; }
+  .v2stack .r { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .v2stack .k { font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .v2stack .v { font-size:19px; font-weight:800; }
+  .v2band { margin-top:13px; padding-top:11px; border-top:1px solid var(--hairline-dark);
+            display:flex; align-items:center; justify-content:space-between; }
+  .v2band b { font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--tone-detrain); }
+  .v2band span { font-size:11px; font-weight:700; color:var(--on-mono-dim); }
+
+  /* ===== V3 — Mulut Busur ===== */
+  .v3 { display:flex; flex-direction:column; align-items:center; }
+  .v3ring { position:relative; width:150px; height:150px; }
+  .v3ring .inner { position:absolute; inset:0; display:grid; place-items:center; text-align:center; }
+  .v3ring .inner b { font-size:29px; font-weight:800; line-height:1; display:block;
+                     transform:translateY(-7px); }
+  .v3ring .inner i { font-size:9px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+                     color:var(--on-mono-dim); font-style:normal; display:block; margin-top:4px;
+                     transform:translateY(-6px); }
+  .v3ring .bandin { position:absolute; left:50%; bottom:39px; transform:translateX(-50%);
+                    font-size:9.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+                    color:var(--tone-detrain); white-space:nowrap; }
+  .v3pair { display:grid; grid-template-columns:1fr 1fr; gap:0; width:100%; margin-top:4px;
+            border-top:1px solid var(--hairline-dark); padding-top:11px; text-align:center; }
+  .v3pair .k { font-size:9px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .v3pair .v { font-size:16px; font-weight:800; margin-top:2px; }
+  .v3pair > div + div { border-left:1px solid var(--hairline-dark); }
+
+  /* ===== V4 — Panel Instrumen ===== */
+  .v4 { display:flex; flex-direction:column; }
+  .v4 .row { display:flex; align-items:center; gap:10px; padding:7px 0;
+             border-bottom:1px solid var(--hairline-dark); }
+  .v4 .row .k { width:56px; flex:none; font-size:9.5px; font-weight:700; letter-spacing:.05em;
+                text-transform:uppercase; color:var(--on-mono-dim); }
+  .v4 .row .track { flex:1; height:4px; border-radius:999px; background:#23252c; position:relative; }
+  .v4 .row .track i { position:absolute; left:0; top:0; bottom:0; border-radius:999px; background:var(--rose); }
+  .v4 .row .track.mid i { background:var(--tone-detrain); }
+  .v4 .row .v { width:52px; flex:none; text-align:right; font-size:15px; font-weight:800; }
+  .v4 .row .u { width:30px; flex:none; text-align:right; font-size:9px; font-weight:700;
+                letter-spacing:.05em; color:rgba(155,161,170,.75); }
+  .v4 .wk { display:grid; grid-template-columns:1fr 1fr 1fr; text-align:center; padding-top:12px; }
+  .v4 .wk .k { font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .v4 .wk .v { font-size:16px; font-weight:800; margin-top:2px; }
+  .v4 .wk > div + div { border-left:1px solid var(--hairline-dark); }
+
+  @media (max-width:400px) {
+    .v2pos b { font-size:36px; }
+    .v1row .v { font-size:15px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Hero Dashboard — 4 arah alternatif</h1>
+  <p class="lede">
+    Kartu monolith yang sama, data yang sama persis (<b>TSB −16 · DETRAINING · CTL 23 · ATL 39 ·
+    5,8 h · 124 km · 313 TSS</b>), hanya <em>susunannya</em> yang berbeda. V0 adalah yang
+    sekarang berjalan, supaya perubahannya bisa dinilai setara dan bukan dari ingatan.
+  </p>
+
+  <div class="diag">
+    <h3>Kenapa yang sekarang terasa belum cocok — dugaan saya</h3>
+    <ol>
+      <li><b>Tiga benda beradu di baris atas.</b> Busur kecil, lalu dua kartu yang bentuknya
+        identik. Ketiganya bobot visual yang hampir sama, jadi mata tidak tahu mana yang
+        dibaca lebih dulu — dan tidak ada yang jadi fokus.</li>
+      <li><b>Angka −16 tidak punya skala.</b> Ia duduk di dalam busur yang panjangnya berubah
+        menurut nilainya sendiri, jadi busur itu tidak menjelaskan apa pun. Tanpa penanda
+        ±40, "−16" tidak berarti apa-apa bagi pembalap baru.</li>
+      <li><b>Pil selebar kartu terbaca sebagai tombol.</b> Ia punya border, isi, dan tepi rata
+        kiri-kanan seperti kontrol — padahal ia hanya keterangan.</li>
+      <li><b>Bertingkat tiga, tapi dua di antaranya bicara hal yang sama.</b> Baris
+        TIME/DISTANCE/STRESS di dalam hero mengulang persis kartu <i>Last 7 days</i> tepat di
+        bawahnya. Satu di antaranya berlebih.</li>
+      <li><b>Mulut busur terbuang.</b> Busur 240° meninggalkan celah terbuka di bawah, dan
+        celah itu justru ruang paling longgar di seluruh kartu.</li>
+    </ol>
+    <p class="ask">Kalau ada yang tidak sesuai dengan yang Anda rasakan, sebutkan nomornya —
+       dugaan yang salah lebih berbahaya daripada tidak punya dugaan.</p>
+  </div>
+
+  <!-- ============ V0 ============ -->
+  <div class="mock">
+    <h2><span class="num">V0</span>Yang sekarang berjalan <span class="tag">pembanding</span></h2>
+    <p class="desc">Busur 112 px + dua kartu, pil selebar kartu, lalu trio mingguan. Dipakai
+      sebagai titik nol: tiga baris setinggi hampir sama, tanpa fokus.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span>
+            <span class="wtab">Form</span>
+            <span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody">
+          <div class="hero">
+            <div class="ringwrap">
+              <svg width="112" height="112" viewBox="0 0 112 112">
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#23252c" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray="184.3 276.5"
+                        transform="rotate(150 56 56)" />
+                <circle cx="56" cy="56" r="44" fill="none" stroke="#ff4d5e" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray="55.3 276.5"
+                        transform="rotate(150 56 56)" />
+                <line x1="56" y1="17" x2="56" y2="7" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="ringtxt"><div>
+                <b class="tnum">−16</b><span>Form TSB</span>
+              </div></div>
+            </div>
+            <div class="cards">
+              <div class="card"><p class="k">Fitness</p><p class="v tnum">23</p><p class="u">CTL</p></div>
+              <div class="card"><p class="k">Fatigue</p><p class="v tnum">39</p><p class="u">ATL</p></div>
+            </div>
+          </div>
+          <div class="v0pill"><b>Detraining</b><s></s><em class="tnum">+0 pts / 7d</em></div>
+          <div class="trio">
+            <div><p class="k">Time</p><p class="v tnum">5.8h</p></div>
+            <div><p class="k">Distance</p><p class="v tnum">124 km</p></div>
+            <div><p class="k">Stress</p><p class="v tnum">313 TSS</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ V1 ============ -->
+  <div class="mock">
+    <h2><span class="num">V1</span>Putusan Dulu</h2>
+    <p class="desc">Yang naik ke posisi teratas adalah <b>jawabannya</b>, bukan angka mentahnya:
+      pita namanya, sebesar judul. Angka dan skala ±40 jadi keterangan di bawahnya. Busur
+      dibuang seluruhnya.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody">
+          <div>
+            <p class="v1band">Detraining</p>
+            <p class="v1sub">Form <span class="tnum">−16</span> · turun <span class="tnum">0</span> pts dalam 7 hari</p>
+            <div class="scale">
+              <span class="e">−40</span>
+              <span class="track"><u style="left:50%"></u><i style="left:30%"></i></span>
+              <span class="e">+40</span>
+            </div>
+          </div>
+          <div class="v1row">
+            <div><p class="k">Fitness</p><p class="v tnum">23</p></div>
+            <div><p class="k">Fatigue</p><p class="v tnum">39</p></div>
+            <div><p class="k">Form</p><p class="v rose tnum">−16</p></div>
+            <div><p class="k">7 hari</p><p class="v tnum">+0</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> buta hierarki (1) dan angka tanpa skala (2). Tiga baris
+      jadi dua, dan baris pertama akhirnya punya satu titik masuk. Trio mingguan dibuang karena
+      kartu <i>Last 7 days</i> di bawah sudah menyampaikannya.</p>
+  </div>
+
+  <!-- ============ V2 ============ -->
+  <div class="mock">
+    <h2><span class="num">V2</span>Satu Angka</h2>
+    <p class="desc">Versi paling tenang. Satu angka besar jadi fokusnya, dibaca sebagai angka
+      (bukan sebagai potongan busur), ditemani dua pembanding kecil. Nol grafik.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody">
+          <div class="v2">
+            <div class="v2pos">
+              <b class="tnum">−16</b>
+              <span>Form TSb</span>
+            </div>
+            <div class="v2div"></div>
+            <div class="v2stack">
+              <div class="r"><span class="k">Fitness</span><span class="v tnum">23</span></div>
+              <div class="r"><span class="k">Fatigue</span><span class="v tnum">39</span></div>
+              <div class="r"><span class="k">7 hari</span><span class="v tnum">+0 pts</span></div>
+            </div>
+          </div>
+          <div class="v2band"><b>Detraining</b><span>Tidak ada latihan membangun</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> titik fokus (1) dan pil-terbaca-sebagai-tombol (3) —
+      pitanya turun jadi satu baris tipis di dasar kartu. Angkanya 42 px, dan di situ ia satu-satunya
+      hal besar di layar.</p>
+  </div>
+
+  <!-- ============ V3 ============ -->
+  <div class="mock">
+    <h2><span class="num">V3</span>Mulut Busur</h2>
+    <p class="desc">Tetap memakai busur, tapi <b>dibesarkan ke 150 px</b> dan namanya
+      dipindahkan ke dalam mulut busur — celah terbuka di bawah yang selama ini terbuang.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody">
+          <div class="v3">
+            <div class="v3ring">
+              <svg width="150" height="150" viewBox="0 0 150 150">
+                <circle cx="75" cy="75" r="59" fill="none" stroke="#23252c" stroke-width="11"
+                        stroke-linecap="round" stroke-dasharray="247.2 370.7"
+                        transform="rotate(150 75 75)" />
+                <circle cx="75" cy="75" r="59" fill="none" stroke="#ff4d5e" stroke-width="11"
+                        stroke-linecap="round" stroke-dasharray="74.2 370.7"
+                        transform="rotate(150 75 75)"/>
+                <line x1="75" y1="23" x2="75" y2="10" stroke="#f7f8fa" stroke-opacity=".32"
+                      stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="inner">
+                <div>
+                  <b class="tnum">−16</b>
+                  <i>Form TSB</i>
+                </div>
+              </div>
+              <span class="bandin">Detraining</span>
+            </div>
+            <div class="v3pair">
+              <div><p class="k">Fitness</p><p class="v tnum">23 CTL</p></div>
+              <div><p class="k">Fatigue</p><p class="v tnum">39 ATL</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> mulut busur terbuang (5) dan angka tanpa skala (2) —
+      penanda 0 di puncak busur mendapat teman: ujung atas = +40, ujung bawah = −40.
+      <b>Sudah diukur di DOM, bukan dikira-kira.</b> Ring 112 px (V0): celah bersih antar kepala
+      busur hanya <b>66 px</b>, sedangkan label terpanjang <i>RECOVER FIRST</i> 77 px (9 px) —
+      memang tidak muat; penolakan §40 benar. Ring 150 px: bila pita ditaruh tepat setinggi kepala
+      busur (titik terlebar) celah bersihnya <b>91 px</b>. <i>RECOVER FIRST</i> butuh 86 px pada
+      tracking .1em — muat, tapi sisa hanya ≈2,5 px per sisi (<b>melekat</b>); contoh di atas
+      karena itu memakai tracking .06em (81 px) supaya napasnya ≈5 px. Menaruh pita lebih dalam
+      dari kepala busur menyempitkan celah mengikuti siluet ring (≈13 px lebih dalam → sisa 81 px,
+      label terpanjang mulai terpotong). Jadi keputusan V3 bukan "muat / tidak", tapi "seberapa
+      ketat": ring 150 px + tracking .06em, atau ring dinaikkan lagi.</p>
+  </div>
+
+  <!-- ============ V4 ============ -->
+  <div class="mock">
+    <h2><span class="num">V4</span>Panel Instrumen</h2>
+    <p class="desc">Tanpa hiasan sama sekali: tiap angka duduk di kolom dan garis dasar yang sama,
+      seperti cyclocomputer. Informasi terbanyak per piksel.</p>
+    <div class="stage">
+      <span class="stcap">Hari ini</span>
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="wtabs">
+            <span class="wtab on"><i></i>Today</span><span class="wtab">Form</span><span class="wtab">Load</span>
+          </div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="monobody snug">
+          <div class="v4">
+            <div class="row">
+              <span class="k">Form</span>
+              <span class="track mid"><i style="width:30%"></i></span>
+              <span class="v tnum">−16</span><span class="u">TSB</span>
+            </div>
+            <div class="row">
+              <span class="k">Fitness</span>
+              <span class="track"><i style="width:23%"></i></span>
+              <span class="v tnum">23</span><span class="u">CTL</span>
+            </div>
+            <div class="row">
+              <span class="k">Fatigue</span>
+              <span class="track"><i style="width:39%"></i></span>
+              <span class="v tnum">39</span><span class="u">ATL</span>
+            </div>
+          </div>
+          <div class="wk">
+            <div><p class="k">Time</p><p class="v tnum">5.8h</p></div>
+            <div><p class="k">Distance</p><p class="v tnum">124 km</p></div>
+            <div><p class="k">Stress</p><p class="v tnum">313 TSS</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="solve"><b>Memecahkan:</b> tiga benda beradu (1) — tidak ada lagi tiga objek, hanya
+      tiga baris sejajar yang bisa dibandingkan langsung. Trade-off jujurnya: pita
+      <i>DETRAINING</i> hilang sebagai objek, jadi warna dan namanya harus dipindahkan ke baris
+      <i>Form</i>, atau warna tidak lagi menyampaikan keadaan.</p>
+  </div>
+
+  <p class="lede" style="margin-top:34px">
+    Balas dengan <b>nomor varian</b> (mis. "V1, tapi trio-nya dipertahankan") atau campuran
+    ("kepala V1, baris bawah V4"). Saya juga bisa mengulang varian mana pun pada 320 px sebelum
+    Anda memutuskan — beberapa di antaranya akan lebih rapat daripada yang terlihat di sini.
+  </p>
+
+</div>
+</body>
+</html>

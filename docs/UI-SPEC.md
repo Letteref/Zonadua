@@ -1974,3 +1974,258 @@ lebih ketat — chrome pil harus **sama persis** dengan dua kartu di sebelahnya,
 diukur dari **dasar busur tercetak**, bukan dari kotak 112 px yang menjulur ~17 px melewatinya.
 
 Suite E2E: **56 tes hijau**, dari 8 merah yang semuanya berada di pane ini.
+
+> **Koreksi:** geometri busur di §41 (`rotate(150 56 56)`, kotak 112 px, `ARC_RISE` 11 px) dan
+> pita status selebar kartu **digantikan oleh §42**, yang mengganti ring dan memindahkan pita ke
+> mulut busur. Cacah suite turun ke **55** setelah strip `today` dihapus bersama stripnya.
+
+## §42 — Pita pindah ke mulut busur: ring 150 px, tiga baris jadi dua
+
+Laporan: *"saya merasa masih kurang cocok dengan visual layout pada hero monolith dashboard"*,
+lalu — setelah empat arah alternatif disiapkan di `mockups/hero-dashboard-variants.html` sebagai
+perbandingan setara dengan keadaan sekarang — pilihan jatuh ke **V3 "Mulut Busur"**.
+
+Bagian ini menggantikan §41 pada dua hal: geometri busur dan tempat pita. Yang **bertahan** dari
+§41 adalah temuan yang tidak berubah — nol yang tak ada tetap harus jadi `NO DATA`, dan ketiga
+pane tetap harus berhenti di satu garis.
+
+### Keluhan dirumuskan dulu, supaya perubahannya bisa dinilai
+
+Tiga masalah hero lama, dan yang pertama justru yang menghalangi yang lain:
+
+1. **Pita tidak bisa tinggal di dalam busur 112 px.** `RECOVER FIRST` butuh ≈77 px pada 9 px,
+sedangkan celah bersih antar dua kepala bulat busur 112 px hanya **66 px**. Pita terdorong
+keluar dan harus mengarang barisnya sendiri — akar dari "baris yatim" yang dikejar §38–§41.
+2. **Angka −16 duduk di busur yang panjangnya mengikuti nilainya sendiri**, jadi busur itu tidak
+menjelaskan apa pun: penanda 0 di puncak sudah ada, tetapi ujung ±40 tidak.
+3. **Mulut busur terbuang** — celah terbuka 240° di bawah justru ruang paling longgar di kartu.
+
+### Yang berubah
+
+- **Ring 112 → 150 px.** `GAUGE_BOX = 150`, `R = 59`, `STROKE = 10`, pusat `GAUGE_C = 75`.
+- **Pita pindah ke dalam mulut busur**, tepat setinggi kepala bulat — `top = GAUGE_C + R/2`,
+yaitu **R/2 = 29,5 px** di bawah pusat, titik **terlebar** mulut. `ARC_RISE` naik 11 → **14,75 px**
+(massa tercetak membentang y 11..109,5 dari kotak 150 px, pusatnya 60,25 versus pusat kotak 75),
+sehingga angka TSB ikut terangkat ke sumbu busur, bukan sumbu kotak.
+- **Pil status lenyap** bersama barisnya. Pita bukan lagi garis di bawah angka; ia tempat angka
+itu tinggal.
+- **Dua kartu fitness/fatigue jadi satu pasangan** di bawah ring, tanpa chrome kartu, di sumbu
+kartu — bentuk yang sama dengan trio pane Form.
+- **Trio mingguan Today dihapus.** Kartu *Last 7 days* persis di bawah hero sudah menyatakan
+Time/Distance/Stress yang sama; trio itu adalah pengulangan.
+
+### Batas yang diukur, bukan diperkirakan
+
+Mockup versi pertama menaksir celah dalam ring 150 px sebagai "≈79 px secara proporsional" dan
+menyebutnya cukup. Arahnya salah: yang menentukan adalah celah **bersih antar kepala bulat**,
+`2·(R·cos 30° − STROKE/2)`:
+
+| Ring | Celah bersih antar kepala | `RECOVER FIRST` @9,5 px/.06em | Muat? |
+| --- | --- | --- | --- |
+| 112 px (lama) | 66 px | 81 px | tidak — §40/§41 benar menolaknya |
+| 150 px (sekarang) | **92,2 px** | **81,3 px** | ya, sisa ≈5 px per sisi |
+
+Diukur langsung di DOM aplikasi yang berjalan (bukan di mockup, bukan dari skala): pada 320,
+360, 390 dan 430 px semuanya melaporkan ring 150 px, celah 92,2 px, dan pita `DETRAINING`
+64 px dengan pusat **29,5 px** di bawah pusat ring; `RECOVER FIRST` 81,3 px. Menaruh pita ~13 px
+lebih dalam menyempitkan celah mengikuti siluet ring sampai label terpanjang mulai terpotong —
+karena itu `top` **diturunkan dari radius** (`R/2`), bukan angka yang diketik.
+
+### Tes: yang berubah, dan satu yang sengaja dihapus
+
+| Grup | Perubahan |
+| --- | --- |
+| `240-degree gauge` | hanya literal rotasi `rotate(150 56 56)` → `rotate(150 75 75)`; cx/cy/r tetap dibaca dari DOM |
+| `figure rides the arc's centre line` | dulu mengukur kolom kartu di samping ring; sekarang angka TSB versus `gaugeArcMid`, **plus** ring terpusat pada kartu |
+| `load figures read in full` | selector pindah ke pasangan di bawah ring; tuntutan tak-kliping dan sel setara tetap |
+| `form band sits inside the gauge mouth` (**baru**) | pita ≤ celah antar kepala, pusat tepat di kedalaman kepala, terpusat pada ring |
+| `form band name carries its own tone` | tabel `BAND_TONE` dipertahankan utuh; geometri pil dibuang bersama pilnya |
+| `load figures stay compact under the ring` | tinggi dan rhythm sama; datum bergeser dari sumbu busur ke *clearance* terhadap `gaugeArcBottom` |
+| strip `today` **dihapus**, strip `form` tetap | strip yang diuji sudah tidak ada, jadi satu kasus tesnya ikut hilang — **56 → 55 tes E2E** |
+
+Satu grup baru (geometri mulut) ditambahkan dan satu grup lama (`BAND_TONE`) dipertahankan utuh;
+yang hilang satu kasus, dan hilang karena **fitur yang diukurnya dihapus**, bukan karena gagal.
+
+### Bukti menangkap regresi
+
+Menggeser `top` pita 6 px lebih dalam dari `R/2` → tes baru gagal persis di situ:
+`Math.abs(centreBelowRingCentre − capDepth)` · `Expected: <= 1` · `Received: 6`. Dipulihkan
+setelah terbukti.
+
+Tentang pola tiga-baris di pasangan itu: versi pertama menaruh unitnya sebagai `<span>` inline
+di dalam baris nilai, dan empat tes pane gagal dengan
+`the Today pane's last row stops 5px short` — kotak inline tidak mencapai dasar sel. Dipisah jadi
+baris ketiga (label · angka · unit, pola yang sudah dipakai seluruh app) → 0 px.
+
+### Trade-off yang jujur
+
+- **Trio mingguan Today hilang.** Ia memang duplikat kartu *Last 7 days*, tetapi pembalap yang
+melihat hero tanpa menggulir kini kehilangan jam/kilometer/TSS minggu itu di dalam kartu.
+- **Pasangan fitness/fatigue kehilangan chrome kartunya.** Bobot visualnya berkurang dengan
+sengaja, supaya busur kembali jadi fokus tunggal tier 1 — tetapi ia juga jadi kurang menonjol
+daripada kartu-kartu lain di halaman saat dipindai cepat.
+
+## §43 — Kluster hero dinaikkan skalanya: ring 180 px, angka 42 px, pita 12 px
+
+Laporan: *"sesuaikan ukuran dan layout content didalam monolith agar tidak terlihat terlalu
+kecil, dan juga sizing agar terlihat enak untuk dilihat. karena layout -16, form tsb, dan
+detraining terlihat kurang enak dilihat"*.
+
+§42 menyelesaikan **tempat** ketiga elemen itu; §43 menyelesaikan **ukurannya**. Ring 150 px
+dengan angka 29 px dan pita 9,5 px ternyata proporsinya salah arah: makin besar kotaknya,
+makin kecil terasa isinya, dan `DETRAINING` pada 9,5 px terbaca sebagai kaki lalat di
+mulut busur — bukan sebagai jawaban atas pertanyaan yang diajak grafik itu.
+
+### Yang diubah, dan ukuran lamanya
+
+| Elemen | §42 | §43 | Alasan |
+| --- | --- | --- | --- |
+| `GAUGE_BOX` | 150 | **180** | lebar kartu di 320 px adalah 240 px; 180 masih menyisakan 30 px per sisi |
+| `R` | 59 | **75** | dipilih supaya `R + STROKE/2 = 81` muat di 180 dengan margin 9 px |
+| `STROKE` | 10 | **12** | tebal ikut naik, kalau tidak busur terasa tipis di ukuran baru |
+| Angka TSB | 29 px | **42 px** | dari 20% jadi 30% diameter dalam — angkanya kini yang pertama terlihat |
+| Caption `Form TSB` | 9 px | **10,5 px** | mengikuti angka, tetapi tetap di bawahnya secara hierarki |
+| Nama pita | 9,5 px | **12 px** | 12 px membuat pita jadi label, bukan keterangan kecil |
+| Pasangan load | 9/17/9 | **10/21/10** | dipertahankan rata pada 21 px — tesnya menuntut sel tinggi ≤80 px |
+| Trio pane Form | 10/16 | **10,5/18** | 20 px sempat dicoba; `−16 TSB` butuh 78 dari 80 px di 320, sisa 2 px |
+| Header tab & `LIVE` | 9,5/9 | **10,5/10** | chrome ikut naik seperlunya supaya tidak terbaca sebagai baris tua |
+
+### Batas yang diukur, bukan diperkirakan
+
+Celah bersih antar kepala busur tetap `2·(R·cos 30° − STROKE/2)`, sekarang dengan `R = 75`,
+`STROKE = 12`:
+
+`2·(75·0,866 − 6) = ` **117,9 px**, sedangkan `RECOVER FIRST` pada 12 px / .06em butuh
+**102,7 px** — sisa **7,6 px per sisi**, dua kali lipat sisa §42 (5 px).
+
+Diukur langsung di DOM aplikasi yang berjalan, di 320 dan 430 px: pita `DETRAINING`
+**81 px**, pusatnya **37–38 px** di bawah pusat ring (target `R/2 = 37,5`), lebar celah
+117,9 px; angka `-16` **77 px**; tidak ada overflow horizontal di 320/360/390/430.
+
+Angka dan pita sama-sama berpusat: selisih pusat blok teks terhadap `gaugeArcMid` **0 px**
+pada lebar mana pun, karena `ARC_RISE` masih diturunkan dari geometri — naik 14,75 →
+**18,75 px**, persis `R/4` (massa tercetak 9..133,5 dari kotak 180, pusat 71,25 versus
+pusat kotak 90).
+
+### Kenapa trio Form berhenti di 18 px, bukan 20 px
+
+Skala pertama menaikkan ketiganya ke 20 px agar menyamai pasangan `21px` di pane Today.
+Pengukuran di 320 px membuktikan itu keputusan yang salah: `−16 TSB` butuh **78 px** dari sel
+yang lebarnya **80 px**, sisa **2 px** — dan sel yang membungkus (`border-x`) menyisakan
+lebih sedikit lagi. Sel sempit ke titik itu akan *membungkus* diam-diam, bukan meluap, jadi
+tidak ada tes yang menangkapnya; yang terjadi di layar adalah baris ketiga yang tiba-tiba
+jadi dua baris. Turun ke **18 px** memberi sisa 10 px (`−16 TSB` 70 px) dan tetap terbaca.
+
+Ini trade-off yang disengaja: pane Today memakai 21 px dan pane Form memakai 18 px. Keduanya
+tidak pernah terlihat bersamaan, dan selisih 3 px lebih kecil daripada risiko baris yang
+bungkus di layar terkecil yang didukung.
+
+### Tes: tidak ada kasus yang berubah jumlahnya
+
+| Grup | Perubahan |
+| --- | --- |
+| `240-degree gauge` | literal rotasi `rotate(150 75 75)` → **`rotate(150 90 90)`**; cx/cy/r/stroke tetap dibaca dari DOM |
+| sisanya | **tidak diubah sama sekali** — celah, kedalaman kepala, ketinggian sel, dan garis akhir ketiga pane semuanya diturunkan dari atribut SVG |
+
+Suite tetap **55 tes hijau**. Angka di doc-comment `gaugeArcMid`/`gaugeArcBottom`
+diperbarui (150 → 180, massa 11..109,5 → 9..133,5, 14,75 → 18,75) karena keduanya
+membaca geometri dari DOM — komentar itu penjelasan, bukan batasan.
+
+### Gerbang, dijalankan ulang setelah perubahan terakhir
+
+`svelte-check` 0 error 0 warning · `npm test` **335 passed, 2 skipped (337)** ·
+`npm run build` sukses · `npx playwright test` **55 passed**.
+
+## §44 · Rebalancing pane Today: rongga 46,5 px hilang, pasangan naik ke 28 px
+
+Tanggal: 4 Okt 2026 · Berkas: `src/lib/routes/dashboard/Dashboard.svelte`
+
+### Keluhan & diagnosis
+
+Rider melaporkan dua hal pada tab Today: "fitness dan fatigue terlihat terlalu kecil
+ dibanding dengan gauge" dan "jarak antara objek terlihat ada gap yang jauh". Pengukuran
+ DOM menemukan penyebabnya — dan tambahan ketiga yang tidak terlihat:
+
+1. **Rongga 46,5 px yang tidak pernah dirancang.** Box SVG gauge 180 px hanya terpin sampai
+   `ARC_BOTTOM` = 133,5 px; sisa box di bawah paint adalah ruang kosong murni yang
+   dihitung layout sebagai bagian dari tier 1. Pasangan CTL/ATL yang duduk "tepat di bawah
+   box" sebenarnya duduk 70 px di bawah paint — keluhan gap itu real,-causa nyata, bukan
+   persepsi.
+2. **Angka 21 px di bawah figur 42 px.** Piramida 42 / 21 / 18 membuat tier kedua nyaris
+   tenggelam di bawah figur gauge yang empat kali derenannya untuk label yang sama
+   (pasangan Fitness/Fatigue vs trio form yang 18 px — selisih 3 px tidak terbaca).
+3. **Sisa eksperimen yang bocor ke produksi** dari sesi perancangan yang terputus:
+   `style="height:{279 - (LOAD_PANE_H + 8)}px"` pada baris pasangan (tinggi tetap 226 px
+   untuk konten 56 px), kelas Tailwind dinamis `mt-{LOAD_ROW_GAP}` yang tidak pernah
+   tergenerate scanner Tailwind, dan `aria-hidden` pada angka yang hidup.
+
+### Perubahan
+
+- **Margin pintas tercetak**: wrapper gauge membawa
+  `margin-bottom:-{GAUGE_BOX - ARC_BOTTOM}px` = **−46,5 px**, diturunkan dari dua konstanta
+  geometri, bukan huruf. Layout sekarang mengikuti arc terpin, bukan box. Overlay figur dan
+  nama band tetap absolute terhadap box 180 px — posisinya tidak tersentuh.
+- **Pasangan 21 → 28 px**, `leading-none`, putih netral (`text-on-mono`). Piramida tipografi
+  kini **42 gauge / 28 pasangan / 18 trio** — putra, 11 / 21 / 28, dan tidak lebih besar
+  dari figur CP/W' di bawah dashboard.
+- **Kembali ke `mt-3 pt-3` + `mt-1` statis**: satu gap 12 px antara gauge dan hairline, 4 px
+  antarbaris dalam sel; tinggi sel mengikuti konten (66 px) sehingga spacer `flex-1` kembali
+  bekerja dan ketiga pane tetap berakhir pada satu garis.
+- **Chrome LIVE** dibereskan dari konflik `class:opacity-30` vs `class:opacity-0` yang
+  tersisa.
+
+### Terverifikasi dari DOM (vw 448 / 430 / 320)
+
+| Properti | Nilai |
+| --- | --- |
+| clearance busur → pasangan | **11–12 px** (tes butuh ≥ 8) |
+| tinggi sel pasangan | **66 px** di semua lebar, unik (protes "92 px") |
+| jarak antarbaris cell | 4 px (≤ 8, tidak ada lubang) |
+| tinggi kartu | 319 → **229 px** |
+| `docOverflow` | 0 (tidak meluap sempit sekali pun) |
+| `formChartH` / `loadChartH` | 141 / **207 px** (≥ 100 / ≥ 130) |
+
+### Gerbang
+
+`svelte-check` 0 err/0 warn · `npm test` **335 passed, 2 skipped** · `build` sukses ·
+`playwright` **55 passed** (termasuk 6 kasus yang merah oleh hack tinggi tetap).
+
+---
+
+## §45 — Tab Today: “Tile Cerita” (M3)
+
+**Permintaan.** Hero Today dinilai kurang menarik. Dibuatlah lima mockup di
+`mockups/today-hero-refresh.html` — K0 (reproduksi kondisi §43) plus empat arah visual
+(M1 Nadi, M2 Panel Lebar, **M3 Tile Cerita**, M4 Segmen) — dan **M3** yang dipilih untuk
+dipasang.
+
+**Perubahan.** Pasangan Fitness/Fatigue di bawah gauge — dua figur telanjang di bawah
+garis rambut — menjadi dua **tile kaca**: latar `#1b1c22`, hairline `#2b2d33`, radius 14 px,
+dan tiap tile diberi **bar 4 px** (76 % lebar tile) yang menaruh nilainya pada skala bersama
+**0–60**, dengan kapsi `Bar = position on a 0–60 scale` di bawahnya.
+
+- Angka **28 → 26 px**; piramida kini 42 gauge / 26 pasangan / 18 trio. Bar netral
+  `on-mono/85` — busur tetap satu-satunya aksen rose pada kartu.
+- `pct` di `HERO_LOAD_TILES` = `round(clamp(v, 0, 60) / 60 × 100)`; nilai di atas skala
+  mengisi penuh track, dan tanpa data bilahnya 0. Kapsi menyebut skalanya — tanpa itu bar
+  adalah angka yang tidak terbaca, kegagalan yang justru diperbaiki tile ini.
+- Jarak gauge → tile `mt-5` (20 px terukur); hairline atas dan `border-l` antar sel dihapus
+  karena tile menggambar tepinya sendiri.
+
+### Terverifikasi (DOM di preview, vw 448 & 320; Playwright di 320/390/430)
+
+| Properti | Nilai |
+| --- | --- |
+| tinggi grid hero | 229 → **283 px** (jejak pasangan 90 → 146 px) |
+| tinggi tile | **104 px** di semua lebar, unik (batas tes ≤ 112) |
+| label → figure / figure → unit | **4 px** (≤ 8, tanpa lubang) |
+| bar Fitness / Fatigue | **37 % / 55 %** = `round(22/60×100)` / `round(33/60×100)` |
+| kapsi skala | ada, menyebut “0–60”, tidak terpotong |
+| clearance gauge → tile | **20 px** (tes butuh ≥ 8) |
+| `docOverflow` | 0 di 320 & 448 |
+
+### Gerbang (dijalankan setelah perubahan kode terakhir)
+
+`svelte-check` 0 err/0 warn · `npm test` **335 passed, 2 skipped** · `build` sukses ·
+`playwright` **55 passed** — termasuk “load tiles stay compact” yang kini juga mengunci
+aritmetika bar terhadap figure-nya sendiri dan keberadaan kapsi skala.

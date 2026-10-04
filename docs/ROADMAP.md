@@ -11,7 +11,7 @@ Estimasi adalah *effort relatif*, bukan janji kalender.
 > Ringkasan yang sama ada di [README.md](../README.md#status).
 
 **Kesenjangan yang pernah tercatat sudah tertutup.** App pernah rebuilt dari mockup dengan UI
-jauh mendahului logic; hari ini M0–M4 terverifikasi oleh gerbang (337 tes unit · 56 tes E2E ·
+jauh mendahului logic; hari ini M0–M4 terverifikasi oleh gerbang (337 tes unit · 55 tes E2E ·
 typecheck 0 error · build hijau). Yang tersisa bukan catch-up visual melainkan **kalibrasi
 pascalarace** — lihat DoD M4.
 

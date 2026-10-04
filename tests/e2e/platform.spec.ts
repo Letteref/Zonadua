@@ -27,11 +27,11 @@ async function openApp(page: Page, hash = '#/'): Promise<void> {
 /**
  * The vertical centre of the gauge's **painted** arc — the datum the rider actually sees.
  *
- * The arc is a 240° dash on a 112px circle, so it does not fill its box: the open ends stop at
- * 30° and 150°, the painted mass spans y 7..83 of the box, and its centre sits 11px above the
- * box's centre. Anything set beside the ring is aligned to the box and therefore reads 11px low
- * against the circle. The component compensates with `ARC_RISE`, and this measures the thing it
- * is compensating for, so the tests can check the compensation rather than restate it.
+ * The arc is a 240° dash on a 180px circle, so it does not fill its box: the open ends stop at
+ * 30° and 150°, the painted mass spans y 9..133.5 of the box, and its centre sits 18.75px above
+ * the box's centre. Anything centred on the box therefore reads low inside the ring. The
+ * component compensates with `ARC_RISE`, and this measures the thing it is compensating for, so
+ * the tests can check the compensation rather than restate it.
  *
  * The extent is sampled off the dash itself rather than the circle. `getPointAtLength` walks the
  * whole circle including the unpainted gap at the bottom, so sampling the full path reports the
@@ -1042,7 +1042,7 @@ test.describe('dashboard hero form gauge', () => {
     // Both arcs start from the same end, so the fill reads against the track rather than
     // against the top of the circle.
     expect(gauge!.arcRotation).toBe(gauge!.trackRotation);
-    expect(gauge!.trackRotation).toBe('rotate(150 56 56)');
+    expect(gauge!.trackRotation).toBe('rotate(150 90 90)');
     // The value arc never exceeds the gauge it is drawn on.
     expect(gauge!.arcSweep).toBeLessThanOrEqual(240.1);
     // A midpoint tick is what makes the ±40 scale legible; without it the arc is decoration.
@@ -1062,199 +1062,166 @@ test.describe('dashboard hero form gauge', () => {
   });
 
   /**
-   * The ring's figure and the column beside it share a centre line.
+   * The ring's figure rides the arc's centre line, and the ring itself is centred on the card.
    *
-   * `items-center` already centres the boxes, so this guards the thing that actually reads:
-   * that the two halves of the row are presented as one unit rather than as two objects
-   * happening to sit next to each other.
+   * The figure is the one thing set *inside* the gauge, so `ARC_RISE` decides whether it looks
+   * centred or low. The ring is now the whole of tier 1 rather than half a row, so the second
+   * half of this guards the thing that changed: the gauge sits on the card's own axis, not
+   * against a left edge with a column beside it.
    */
-  test('the form figure and the fitness column share a centre line', async ({ page }) => {
+  test("the gauge figure rides the arc's centre line and the ring is centred on the card", async ({
+    page
+  }) => {
     await openApp(page, '#/');
     await waitForSeed(page);
     await page.getByText(/Fitness \(CTL\)/i).first().waitFor({ timeout: 20_000 });
 
-    const column = await page.evaluate(() => {
-      const line = document.querySelector('#hero-pane')?.children[0]?.children[0];
-      if (!line) return null;
-      const r = [...line.children][1]!.getBoundingClientRect();
-      return Math.round(r.y + r.height / 2);
+    const figure = await page.evaluate(() => {
+      const today = document.querySelector('#hero-pane')?.children[0];
+      const ring = today?.children[0]?.children[0];
+      if (!today || !ring) return null;
+      const caption = [...today.querySelectorAll('p')].find(
+        (p) => p.textContent.trim() === 'Form TSB'
+      );
+      const block = caption?.parentElement;
+      if (!block) return null;
+      const b = block.getBoundingClientRect();
+      const r = ring.getBoundingClientRect();
+      const c = today.getBoundingClientRect();
+      return {
+        centre: Math.round(b.y + b.height / 2),
+        ringCentreX: Math.round(r.x + r.width / 2),
+        cardCentreX: Math.round(c.x + c.width / 2)
+      };
     });
 
-    expect(column, 'the hero ring row was not found').not.toBeNull();
+    expect(figure, 'the hero gauge figure was not found').not.toBeNull();
     const arc = Math.round(await gaugeArcMid(page));
     expect(
-      Math.abs(arc - column!),
-      `the fitness column sits ${arc - column!}px off the painted arc's centre line`
+      Math.abs(arc - figure!.centre),
+      `the figure sits ${arc - figure!.centre}px off the painted arc's centre line`
     ).toBeLessThanOrEqual(1);
-  });
-/**
-   * The two load tiles beside the form gauge.
+    expect(figure!.ringCentreX - figure!.cardCentreX, 'the gauge is not centred on the card').toBe(0);
+  });  /**
+   * The two load tiles under the form gauge.
    *
-   * They replaced a single loose column whose content sat at the far left of a box twice as
-   * wide as it needed, which is what made the right half of the hero look empty. The shape
-   * they follow — label, figure, unit — is the club-stat block used elsewhere in the app.
-   *
-   * The failure this guards is truncation. At 320px a tile is 50px wide with 36px of content,
-   * and "FITNESS" alone measures 39px there, so the first version of these tiles rendered
-   * "Fitne…" and "Fatig…" — worse than the empty column it replaced, because the rider could
-   * no longer read what the number was. The label now drops to 8px with the tracking off and
-   * the icon is dropped entirely below 360px, which is the only arrangement that fits.
+   * They are inset tiles on the card's axis as of §45 (bare figures on a hairline before that,
+   * raised cards beside the ring before §42), but the failure this guards is unchanged:
+   * truncation. At 320px a tile is 120px wide and "Fitness"/"Fatigue" are the longest labels
+   * the pair will ever hold — the tile's border and padding only make the room tighter than
+   * it was.
    */
   for (const width of [320, 360, 430]) {
-    test(`the load tiles read in full at ${width} px`, async ({ page }) => {
+    test(`the load figures read in full at ${width} px`, async ({ page }) => {
       await openApp(page, '#/');
       await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
       await page.setViewportSize({ width, height: 900 });
 
-      const tiles = await page.evaluate(() => {
-        const row = document.querySelector('#hero-pane')?.children[0]?.children[0];
-        if (!row) return null;
-        const grid = row.children[1];
-        const cells = [...grid.querySelectorAll(':scope > div')];
-        const range = document.createRange();
-        const cellData = cells.map((c) => {
-          const label = c.querySelector('span');
-          if (!label) return null;
-          range.selectNodeContents(label);
-          return {
-            text: label.textContent.trim(),
-            needs: label.scrollWidth,
-            has: label.clientWidth,
-            iconShown: !!c.querySelector('svg')?.getBoundingClientRect().width,
-            overflowing: c.scrollWidth - c.clientWidth
-          };
-        });
-        const gridBox = grid.getBoundingClientRect();
+      const pair = await page.evaluate(() => {
+        const today = document.querySelector('#hero-pane')?.children[0];
+        if (!today) return null;
+        const row = today.children[2];
+        const cells = [...row.querySelectorAll(':scope > div')];
         return {
-          cellData,
-          gridCentre: Math.round(gridBox.y + gridBox.height / 2),
+          cellData: cells.map((c) => {
+            const label = c.querySelector('p');
+            return label
+              ? {
+                  text: label.textContent.trim(),
+                  needs: label.scrollWidth,
+                  has: label.clientWidth,
+                  overflowing: c.scrollWidth - c.clientWidth
+                }
+              : null;
+          }),
           heights: cells.map((c) => Math.round(c.getBoundingClientRect().height)),
+          widths: cells.map((c) => Math.round(c.getBoundingClientRect().width)),
           docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
         };
       });
 
-      expect(tiles, 'the hero load tiles were not found').not.toBeNull();
-      expect(tiles!.cellData.length, 'expected exactly two load tiles').toBe(2);
-      // Nothing clipped. A truncated label is worse than no tile at all.
-      for (const c of tiles!.cellData) {
-        expect(c, 'a tile is missing its label').not.toBeNull();
+      expect(pair, 'the hero load figures were not found').not.toBeNull();
+      expect(pair!.cellData.length, 'expected exactly two load figures').toBe(2);
+      // Nothing clipped. A truncated label is worse than no figure at all.
+      for (const c of pair!.cellData) {
+        expect(c, 'a load figure is missing its label').not.toBeNull();
         expect(
           c!.needs - c!.has,
           `"${c!.text}" is clipped to ${c!.has}px of the ${c!.needs}px it needs`
         ).toBeLessThanOrEqual(0);
-        expect(c!.overflowing, `"${c!.text}" tile overflows its box`).toBeLessThanOrEqual(0);
+        expect(c!.overflowing, `"${c!.text}" overflows its cell`).toBeLessThanOrEqual(0);
       }
-      expect(tiles!.docOverflow, 'the hero overflows the viewport').toBeLessThanOrEqual(0);
-      // Equal tiles — the pair has to read as a pair, not as a big one and a small one.
-      expect(new Set(tiles!.heights).size, `uneven tile heights: ${tiles!.heights}`).toBe(1);
-      // ...and the pair sits on the **painted arc's** centre line, not the 112px box's.
-      const arc = Math.round(await gaugeArcMid(page));
-      expect(
-        Math.abs(arc - tiles!.gridCentre),
-        `the tiles sit ${arc - tiles!.gridCentre}px off the painted arc's centre line`
-      ).toBeLessThanOrEqual(1);
+      expect(pair!.docOverflow, 'the hero overflows the viewport').toBeLessThanOrEqual(0);
+      // Equal cells — the pair has to read as a pair, not as a big one and a small one.
+      expect(new Set(pair!.heights).size, `uneven cell heights: ${pair!.heights}`).toBe(1);
+      expect(new Set(pair!.widths).size, `uneven cell widths: ${pair!.widths}`).toBe(1);
     });
   }/**
- * The form band is the status line of the hero, not a chip and not a caption hanging off the gauge.
+ * The form band lives inside the gauge's opening, not in a row of its own.
  *
- * It has now been rejected in three places, and each rejection was measured rather than felt:
- * a bordered pill below the ring, plain coloured text below the ring, and finally the label row
- * of a three-column grid. The third attempt failed for a different reason than the first two —
- * sharing a column's label row forced the load tiles to stretch to the ring's height, which
- * opened a 72px hole inside each one and put their bottom edge exactly on the divider below.
+ * It was a full-width pill under the figures and, before that, a bare coloured line. Both were
+ * rejected for the same measured reason: the name could not fit inside the 112px ring, so it had
+ * to sit outside and then invent a row to belong to. Growing the ring to 180px widens the clear
+ * span between the arc's two round caps to 92px, which is what lets the name live where it
+ * belongs — the one place on the card that is both part of the gauge and empty.
  *
- * What is left is a line in its own right, spanning the card between two rules: the band on the
- * left, the week's change opposite it. It has peers, it has a purpose — it is the tier that
- * answers "how is this moving" — and it no longer has to borrow a column to belong to.
- *
- * It still cannot live inside the gauge: "RECOVER FIRST" needs about 70px and the ring's inner
- * chord is about 60px where a second line falls. That is why it is a full-width line instead.
+ * The assertions are the geometry that makes that true: the label is centred on the card's axis,
+ * its vertical centre is at the caps' own depth (the widest point of the mouth), and it is
+ * narrower than the clear span between the caps. `gaugeArcBottom` is no longer the datum — the
+ * band is above it now — so the caps are measured off the SVG's own attributes instead.
  */
-  test('the form band is the status line of the hero — below the gauge, unadorned, unclipped', async ({
-    page
-  }) => {
+  test('the form band sits inside the gauge mouth, centred and clear of the caps', async ({ page }) => {
     await openApp(page, '#/');
+    await waitForSeed(page);
     await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
 
     const band = await page.evaluate(() => {
       const today = document.querySelector('#hero-pane')?.children[0];
-      if (!today) return null;
-      const tier1 = today.children[0];
-      const status = today.children[1];
-      const label = status.children[0];
-      if (!(label instanceof HTMLElement) || !(status instanceof HTMLElement)) return null;
-      const cs = getComputedStyle(label);
-      const card = getComputedStyle(tier1.children[1].children[0]);
-      const labelBox = label.getBoundingClientRect();
-
-      // Measure the longest band name in the label's own type, since the seeded data only ever
-      // produces "DETRAINING" — the one that would break this is "RECOVER FIRST".
-      const probe = document.createElement('span');
-      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;';
-      probe.style.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-      probe.style.letterSpacing = cs.letterSpacing;
-      document.body.appendChild(probe);
-      probe.textContent = 'RECOVER FIRST';
-      const widest = Math.round(probe.getBoundingClientRect().width);
-      probe.remove();
-
+      const ring = today?.children[0]?.children[0] as HTMLElement | undefined;
+      if (!today || !ring) return null;
+      const name = [...today.querySelectorAll('p')].find((p) =>
+        /^(RECOVER FIRST|DETRAINING|BALANCED|BUILDING|PEAKED|NO DATA)$/.test(p.textContent.trim())
+      );
+      if (!name) return null;
+      const circle = ring.querySelector('svg circle')!;
+      const r = Number(circle.getAttribute('r'));
+      const stroke = Number(circle.getAttribute('stroke-width'));
+      const ringBox = ring.getBoundingClientRect();
+      const box = name.getBoundingClientRect();
       return {
-        text: label.textContent.trim(),
-        clipped: label.scrollWidth - label.clientWidth,
-        borderWidth: cs.borderTopWidth,
-        background: cs.backgroundColor,
-        // The pill has to be the same object as the two cards above it: same border colour and
-        // width, same fill. A band-coloured chip is the mistake this replaced.
-        chromeMatchesCards:
-          cs.borderTopColor === card.borderTopColor &&
-          cs.borderTopWidth === card.borderTopWidth &&
-          cs.backgroundColor === card.backgroundColor,
-        // A status line lives below the figures it describes: it starts under the gauge rather
-        // than inside it. Horizontal overlap with the ring column is meaningless now — the pill
-        // spans the card's full measure by design, the same as the rule under it — so what has
-        // to hold is that it clears the **painted** arc. The assertion below is taken from
-        // `gaugeArcBottom`, because the 112px box runs about 17px past the arc into the gap
-        // below the dash and would report a clearly-separated band as overlapping the gauge.
-        pillTop: Math.round(labelBox.top),
-        // The band shares its line with the 7-day change, so the row has to have room for the
-        // longest band name plus that figure.
-        widest,
-        statusWidth: Math.round(status.getBoundingClientRect().width),
-        changeWidth: Math.round(
-          (status.children[1] as HTMLElement | undefined)?.getBoundingClientRect().width ?? 0
-        )
+        text: name.textContent.trim(),
+        clipped: name.scrollWidth - name.clientWidth,
+        width: box.width,
+        // Clear span between the two round caps, which sit at 30° and 150°.
+        clear: 2 * (r * Math.cos(Math.PI / 6) - stroke / 2),
+        // R/2 below the ring centre is exactly the caps' depth.
+        capDepth: r / 2,
+        centreBelowRingCentre: box.top + box.height / 2 - (ringBox.top + ringBox.height / 2),
+        centreDelta: Math.round(box.x + box.width / 2 - (ringBox.x + ringBox.width / 2))
       };
     });
 
-    expect(band, 'the form band status line was not found').not.toBeNull();
+    expect(band, 'the form band was not found in the hero').not.toBeNull();
     expect(band!.clipped, `"${band!.text}" is clipped`).toBeLessThanOrEqual(0);
-    // A label is text, not a chip. Reintroducing the fill or the border is what made the
-    // The band is a pill by request. The two assertions this replaces demanded the *opposite* —
-    // no border, no fill — and were written for the plain-text label that was rejected. They
-    // could not be satisfied together with the pill the rider was actually asked to see, so
-    // rather than weaken them into meaninglessness they are replaced by what the pill has to do
-    // instead: the chrome it wears must be the chrome of the two cards beside it, and the band
-    // name must still fit inside it. The geometry assertions below are unchanged.
-    expect(band!.borderWidth, 'the band pill lost its border').not.toBe('0px');
-    expect(band!.background, 'the band pill lost its fill').not.toBe('rgba(0, 0, 0, 0)');
-    expect(band!.chromeMatchesCards, 'the pill no longer matches the load cards\' chrome').toBe(true);
-    const arcBottom = await gaugeArcBottom(page);
+    // The name has to clear both round caps, or the ring eats its ends.
     expect(
-      band!.pillTop - Math.round(arcBottom),
-      `"${band!.text}" sits ${band!.pillTop - Math.round(arcBottom)}px from the bottom of the painted arc`
-    ).toBeGreaterThan(0);
-    expect(
-      band!.widest + band!.changeWidth - band!.statusWidth,
-      `"RECOVER FIRST" needs ${band!.widest}px and the change figure ${band!.changeWidth}px in a ${band!.statusWidth}px status line`
+      band!.width - band!.clear,
+      `"${band!.text}" is ${Math.round(band!.width)}px wide but the mouth is only ${Math.round(band!.clear)}px`
     ).toBeLessThanOrEqual(0);
+    // ...and sit at the widest point of the mouth rather than below it.
+    expect(
+      Math.abs(band!.centreBelowRingCentre - band!.capDepth),
+      `the band sits ${band!.centreBelowRingCentre.toFixed(1)}px below the centre, not the caps' ${band!.capDepth}px`
+    ).toBeLessThanOrEqual(1);
+    expect(band!.centreDelta, 'the band is not centred on the ring').toBe(0);
   });
 
 /**
  * The lowest painted pixel of the gauge's arc — the edge anything below the gauge must clear.
  *
- * The 112px box continues past the painted arc by about 17px, because the dash stops at 30° and
+ * The 180px box continues past the painted arc by about 46px, because the dash stops at 30° and
  * 150° and the circle's own bottom falls in the open gap. Measuring clearance from the box
- * reports a band that is comfortably below the gauge as overlapping it.
+ * reports a figure that is comfortably below the gauge as overlapping it.
  */
 async function gaugeArcBottom(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -1273,17 +1240,15 @@ async function gaugeArcBottom(page: Page): Promise<number> {
 }
 
 /**
- * The three-up strip under the hero, on both tabs.
-   *
-   * Audited rather than changed: measured with `Range` on the text, not on the boxes, because
-   * `text-center` on a box always looks right whether or not the text inside it followed. Both
-   * strips measured a 0px offset on every cell, label and value alike, so nothing here was
-   * edited — this test exists so that a future change cannot drift away from it unnoticed.
-   */
-  for (const [tab, labels] of [
-    ['today', ['Time', 'Distance', 'Stress']],
-    ['form', ['Fitness', 'Fatigue', 'Form']]
-  ] as const) {
+ * The three-up strip under the hero, on the Form tab.
+ *
+ * The Today pane used to carry a matching Time/Distance/Stress strip; V3 (§42) removed it,
+ * because the "Last 7 days" card directly below the hero already states the same three figures.
+ * The Form tab's strip remains, and this guards it the same way: measured with `Range` on the
+ * text, not on the boxes, because `text-center` on a box always looks right whether or not the
+ * text inside it followed.
+ */
+  for (const [tab, labels] of [['form', ['Fitness', 'Fatigue', 'Form']]] as const) {
     test(`the ${tab} strip centres every label and figure on its cell`, async ({ page }) => {
       await openApp(page, '#/');
       await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
@@ -1329,185 +1294,134 @@ async function gaugeArcBottom(page: Page): Promise<number> {
     });
   }
 /**
- * The load tiles are compact objects beside the ring, not columns stretched to match it.
+ * The load tiles are a compact pair at the foot of the card, not columns stretched to fill it.
  *
- * This is the failure the rider actually reported: the tiles were too tall, their bottom edge
- * landed exactly on the divider below — touching it, which reads as a mistake rather than a
- * layout — and they sat 8px off the ring's centre line. Every one of those was arithmetic, and
- * all three came from the same two decisions: stretching the tiles to the gauge's height, then
- * spreading label and figure to opposite ends of that height.
+ * They were two raised tiles beside the ring, and the failure the rider reported was arithmetic:
+ * too tall, their bottom edge landing exactly on the divider below (touching it), and sitting off
+ * the ring's centre line. The pair has moved under the ring and, as of §45, gained a bar and a
+ * scale caption — the properties that matter are unchanged: a tile is no taller than its lines
+ * need, no hole opens between them, the bar says what its own figure says, and the pair clears
+ * the gauge above it.
  *
- * So the properties asserted here are geometric, not decorative: a tile is no taller than its
- * three lines need, no hole opens between its label and its figure, its vertical centre is the
- * ring's vertical centre, and there is daylight between its bottom edge and the rule below.
- *
- * Measured at the three widths the hero has to survive, because each of those is one pixel of
- * padding away from drifting while the page still looks deliberate in a browser.
+ * Measured at each width because one pixel of padding is all it takes to drift while the page
+ * still looks deliberate in a browser.
  */
 for (const width of [320, 390, 430]) {
-  test(`the load tiles stay compact and aligned to the ring at ${width} px`, async ({ page }) => {
+  test(`the load tiles stay compact under the ring at ${width} px`, async ({ page }) => {
     await openApp(page, '#/');
     await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
     await page.setViewportSize({ width, height: 900 });
 
-    const tiles = await page.evaluate(() => {
+    const pair = await page.evaluate(() => {
       const today = document.querySelector('#hero-pane')?.children[0];
       if (!today) return null;
-      const tier1 = today.children[0];
-      const status = today.children[1];
-      const ring = tier1.children[0].getBoundingClientRect();
-      const tiles = [...tier1.children[1].querySelectorAll(':scope > div')];
-      if (tiles.length !== 2) return null;
-
-      const centreY = (el: Element) => {
-        const r = el.getBoundingClientRect();
-        return r.y + r.height / 2;
+      const cells = [...today.children[2].querySelectorAll(':scope > div')];
+      if (cells.length !== 2) return null;
+      const caption = today.children[3] as HTMLElement | undefined;
+      return {
+        cells: cells.map((cell) => {
+          const [label, figure, unit] = [...cell.children].map((el) => el.getBoundingClientRect());
+          const track = cell.children[3]?.getBoundingClientRect();
+          const fill = cell.children[3]?.firstElementChild?.getBoundingClientRect();
+          return {
+            value: cell.children[1]?.textContent?.trim() ?? '',
+            height: Math.round(cell.getBoundingClientRect().height),
+            // A gap inside the cell means the lines were pushed apart instead of set on a
+            // rhythm. Two pixels of margin, not seventy.
+            labelToFigure: Math.round(figure.top - label.bottom),
+            figureToUnit: Math.round(unit.top - figure.bottom),
+            overflow: cell.scrollWidth - cell.clientWidth,
+            // The fill against its own track, as a percent of the 0–60 scale.
+            barPct: track && fill && track.width > 0 ? (fill.width / track.width) * 100 : null
+          };
+        }),
+        caption: caption
+          ? {
+              text: caption.textContent?.trim() ?? '',
+              clipped: caption.scrollWidth - caption.clientWidth
+            }
+          : null
       };
-
-      return tiles.map((tile) => {
-        const lines = [...tile.children];
-        if (lines.length !== 3) return null;
-        const [label, figure, unit] = lines.map((el) => el.getBoundingClientRect());
-        return {
-          height: Math.round(tile.getBoundingClientRect().height),
-          // A gap inside the tile means the three lines were pushed apart instead of set on a
-          // rhythm. Two pixels of margin, not seventy.
-          labelToFigure: Math.round(figure.top - label.bottom),
-          figureToUnit: Math.round(unit.top - figure.bottom),
-          // Alignment: the tile's own centre against the ring's.
-          // The tile's own centre. The gauge's centre is measured separately by `gaugeArcMid`, against
-          // the painted arc; comparing against the 112px box would report an 11px error that is
-          // not on screen.
-          tileCentre: Math.round(centreY(tile)),
-          // Air between the tile and the status rule below it. Zero means they are touching,
-          // which is the collision the rider reported.
-          airToRule: Math.round(status.getBoundingClientRect().top - tile.getBoundingClientRect().bottom)
-        };
-      });
     });
 
-    expect(tiles, 'the hero load tiles were not found').not.toBeNull();
-    expect(tiles!.filter(Boolean).length, 'a tile is missing one of its three lines').toBe(2);
-    for (const t of tiles!) {
-      expect(t!.height, `a tile is ${t!.height}px tall — it has been stretched`).toBeLessThanOrEqual(80);
-      expect(t!.labelToFigure, `${t!.labelToFigure}px hole between the label and the figure`).toBeLessThanOrEqual(8);
-      expect(t!.figureToUnit, `${t!.figureToUnit}px hole between the figure and the unit`).toBeLessThanOrEqual(8);
-      // The datum is the painted arc, measured by `gaugeArcMid`. Comparing to the ring's 112px box
-      // instead reports an 11px error that is not on screen: the dash does not fill its box, and
-      // the tiles are aligned to the arc precisely because of that.
-      const arc = Math.round(await gaugeArcMid(page));
+    expect(pair, 'the hero load tiles were not found').not.toBeNull();
+    for (const c of pair!.cells) {
+      // 104px measured at every width: two four-line tiles plus their padding, and no more.
+      expect(c.height, `a load tile is ${c.height}px tall — it has been stretched`).toBeLessThanOrEqual(112);
+      expect(c.labelToFigure, `${c.labelToFigure}px hole between the label and the figure`).toBeLessThanOrEqual(8);
+      expect(c.figureToUnit, `${c.figureToUnit}px hole between the figure and the unit`).toBeLessThanOrEqual(8);
+      expect(c.overflow, 'a load tile overflows its box').toBeLessThanOrEqual(0);
+      // The bar must say what its own figure says: the value placed on the 0–60 scale the
+      // caption names, clamped at the scale's end. A bar that drifts from its figure is worse
+      // than no bar — it is a second number, and a wrong one.
+      const v = Number.parseInt(c.value, 10);
+      const expected = Number.isNaN(v) ? 0 : Math.round((Math.min(60, Math.max(0, v)) / 60) * 100);
+      expect(c.barPct, `the tile for "${c.value}" has no bar under its figure`).not.toBeNull();
       expect(
-        Math.abs(arc - t!.tileCentre),
-        `a tile sits ${arc - t!.tileCentre}px off the painted arc's centre line`
+        Math.abs((c.barPct ?? Number.NaN) - expected),
+        `the bar reads ${c.barPct?.toFixed(1)}% but ${c.value} on a 0–60 scale is ${expected}%`
       ).toBeLessThanOrEqual(1);
-      expect(t!.airToRule, 'a tile is touching the status rule below it').toBeGreaterThanOrEqual(8);
     }
-    expect(new Set(tiles!.map((t) => t!.height)).size, `uneven tile heights: ${tiles!.map((t) => t!.height)}`).toBe(1);
+    expect(
+      new Set(pair!.cells.map((c) => c.height)).size,
+      `uneven cell heights: ${pair!.cells.map((c) => c.height)}`
+    ).toBe(1);
+
+    // An unlabelled bar is a number that cannot be read — the failure the tiles exist to fix —
+    // so the scale has to be named where the bars are, uncut, at every width.
+    expect(pair!.caption, 'the load tiles have no scale caption').not.toBeNull();
+    expect(pair!.caption!.text, 'the caption does not name the bar scale').toContain('0–60');
+    expect(pair!.caption!.clipped, `"${pair!.caption!.text}" is clipped`).toBeLessThanOrEqual(0);
+
+    // Daylight between the gauge's lowest painted pixel and the pair below it. Zero is the
+    // collision the rider reported when the tiles sat beside the ring.
+    const arcBottom = await gaugeArcBottom(page);
+    const pairTop = await page.evaluate(() =>
+      Math.round(
+        (document.querySelector('#hero-pane') as HTMLElement).children[0].children[2].getBoundingClientRect().top
+      )
+    );
+    expect(pairTop - Math.round(arcBottom), 'the load pair touches the gauge above it').toBeGreaterThanOrEqual(8);
   });
 }
 
 /**
- * The form band pill: as wide as the rule under it, and coloured on the name only.
+ * The band name is the only thing on the hero tinted by band, and it is tinted by the table.
  *
- * Two things went wrong here, and they are asserted separately because they are separate
- * decisions that happened to be made in the same edit.
+ * The chrome around it is gone — there is no chip any more — so the colour is the whole of what
+ * tells the rider which band they are in. The table pins the mapping for every band rather than
+ * guarding one of them behind an `if`: a conditional on which band the seed happens to produce
+ * is a test that silently asserts nothing the day the seed shifts, which is exactly what
+ * happened when this was first written with a `nameText === 'DETRAINING'` guard and the
+ * regression proof went green.
  *
- * The first was the colour. Tinting the whole chip by band put a yellow pill next to two grey
- * ones, which reads as a warning those two are exempt from — the band is not a warning, it is
- * the rider's form. So the chip is neutral chrome, verified here to be the *same* border, fill
- * and border width as the two load cards, and only the name inside it carries the tone.
- *
- * The second was the width. A pill sized to its own text was a narrow chip adrift in a 310px
- * card, with the two things the rider is meant to read across sitting in the middle of a lot
- * of nothing. The pill now takes its measure from the rule directly beneath it, so the two
- * lines stack as one block: the pill's left and right edges are the rule's left and right
- * edges, not a centring calculation that happens to agree today.
- *
- * The band name is tinted from `FORM_TONES`, whose hexes are the `StatusChip` `dark` palette.
- * The table below pins the mapping for every band rather than guarding one of them behind an
- * `if`: a conditional on which band the seed happens to produce is a test that silently
- * asserts nothing the day the seed shifts, which is exactly what happened when this was first
- * written with a `nameText === 'DETRAINING'` guard and the regression proof went green.
- *
- * One honest collision: the `balanced` tone is `#f7f8fa`, the same as the plain text token, so
- * a neutral name cannot be told apart from a toned one while the form is balanced. That is the
- * design being right rather than the test being weak — highlighting "balanced" would be
- * shouting about the absence of news — and the chip assertion above still covers that case.
+ * One honest collision: the `balanced` tone is `#f7f8fa`, the same as the plain text token, so a
+ * neutral name cannot be told apart from a toned one while the form is balanced. That is the
+ * design being right rather than the test being weak — highlighting "balanced" would be shouting
+ * about the absence of news.
  */
 for (const width of [320, 390, 430]) {
-  test(`the form band pill spans the rule below it and tints only its name at ${width} px`, async ({
-    page
-  }) => {
+  test(`the form band name carries its own tone at ${width} px`, async ({ page }) => {
     await openApp(page, '#/');
     await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
     await page.setViewportSize({ width, height: 900 });
 
-    const pill = await page.evaluate(() => {
+    const name = await page.evaluate(() => {
       const today = document.querySelector('#hero-pane')?.children[0];
       if (!today) return null;
-      const row = today.children[0];
-      const status = today.children[1];
-      // The rule below is the trio's top border, and the trio's border box *is* that rule's
-      // extent — so one rect measures the line itself rather than a proxy for it.
-      const rule = today.children[2];
-      const chip = status.children[0];
-      const name = chip.children[0];
-      const grid = row.children[1];
-
-      const chipBox = chip.getBoundingClientRect();
-      const ruleBox = rule.getBoundingClientRect();
-      const statusBox = status.getBoundingClientRect();
-      const cardStyle = getComputedStyle(grid.children[0]);
-      const chipStyle = getComputedStyle(chip);
-
+      const el = [...today.querySelectorAll('p')].find((p) =>
+        /^(RECOVER FIRST|DETRAINING|BALANCED|BUILDING|PEAKED|NO DATA)$/.test(p.textContent.trim())
+      );
+      if (!el) return null;
       return {
-        text: chip.textContent.replace(/\s+/g, ' ').trim(),
-        nameText: name.textContent.trim(),
-        nameColor: getComputedStyle(name).color,
-        nameClipped: name.scrollWidth - name.clientWidth,
-        chipClipped: chip.scrollWidth - chip.clientWidth,
-        height: Math.round(chipBox.height),
-        // The pill's own edges against the rule's, in whole pixels so subpixel layout
-        // differences do not read as a break.
-        leftGap: Math.round(ruleBox.x - chipBox.x),
-        rightGap: Math.round(ruleBox.right - chipBox.right),
-        width: Math.round(chipBox.width),
-        ruleWidth: Math.round(ruleBox.width),
-        centreDelta: Math.round(
-          chipBox.x + chipBox.width / 2 - (statusBox.x + statusBox.width / 2)
-        ),
-        // Chrome, so "the pill is the same object as the two cards" stays a fact.
-        chipChrome: {
-          border: chipStyle.borderTopColor,
-          borderWidth: chipStyle.borderTopWidth,
-          fill: chipStyle.backgroundColor
-        },
-        cardChrome: {
-          border: cardStyle.borderTopColor,
-          borderWidth: cardStyle.borderTopWidth,
-          fill: cardStyle.backgroundColor
-        }
+        text: el.textContent.trim(),
+        color: getComputedStyle(el).color,
+        clipped: el.scrollWidth - el.clientWidth
       };
     });
 
-    expect(pill, 'the form band pill was not found').not.toBeNull();
-    // The pill is the same measure as the line under it, edge for edge.
-    expect(pill!.leftGap, `the pill starts ${pill!.leftGap}px inside the rule`).toBe(0);
-    expect(pill!.rightGap, `the pill ends ${pill!.rightGap}px short of the rule`).toBe(0);
-    expect(pill!.width - pill!.ruleWidth, 'the pill and the rule are not the same width').toBe(0);
-    expect(pill!.centreDelta, 'the pill is not centred on the card').toBe(0);
-    // Big enough to read as a chip rather than a hairline: it was 18px and looked like a
-    // stray label with a border on it.
-    expect(pill!.height, `the pill is only ${pill!.height}px tall`).toBeGreaterThanOrEqual(22);
-    expect(pill!.chipClipped, 'the pill is clipped').toBeLessThanOrEqual(0);
-    expect(pill!.nameClipped, `"${pill!.nameText}" is clipped`).toBeLessThanOrEqual(0);
-
-    // The chip is neutral, and neutral the same way the two load cards are. A band-coloured
-    // chip is what this replaced, so both halves are asserted: the chrome matches the cards,
-    // and the chrome is not the tone.
-    expect(pill!.chipChrome, 'the pill no longer matches the load cards\' chrome').toEqual(
-      pill!.cardChrome
-    );
+    expect(name, 'the form band name was not found').not.toBeNull();
+    expect(name!.clipped, `"${name!.text}" is clipped`).toBeLessThanOrEqual(0);
     const BAND_TONE: Record<string, string> = {
       'RECOVER FIRST': 'rgb(255, 138, 146)',
       DETRAINING: 'rgb(255, 179, 90)',
@@ -1517,13 +1431,13 @@ for (const width of [320, 390, 430]) {
       'NO DATA': 'rgb(155, 161, 170)'
     };
     expect(
-      BAND_TONE[pill!.nameText],
-      `"${pill!.nameText}" is not a known form band name`
+      BAND_TONE[name!.text],
+      `"${name!.text}" is not a known form band name`
     ).toBeDefined();
     expect(
-      pill!.nameColor,
-      `"${pill!.nameText}" is painted ${pill!.nameColor}, not its form band tone`
-    ).toBe(BAND_TONE[pill!.nameText]);
+      name!.color,
+      `"${name!.text}" is painted ${name!.color}, not its form band tone`
+    ).toBe(BAND_TONE[name!.text]);
   });
 }
 
@@ -1669,8 +1583,9 @@ test('a rider with no rides in the window is told NO DATA rather than a form ban
   const hero = await page.evaluate(() => {
     const today = document.querySelector('#hero-pane')?.children[0];
     if (!today) return null;
-    const chip = today.querySelector('.rounded-pill');
-    const name = chip?.firstElementChild ?? null;
+    const name = [...today.querySelectorAll('p')].find((p) =>
+      /^(RECOVER FIRST|DETRAINING|BALANCED|BUILDING|PEAKED|NO DATA)$/.test(p.textContent.trim())
+    );
     const texts = [...today.querySelectorAll('p')].map((p) => p.textContent.trim());
     return {
       // The gauge's figure is a sibling of the <svg>, not inside it, so it is found by its
@@ -1679,8 +1594,8 @@ test('a rider with no rides in the window is told NO DATA rather than a form ban
         [...today.querySelectorAll('p')]
           .find((p) => p.textContent.trim() === 'Form TSB')
           ?.previousElementSibling?.textContent.trim() ?? null,
-      band: chip?.textContent.replace(/\s+/g, ' ').trim() ?? null,
-      bandColor: name ? getComputedStyle(name as Element).color : null,
+      band: name?.textContent.replace(/\s+/g, ' ').trim() ?? null,
+      bandColor: name ? getComputedStyle(name).color : null,
       // The two figures sit between their own label and their own unit, so they can be picked
       // out by their neighbours rather than by position.
       tileValues: texts.filter((t, i) => texts[i - 1] === 'Fitness' || texts[i - 1] === 'Fatigue'),

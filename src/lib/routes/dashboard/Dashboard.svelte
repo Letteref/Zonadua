@@ -163,31 +163,32 @@
   const formTone = $derived(tsbVal === null ? '#9ba1aa' : FORM_TONES[formState(tsbVal)]);
 
   /**
-   * The two load tiles beside the form gauge.
+   * The two load tiles under the form gauge.
    *
-   * They were a single loose column — a label over a 28px number, then a hairline, then the
-   * band name over the ATL figure — which left the right half of the hero reading as empty
-   * because the content sat at the far left of a box twice as wide as it needed.
+   * They were a raised, bordered card each, sitting beside a 112px ring (before §42), then bare
+   * figures on the card's axis under a hairline (§43), and are inset tiles as of §45 — not the
+   * old raised cards: each figure sits in a tile with a bar under it placing the value on a
+   * shared 0–60 scale. The bare pair showed two numbers with nothing to say whether 22 and 33
+   * were a lot or a little; the bar is the context, and it is what makes the pair readable at a
+   * glance instead of against memory of what CTL usually runs.
    *
-   * The tiles borrow the shape used for the club-stat blocks elsewhere (label, then figure,
-   * then unit, in a raised dark tile) so the hero matches the rest of the app's stat language.
-   * `unit` is separated from `value` rather than concatenated into "CTL 23", because at 320px
-   * the column is 108px wide and a single run-on string wraps.
+   * Each figure keeps the three-line rhythm the rest of the app's stats use — label, figure,
+   * unit — rather than a run-on "23 CTL", because the unit carries a smaller, dimmer type than
+   * the figure and one string would flatten the two.
+   *
+   * `pct` clamps at the scale's own end: a block above 60 fills the track rather than spilling
+   * past it, so the bar never draws a position the caption's 0–60 does not cover.
    */
+  const loadBarPct = (v: number | null) =>
+    v === null ? 0 : Math.round((Math.min(60, Math.max(0, v)) / 60) * 100);
   const HERO_LOAD_TILES = $derived([
-    {
-      label: 'Fitness',
-      value: ctlVal ?? '—',
-      unit: 'CTL',
-      icon: 'activity',
-      tone: 'text-rose'
-    },
-    { label: 'Fatigue', value: atlVal ?? '—', unit: 'ATL', icon: 'zap', tone: 'text-on-mono' }
+    { label: 'Fitness', value: ctlVal ?? '—', unit: 'CTL', tone: 'text-on-mono', pct: loadBarPct(ctlVal) },
+    { label: 'Fatigue', value: atlVal ?? '—', unit: 'ATL', tone: 'text-on-mono', pct: loadBarPct(atlVal) }
   ] as const);
   const ringFrac = $derived(
     tsbVal === null ? 0 : Math.max(0, Math.min(1, (tsbVal + FORM_SPAN) / (FORM_SPAN * 2)))
   );
-  const R = 44;
+  const R = 75;
   const CIRC = 2 * Math.PI * R;
 
   /**
@@ -206,40 +207,27 @@
   const GAUGE_START = 150; // degrees from 3 o'clock, clockwise: the gauge's lower-left end
   const GAUGE_ARC = (240 / 360) * CIRC;
   const GAUGE_SWEEP = 240;
-  const STROKE = 10;
-  const GAUGE_BOX = 112; // the svg's own width and height
+  const STROKE = 12;
+  const GAUGE_BOX = 180; // the svg's own width and height
+  const GAUGE_C = GAUGE_BOX / 2; // the ring's centre, in the svg's own coordinates
 
   /**
-   * The arc does not fill its 112px box, so the box's centre is not the ring's centre.
+   * The arc does not fill its box, so the box's centre is not the ring's centre.
    *
-   * The painted shape starts at the very top of the box — 49px above the axis, radius plus
-   * half the stroke — and stops at the two round caps, which sit at 30° and 150°, where the
-   * arc has fallen only 22px below the axis. So the mass spans 7..83 of the box and its centre
-   * is 11px above the box's centre.
+   * The painted shape starts at the very top of the box — `R` plus half the stroke above the
+   * axis — and stops at the two round caps, which sit at 30° and 150°, where the arc has
+   * fallen only R/2 = 37.5px below the axis. So the mass spans 9..133.5 of the 180px box and
+   * its centre is 71.25, against the box's centre at 90 — 18.75px, or exactly `R/4`, high.
    *
-   * Anything set beside the ring and aligned to the box therefore reads as sitting too low:
-   * the rider sees the arc, not the box. `ARC_RISE` is that difference, and it is derived from
-   * the geometry rather than typed, so it cannot drift away from the ring it describes.
+   * Anything centred on the box therefore reads as sitting too low inside the ring: the rider
+   * sees the arc, not the box. `ARC_RISE` is that difference, and it is derived from the
+   * geometry rather than typed, so it cannot drift away from the ring it describes.
    */
   const ARC_TOP = GAUGE_BOX / 2 - (R + STROKE / 2);
   const ARC_BOTTOM =
     GAUGE_BOX / 2 +
     (R * Math.sin(((GAUGE_START + GAUGE_SWEEP) % 360) * (Math.PI / 180)) + STROKE / 2);
   const ARC_RISE = GAUGE_BOX / 2 - (ARC_TOP + ARC_BOTTOM) / 2;
-
-  /**
-   * The cards ride on the arc's axis, not the box's, so everything below the arc's lowest point
-   * is empty. The status row used to follow the 112px box and landed 46.5px under the cards,
-   * with the ring continuing down the left of the gap. It now follows the cards instead, at a
-   * fixed `STATUS_GAP` under them, which is the one distance the rider actually sees.
-   *
-   * `CARD_H` is the card's measured height: 73px of label, figure and unit. It is 72px at
-   * 320px, so the gap moves by 1px at the narrowest width — well under the tolerance anything
-   * here is judged by, and better than measuring it at runtime for a value that never varies.
-   */
-  const CARD_H = 73;
-  const STATUS_GAP = 20;
-  const STATUS_LIFT = GAUGE_BOX / 2 - ARC_RISE + CARD_H / 2 + STATUS_GAP - GAUGE_BOX;
 
   /**
    * The three panes share one grid cell, so the card is exactly as tall as its tallest pane —
@@ -354,7 +342,7 @@
                   aria-selected={heroTab === t.id}
                   aria-controls="hero-pane"
                   onclick={() => (heroTab = t.id)}
-                  class="flex items-center gap-1 rounded-pill px-2.5 py-1 text-[9.5px] font-bold tracking-[0.04em] transition-colors {heroTab === t.id
+                  class="flex items-center gap-1 rounded-pill px-2.5 py-1 text-[10.5px] font-bold tracking-[0.04em] transition-colors {heroTab === t.id
                     ? 'bg-white/12 text-on-mono'
                     : 'text-on-mono/55 hover:text-on-mono'}"
                 >
@@ -366,7 +354,7 @@
           </div>
           <div class="flex items-center gap-1.5" class:opacity-30={!raceCard?.live} aria-hidden={raceCard?.live ? undefined : 'true'}>
             <span class="h-1.5 w-1.5 rounded-pill bg-crimson" class:animate-pulse={raceCard?.live}></span>
-            <span class="text-[9px] font-extrabold tracking-[0.14em] text-on-mono/50">LIVE</span>
+            <span class="text-[10px] font-extrabold tracking-[0.14em] text-on-mono/50">LIVE</span>
           </div>
         </div>
       {/snippet}
@@ -374,23 +362,39 @@
       <div id="hero-pane" role="tabpanel" aria-labelledby="hero-tab-{heroTab}" class="grid">
       <div class="col-start-1 row-start-1 transition-opacity duration-150 ease-out h-full flex flex-col" class:opacity-0={heroTab !== 'today'} inert={heroTab !== 'today'}>
       <!--
-        Tier 1 of three: what the rider is like right now.
+        Tier 1: the gauge, with the band's name inside its opening.
 
-        The gauge and the two load figures share one axis. `items-center`, not stretch — a
-        stretched tile is not a tidier tile, it is a padded one. At 147px tall these held 72px of
-        empty space between the label and the figure, and their bottom edge landed exactly on
-        the divider below. Height follows content, so the tiles are as tall as they need to be.
+        V3 (§42): the ring grows from 112px to 150px, and the band moves into the 240° sweep's
+        open mouth — the one place on this card that is both part of the gauge and empty.
+        §43 then scales the whole cluster up again, because 9.5px type inside a 180px ring read
+        as a whisper: ring 150 → 180, figure 29 → 42, band name 9.5 → 12.
 
-        The axis they are centred on is the arc's, not the 112px box's: see `ARC_RISE`. Centre
-        on the box and the pair reads 11px low against the circle, which is the ring looking
-        taller than the cards rather than the two sitting crooked.
+        The name could never live inside the 112px ring: "RECOVER FIRST" needs about 70px and
+        the inner chord where a second line fell was about 56px, which is why it was pushed out
+        to a full-width pill and had to invent a row to belong to. At 180px the clear span
+        between the arc's two round caps is 118px, measured in the DOM at every width the hero
+        has to survive. "RECOVER FIRST" is 103px in the 12px / .06em this label uses, so even
+        the longest band name clears both caps with 7px a side.
 
-        `gap-3` and not `gap-5`: 20px of daylight between a 98px circle and a bordered card
-        is a hole, not a separation, and the eye reads it as a third column that is missing.
+        The label sits at the caps' own depth (R/2 below the centre), which is the widest point
+        of the mouth — set it deeper and the ring's silhouette closes back in over it.
+
+        The svg's box is 180px tall but the paint stops at `ARC_BOTTOM` (133.5), so 46.5px of
+        empty box hangs under the arc and reads as a hole between the gauge and the pair
+        below it. The wrapper carries a negative bottom margin of exactly that dead span, so
+        the layout follows the *painted* arc — the pair sits 24px under the paint, not 70px
+        under the box. The overlay children are absolute against the wrapper's own 180px box,
+        so the figure and band positioning is untouched.
       -->
-      <div class="flex items-center gap-3">
-        <div class="relative shrink-0">
-          <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label="Form TSB on a plus or minus 40 scale, 0 at the top">
+      <div class="flex justify-center pt-1">
+        <div class="relative" style="margin-bottom:-{GAUGE_BOX - ARC_BOTTOM}px">
+          <svg
+            width={GAUGE_BOX}
+            height={GAUGE_BOX}
+            viewBox="0 0 {GAUGE_BOX} {GAUGE_BOX}"
+            role="img"
+            aria-label="Form TSB on a plus or minus 40 scale, 0 at the top"
+          >
             <defs>
               <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stop-color="#ff4d5e" />
@@ -398,15 +402,15 @@
               </linearGradient>
             </defs>
             <circle
-              cx="56"
-              cy="56"
+              cx={GAUGE_C}
+              cy={GAUGE_C}
               r={R}
               fill="none"
               stroke="#23252c"
-              stroke-width="10"
+              stroke-width={STROKE}
               stroke-linecap="round"
               stroke-dasharray="{GAUGE_ARC} {CIRC}"
-              transform="rotate({GAUGE_START} 56 56)"
+              transform="rotate({GAUGE_START} {GAUGE_C} {GAUGE_C})"
             />
             <!--
               `stroke-linecap="round"` still paints a dot for a zero-length dash, so the value
@@ -415,152 +419,99 @@
             -->
             {#if ringFrac > 0}
               <circle
-                cx="56"
-                cy="56"
+                cx={GAUGE_C}
+                cy={GAUGE_C}
                 r={R}
                 fill="none"
                 stroke="url(#ringGrad)"
-                stroke-width="10"
+                stroke-width={STROKE}
                 stroke-linecap="round"
                 stroke-dasharray="{ringDash} {CIRC}"
-                transform="rotate({GAUGE_START} 56 56)"
+                transform="rotate({GAUGE_START} {GAUGE_C} {GAUGE_C})"
                 style="filter: drop-shadow(0 2px 8px rgba(232, 16, 46, 0.55));"
               />
             {/if}
             <!-- TSB 0 — the midpoint of the ±40 scale, the only mark that gives the arc meaning -->
             <line
-              x1="56"
-              y1="17"
-              x2="56"
-              y2="7"
+              x1={GAUGE_C}
+              y1={GAUGE_C - (R - STROKE / 2)}
+              x2={GAUGE_C}
+              y2={GAUGE_C - (R + STROKE / 2)}
               stroke="#f7f8fa"
               stroke-opacity="0.32"
               stroke-width="2"
               stroke-linecap="round"
             />
           </svg>
+          <!--
+            The figure rides the arc's mass, not the box: the painted shape stops at the two
+            caps below the axis, so its centre is `ARC_RISE` above the box's. Centred on the box
+            the number sits low inside its own ring.
+          -->
           <div class="absolute inset-0 grid place-items-center">
-            <div class="text-center">
-              <p class="text-[26px] leading-none font-extrabold text-on-mono text-tabular">
+            <div class="text-center" style="transform:translateY(-{ARC_RISE}px)">
+              <p class="text-[42px] leading-none font-extrabold text-on-mono text-tabular">
                 {tsbVal === null ? '—' : (tsbVal > 0 ? '+' : '') + tsbVal}
               </p>
-              <p class="text-[9px] font-bold uppercase tracking-wider text-on-mono-dim mt-1.5">Form TSB</p>
+              <p class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim mt-2">Form TSB</p>
             </div>
           </div>
-        </div>
-        <!--
-          The two load figures, sized by their own content and centred on the gauge.
-
-          Inside a tile the three lines are one block on a fixed rhythm — label, figure, unit —
-          rather than pushed to opposite ends. `justify-between` across a tall box is what opened
-          a 72px hole between the label and the figure; a fixed rhythm reads as one object.
-        -->
-        <div
-          class="min-w-0 flex-1 grid grid-cols-2 gap-2"
-          style="transform:translateY(-{ARC_RISE}px)"
-        >
-          {#each HERO_LOAD_TILES as t (t.label)}
-            <div class="rounded-xl border border-[#2b2d33] bg-[#23252c]/60 px-1.5 py-2 text-center">
-              <!--
-                At 320px a tile is 50px wide, leaving 36px of content — and "FITNESS" alone
-                measures 39px there. So below 360px the icon goes and the label drops to 8px
-                with the letter-spacing off; at 360px the tile is 70px and everything fits
-                again. Truncating the label instead would have left the rider reading "Fitne…".
-              -->
-              <p class="flex items-center justify-center gap-1 text-[8px] font-bold uppercase tracking-normal text-on-mono-dim min-[360px]:text-[9px] min-[360px]:tracking-wider">
-                <Icon name={t.icon} size={11} strokeWidth={2} class="hidden shrink-0 min-[360px]:block" />
-                <span class="truncate">{t.label}</span>
-              </p>
-              <p class="mt-1 text-[20px] font-extrabold text-tabular leading-none {t.tone}">
-                {t.value}
-              </p>
-              <p class="mt-1 text-[9px] font-semibold tracking-wider text-on-mono-dim/70">
-                {t.unit}
-              </p>
-            </div>
-          {/each}
-        </div>
-      </div>
-      <!--
-        Tier 2: how that state is moving.
-
-        The band cannot live inside the gauge — "RECOVER FIRST" needs about 70px and the ring's
-        inner chord is about 60px where a second line falls, confirmed by three separate
-        measurements. Nor can it sit under the gauge, which is where it was rejected twice: a
-        lone coloured line with nothing beside it has no column to belong to. So it becomes a
-        status line in its own right, spanning the card, with the week's change opposite it.
-
-        The line itself sits below that row, not above it. A rule drawn over a caption hangs
-        the caption from the rule; the same rule under it closes the block and lets the week's
-        numbers start cleanly on the other side. The row is measured off the cards, not off the
-        ring's box, so the ring cannot open a hole under them — see `STATUS_LIFT`.
-
-        The band is a pill in the same register as the two cards beside it: the same neutral
-        border, the same faint fill. The colour goes on the name inside it, not on the chip, so
-        the three figures in the card share one palette and only the band name is highlighted.
-
-        The pill is as wide as the rule under it, edge to edge. Sized to its own text it was a
-        narrow chip floating in a wide card, and the two things the rider is meant to read
-        across — the band and the week's change — sat in the middle of a lot of nothing. The
-        rule below is already exactly this wide, so the pill takes its measure from that rather
-        than from its contents, and the two lines stack as one block.
-
-        The week's change sits inside the pill rather than beside it. Two objects on one line
-        meant the row had two ends and the eye was pulled to both margins of the card at once
-        with the middle left empty. One pill on the card's axis has one centre.
-
-        That also gives the card a three-tier hierarchy instead of two unrelated strips:
-          1. what I am like now    → gauge + fitness + fatigue
-          2. how that is moving    → band + 7-day change
-          3. what I did this week  → time + distance + stress
-      -->
-      <!--
-        One pill, not two objects. The band's name and the week's change are the same statement
-        — what the form is, and where it went — so they are one chip with a hairline between
-        them, the same hairline the week's trio uses between its own cells.
-      -->
-      <div class="flex" style="margin-top:{STATUS_LIFT}px">
-        <span
-          class="flex w-full items-center justify-center gap-2 rounded-pill border border-[#2b2d33] bg-[#23252c]/60 px-4 py-[5px]"
-        >
-          <span
-            class="text-[10px] font-extrabold uppercase leading-none tracking-[0.12em]"
-            style="color:{formTone}"
+          <!--
+            The band name, on the card's vertical axis and at the caps' depth. `top` is derived
+            from the ring's own radius — R/2 below the centre is exactly where the round caps
+            sit — so it follows the gauge instead of a typed offset that could drift from it.
+          -->
+          <div
+            class="absolute text-center"
+            style="top:{GAUGE_C + R / 2}px;left:50%;transform:translate(-50%,-50%)"
           >
-            {formLabel}
-          </span>
-          {#if taperDelta !== null}
-            <span class="h-3 w-px bg-[#2b2d33]" aria-hidden="true"></span>
-            <span class="text-[11px] font-bold leading-none text-tabular text-on-mono-dim">
-              {taperDelta >= 0 ? '+' : ''}{taperDelta} pts / 7d
-            </span>
-          {/if}
-        </span>
+            <p
+              class="text-[12px] font-extrabold uppercase leading-none tracking-[0.06em] whitespace-nowrap"
+              style="color:{formTone}"
+            >
+              {formLabel}
+            </p>
+          </div>
+        </div>
       </div>
       <!--
-        The pane fills the cell and this spacer absorbs whatever is left over, so the trio lands
-        on the bottom edge. Without it this pane was only correct while it happened to be the
-        tallest of the three: the Form and Load panes take their height from the cell, so as soon
-        as either grew past the Today pane's own content the card got taller and the Today trio
-        was left floating a few pixels above the bottom edge, with the other two tabs' last rows
-        on the line below it. The spacer costs nothing when there is no slack, so the spacing
-        `mt-3` still sets is untouched.
+        Whatever height is left over goes here, so the load pair lands on the card's bottom edge
+        the way the Form and Load panes' closing rows do.
       -->
-      <div class="flex-1 min-h-0" aria-hidden="true"></div>
-      <div class="mt-3 pt-3 border-t border-[#2b2d33] grid grid-cols-3 text-center shrink-0">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Time</p>
-          <p class="text-base font-extrabold text-on-mono text-tabular mt-0.5">{week.hours}h</p>
-        </div>
-        <div class="border-x border-[#2b2d33]">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Distance</p>
-          <p class="text-base font-extrabold text-on-mono text-tabular mt-0.5">{fmtDist(week.km, 0)}</p>
-        </div>
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Stress</p>
-          <p class="text-base font-extrabold text-rose text-tabular mt-0.5">{week.tss} TSS</p>
-        </div>
+      <div class="flex-1 min-h-0" aria-hidden="true"></div>      <!--
+        Tier 2: the two load tiles, side by side under the ring (§45, "Tile Cerita").
+
+        The bare pair under a hairline gave two numbers and no way to read them: 22 and 33 only
+        mean something to a rider who already knows what CTL usually runs. Each figure now sits
+        in an inset tile — mono2 on the mono card, the same hairline the Form pane's rows use —
+        with a 4px bar under it placing the value on the shared 0–60 scale the caption names.
+        The hairlines above and between the cells are gone with the bare pair: the tiles draw
+        their own edges.
+
+        Bars stay neutral on-mono even when the band is rose: the gauge arc owns the card's one
+        accent moment, and CTL/ATL carry no band of their own to be tinted by. Figures are 26px
+        against the gauge's 42 — the second tier of the pyramid (42 gauge, 26 pair, 18 trio),
+        small enough that the bar and caption fit without pushing the card past the height the
+        Form and Load panes have to match.
+
+        Static classes only: a dynamic `mt-{gap}` never reaches Tailwind's scanner, so such a
+        class would not exist and the lines would close up.
+      -->
+      <div class="mt-5 grid grid-cols-2 gap-2 shrink-0">
+        {#each HERO_LOAD_TILES as t (t.label)}
+          <div class="rounded-[14px] border border-[#2b2d33] bg-[#1b1c22] px-2 py-3 text-center">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">{t.label}</p>
+            <p class="mt-1 text-[26px] leading-none font-extrabold text-tabular {t.tone}">{t.value}</p>
+            <p class="mt-1 text-[10px] font-semibold tracking-wider text-on-mono-dim/70">{t.unit}</p>
+            <div class="mx-auto mt-2.5 h-1 w-[76%] overflow-hidden rounded-pill bg-[#23252c]">
+              <div class="h-full rounded-pill bg-[#f7f8fa]/85" style="width:{t.pct}%"></div>
+            </div>
+          </div>
+        {/each}
       </div>
+      <p class="mt-2 text-center text-[9px] font-semibold tracking-wide text-on-mono-dim/55">
+        Bar = position on a 0–60 scale
+      </p>
       </div>
       <div class="col-start-1 row-start-1 transition-opacity duration-150 ease-out" class:opacity-0={heroTab !== 'form'} inert={heroTab !== 'form'}>
       <!--
@@ -570,9 +521,9 @@
       -->
       <div class="flex flex-col gap-1 h-full">
         <div class="flex items-baseline justify-between">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Form · last 30 days</span>
+          <span class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim">Form · last 30 days</span>
           {#if taperDelta !== null}
-            <span class="text-[11px] font-bold text-tabular text-rose">{taperDelta >= 0 ? '+' : ''}{taperDelta} pts / 7d</span>
+            <span class="text-[12px] font-bold text-tabular text-rose">{taperDelta >= 0 ? '+' : ''}{taperDelta} pts / 7d</span>
           {/if}
         </div>
         <div
@@ -584,16 +535,16 @@
         </div>
         <div class="pt-4 border-t border-[#2b2d33] grid grid-cols-3 text-center shrink-0">
           <div>
-            <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Fitness</p>
-            <p class="text-base font-extrabold text-on-mono text-tabular mt-0.5">CTL {ctlVal ?? '—'}</p>
+            <p class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim">Fitness</p>
+            <p class="text-[18px] font-extrabold text-on-mono text-tabular mt-0.5">CTL {ctlVal ?? '—'}</p>
           </div>
           <div class="border-x border-[#2b2d33]">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Fatigue</p>
-            <p class="text-base font-extrabold text-on-mono text-tabular mt-0.5">ATL {atlVal ?? '—'}</p>
+            <p class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim">Fatigue</p>
+            <p class="text-[18px] font-extrabold text-on-mono text-tabular mt-0.5">ATL {atlVal ?? '—'}</p>
           </div>
           <div>
-            <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Form</p>
-            <p class="text-base font-extrabold text-rose text-tabular mt-0.5">
+            <p class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim">Form</p>
+            <p class="text-[18px] font-extrabold text-rose text-tabular mt-0.5">
               {tsbVal === null ? '—' : (tsbVal > 0 ? '+' : '') + tsbVal} TSB
             </p>
           </div>
@@ -608,8 +559,8 @@
       -->
       <div class="flex flex-col gap-1 h-full">
         <div class="flex items-baseline justify-between">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Daily load · last 7 days</span>
-          <span class="text-[11px] font-bold text-tabular text-on-mono">{week.tss} TSS / wk</span>
+          <span class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim">Daily load · last 7 days</span>
+          <span class="text-[12px] font-bold text-tabular text-on-mono">{week.tss} TSS / wk</span>
         </div>
         <div class="flex-1 min-h-0" bind:clientHeight={loadChartH}>
           <TssBars days={week.dailyTss} target={tssTarget} height={loadChartH} onDark />
