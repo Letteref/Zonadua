@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Route fixture for the wind estimator tests.
+
+  Runs roughly due east (a climbing latitude/longitude pair from Sumatra toward the
+  Strait), because the estimator's whole job is deciding whether a forecast is a headwind
+  or a tailwind *for this direction of travel*. A fixture that ran north would make every
+  wind a crosswind and the assertions vacuous.
+
+  Coordinates are synthetic but geometrically real: longitude increases, latitude wobbles
+  slightly so the parsed profile has genuine gradient rather than a straight line.
+-->
+<gpx version="1.1" creator="zonadua-e2e" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>E2E Headwind Route</name>
+    <trkseg>
+      <trkpt lat="-2.9500" lon="104.7500"><ele>145</ele></trkpt>
+      <trkpt lat="-2.9505" lon="104.7600"><ele>160</ele></trkpt>
+      <trkpt lat="-2.9510" lon="104.7700"><ele>180</ele></trkpt>
+      <trkpt lat="-2.9508" lon="104.7800"><ele>240</ele></trkpt>
+      <trkpt lat="-2.9502" lon="104.7900"><ele>300</ele></trkpt>
+      <trkpt lat="-2.9498" lon="104.8000"><ele>360</ele></trkpt>
+      <trkpt lat="-2.9500" lon="104.8100"><ele>420</ele></trkpt>
+      <trkpt lat="-2.9505" lon="104.8200"><ele>480</ele></trkpt>
+      <trkpt lat="-2.9510" lon="104.8300"><ele>520</ele></trkpt>
+      <trkpt lat="-2.9512" lon="104.8400"><ele>540</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

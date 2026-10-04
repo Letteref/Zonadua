@@ -362,10 +362,10 @@ harus selalu tampil bersama RMS, rentang kecepatan, jumlah sample, dan peringata
 - Race plan export teks (untuk stem cap)
 
 **Definition of done:**
-- [ ] Tanpa key → app tetap fungsional penuh (AI tersembunyi)
-- [ ] Weekly review mengutip angka dari konteks (cegah halusinasi: prompt + verifikasi angka muncul di context)
-- [ ] Race briefing berisi g/h dan strategi berhenti dari parameter pengguna
-- [ ] Estimator menyesuaikan waktu saat headwind kuat (fixture Open-Meteo mock)
+- [x] Tanpa key → app tetap fungsional penuh (AI tersembunyi)
+- [x] Weekly review mengutip angka dari konteks (cegah halusinasi: prompt + verifikasi angka muncul di context)
+- [x] Race briefing berisi g/h dan strategi berhenti dari parameter pengguna
+- [x] Estimator menyesuaikan waktu saat headwind kuat (fixture Open-Meteo mock)
 
 ---
 
@@ -447,8 +447,9 @@ Coach.svelte sekarang memiliki tombol "Generate" yang membangun context dari rid
 ditampilkan. Respons yang mengandung angka yang tidak ada di context diblok dengan pesan
 error.
 
-Sisa M5:
-- Race briefing dengan g/h + strategi berhenti — ✅ selesai: kartu `Fueling` di Race,
-  angka diturunkan dari `planNutrition` (massa outrageous + energi plan), **tanpa key dan
-  tanpa jaringan**; briefing prose opsional di atasnya tapi tidak pernah menghasilkannya
-- Headwind estimator via Open-Meteo dengan fixture mock
+Sisa M5: **tidak ada — keempat baris DoD tertutup.**
+- Race briefing g/h — kartu `Fueling` di Race, angka dari `planNutrition`, tanpa key/jaringan
+- Headwind estimator — `domain/wind.ts` (geometri murni) + `infra/weather/openmeteo.ts`,
+  2-iterasi koreksi seperti diminta. Bearing diambil dari track GPX rider sendiri saat
+  import, bukan kompas default: rute tersimpan hanya `[km, alt]`, jadi koordinat hanya ada
+  di titik itu.

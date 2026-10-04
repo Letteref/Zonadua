@@ -13,6 +13,8 @@
   import { buildPlan, clockOf, durationOf, planSeries } from '$lib/domain/pacing';
   import { formatDistance, formatElevation, formatWeight, type UnitSystem } from '$lib/domain/units';
   import { toast } from '$lib/toast.svelte';
+  import { peakHeadwind, bearingBetween, correctForWind, type WindSample } from '$lib/domain/wind';
+  import { fetchWindForecast } from '$lib/infra/weather/openmeteo';
 
   /** the global pill (UI-SPEC §46); this route only picks the words */
   const showToast = (msg: string, tone: 'ok' | 'error' = 'ok'): void =>
@@ -63,6 +65,110 @@
   let headwindKph = $state(0);
   let startMin = $state(START_MIN);
 
+  /**
+   * Wind forecast (ROADMAP M5 DoD line 4).
+   *
+   * The plan's wind is still an explicit slider, because a stored route carries only
+   * distance and altitude — `Routes.svelte` drops lat/lng when it compresses the track to
+   * `[km, alt]` pairs. Without a bearing there is no honest way to turn a forecast into a
+   * headwind, and guessing one would be the single worst thing this feature could do: a
+   * wind from behind mis-applied to a headwind route makes a slow day look fast.
+   *
+   * So the forecast is fetched and *shown*, with the rider supplying the direction their
+   * route runs. `windDeg` is therefore an input, never a default.
+   */
+  let windForecast = $state<WindSample[] | null>(null);
+  /**
+   * Coordinates of the loaded GPX.
+   *
+   * Taken from the file the rider actually imported, never from a hardcoded place. A
+   * forecast for the wrong hill is not a forecast, and a sample route's coordinates would
+   * silently attach real weather to a profile nobody is riding.
+   */
+  let routeCoords = $state<{ lat: number; lng: number } | null>(null);
+  let windBearing = $state<number | null>(null);
+  let windBusy = $state(false);
+  let windNote = $state<string | null>(null);
+
+  const peakForecast = $derived(
+    windBearing != null && windForecast ? peakHeadwind(windForecast, windBearing) : null
+  );
+
+  /**
+   * Build the plan for a given headwind.
+   *
+   * Named so the correction below can solve twice without duplicating the ~20 arguments —
+   * the risk being that pass 2 quietly solves a *different* plan than pass 1 and the drift
+   * it reports is then measuring the wrong thing.
+   */
+  function solveWith(headwind: number) {
+    return buildPlan({
+      profile,
+      physics: {
+        riderKg,
+        bikeKg: bike?.weightKg ?? 9.4,
+        cargoKg,
+        crr: bike?.crr ?? 0.0045,
+        cda: bike?.cda ?? 0.32,
+        temperatureC: 20,
+        headwindKph: headwind
+      },
+      pacing: { mode: 'if', ifTarget: modes[selectedIdx].if, ftp },
+      stops: { count: stopCount, minutesEach: stopMin },
+      startMin,
+      checkpoints: CHECKPOINTS
+    });
+  }
+
+  /**
+   * The wind-corrected plan (ROADMAP M5 "2-iterasi koreksi").
+   *
+   * Falls back to the rider's manual slider whenever a forecast is missing or the track
+   * has no bearing — an uncorrected plan the rider chose, never a plan the app invented.
+   */
+  const windCorrected = $derived.by(() => {
+    if (!windForecast || windBearing == null) {
+      return { plan: solveWith(headwindKph), headwindKph: headwindKph, forecastUsed: false, driftHours: 0, stable: true };
+    }
+    const result = correctForWind({
+      solve: solveWith,
+      // the plan solves in minutes past midnight; the forecast is indexed from "now"
+      hourAt: (p) => {
+        const finishMin = p.ok && p.finishClockMin != null ? p.finishClockMin : startMin;
+        const hoursOut = Math.max(0, (finishMin - startMin) / 60);
+        return Math.min(windForecast!.length - 1, Math.round(hoursOut));
+      },
+      windAt: (h) => windForecast![h] ?? null,
+      travelDeg: windBearing!
+    });
+    return result;
+  });
+
+  async function loadForecast(): Promise<void> {
+    if (windBusy) return;
+    if (!routeCoords) {
+      windNote = 'Load a GPX first — the forecast needs a real location, not a guess.';
+      return;
+    }
+    windBusy = true;
+    windNote = null;
+    try {
+      const forecast = await fetchWindForecast({
+        latitude: routeCoords.lat,
+        longitude: routeCoords.lng,
+        startDate: new Date().toISOString().slice(0, 10),
+        endDate: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+      });
+      windForecast = forecast;
+      if (!forecast) {
+        windNote = 'No forecast available — the plan below is windless, not calm.';      } else {
+        windNote = `${forecast.length} h forecast. The plan below is solved twice: once for the windless arrival time, then again for the wind the rider actually meets.`;
+      }
+    } finally {
+      windBusy = false;
+    }
+  }
+
   const npTarget = $derived(Math.round(modes[selectedIdx].if * ftp));
   const barPct = $derived(Math.max(2, Math.min(100, ((modes[selectedIdx].if - 0.55) / 0.4) * 100)));
 
@@ -75,24 +181,17 @@
     { km: 200.4, label: 'Finish Line', cutoffMin: 13 * 60 }
   ];
 
-  const plan = $derived(
-    buildPlan({
-      profile,
-      physics: {
-        riderKg,
-        bikeKg: bike?.weightKg ?? 9.4,
-        cargoKg,
-        crr: bike?.crr ?? 0.0045,
-        cda: bike?.cda ?? 0.32,
-        temperatureC: 20,
-        headwindKph
-      },
-      pacing: { mode: 'if', ifTarget: modes[selectedIdx].if, ftp },
-      stops: { count: stopCount, minutesEach: stopMin },
-      startMin,
-      checkpoints: CHECKPOINTS
-    })
-  );
+  /**
+   * The plan the whole screen reads.
+   *
+   * `windCorrected` rather than a second inline `buildPlan`: the ETA, the chart, the
+   * checkpoint table and the headwind label all have to describe the same solve, or the
+   * screen contradicts itself — a chart that ignores the wind the banner just announced.
+   */
+  const plan = $derived(windCorrected.plan);
+
+  /** The headwind the plan actually solved with — forecast-derived, or the manual slider. */
+  const appliedHeadwind = $derived(windCorrected.headwindKph);
 
   const routeElevM = $derived(Math.round(plan.climbM ?? 0));
   /** one chart row per solved point — altitude + solved speed + elapsed, never normalised */
@@ -148,9 +247,22 @@
       let prevAlt = NaN;
       for (const p of ride.points) {
         if (p.lat != null && p.lng != null) {
-          if (Number.isFinite(prevLat)) distM += haversineM(prevLat, prevLng, p.lat, p.lng);
+          const havePrev = Number.isFinite(prevLat) && Number.isFinite(prevLng);
+          // bearing first, from the *previous* fix. It has to be taken before prevLat is
+          // overwritten — reading it afterwards compares each point with itself, which
+          // `bearingBetween` correctly reports as no direction at all, and the estimator
+          // then silently stays on manual with no way for the rider to tell why.
+          if (!windBearing && havePrev) {
+            const b = bearingBetween(prevLat, prevLng, p.lat, p.lng);
+            if (b != null) windBearing = b;
+          }
+          if (havePrev) distM += haversineM(prevLat, prevLng, p.lat, p.lng);
           prevLat = p.lat;
           prevLng = p.lng;
+          // keep the first real fix so the weather forecast has an honest location; the
+          // compressed profile deliberately carries only km/alt, so this is the only point
+          // at which the route's coordinates still exist
+          if (!routeCoords) routeCoords = { lat: p.lat, lng: p.lng };
         }
         if (p.alt != null) prevAlt = p.alt;
         xy.push([distM / 1000, prevAlt]);
@@ -492,7 +604,15 @@
         </label>
         <label class="flex flex-col gap-1.5">
           <span class="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-ink-dim">
-            Headwind <span class="text-ink text-tabular">{headwindKph} km/h</span>
+            Headwind
+            <span class="text-ink text-tabular">
+              {appliedHeadwind} km/h
+              {#if windForecast && windBearing != null}
+                <span class="text-ink-dim">· from forecast</span>
+              {:else}
+                <span class="text-ink-dim">· manual</span>
+              {/if}
+            </span>
           </span>
           <input
             type="range"
@@ -562,6 +682,54 @@
         {/if}
       </div>
     </div>
+  </section>
+
+  <!-- WIND FORECAST (ROADMAP M5 DoD line 4) -->
+  <section class="rounded-card bg-surface border border-hairline p-4 flex flex-col gap-3 elevation-card">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-pill bg-tile grid place-items-center border border-hairline">
+          <Icon name="sun" size={17} strokeWidth={1.5} class="text-ink" />
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink">Wind forecast</span>
+          <span class="text-[11px] text-ink-dim">Open-Meteo, hourly, no key</span>
+        </div>
+      </div>
+      <button
+        class="h-9 px-4 rounded-pill border border-hairline-strong text-ink font-extrabold uppercase text-[10px] tracking-wider active:scale-[0.98] transition-transform disabled:opacity-50"
+        disabled={windBusy}
+        onclick={loadForecast}
+      >
+        {windBusy ? 'Loading…' : windForecast ? 'Reload' : 'Load'}
+      </button>
+    </div>
+
+    {#if windNote}
+      <p class="text-[12px] leading-relaxed text-ink-dim">{windNote}</p>
+    {/if}
+
+    {#if windForecast && windBearing != null}
+      <div class="flex items-center justify-between text-[11px] font-bold text-ink-dim pt-1 border-t border-hairline">
+        <span>ROUTE BEARING <span class="text-ink">{Math.round(windBearing)}°</span></span>
+        <span class="text-ink-dim/40">·</span>
+        {#if peakForecast && peakForecast.kph > 0}
+          <span>PEAK <span class="text-crimson">{peakForecast.kph} km/h</span> at h+{peakForecast.hourIndex}</span>
+        {:else}
+          <span>PEAK <span class="text-aman">tailwind or calm</span></span>
+        {/if}
+      </div>
+      {#if peakForecast && peakForecast.kph > 15}
+        <p class="text-[12px] leading-relaxed text-warn">
+          Wind builds to {peakForecast.kph} km/h on the nose around hour {peakForecast.hourIndex}. That is the
+          stretch to budget bottles for, not the average.
+        </p>
+      {/if}
+    {:else if windForecast}
+      <p class="text-[12px] leading-relaxed text-ink-dim">
+        Forecast loaded, but no track bearing yet — the headwind above stays on manual until a GPX supplies one.
+      </p>
+    {/if}
   </section>
 
   <!-- Checkpoints -->
