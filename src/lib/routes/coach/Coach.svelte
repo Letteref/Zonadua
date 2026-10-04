@@ -5,10 +5,9 @@
   import { newId } from '$lib/data/seed';
   import { appSettings, allActivities, latestFtp, athlete, weightSeries } from '$lib/data/queries.svelte';
   import { toast } from '$lib/toast.svelte';
-  import { generate } from '$lib/infra/ai/provider';
-  import { buildCoachContext } from '$lib/infra/ai/context';
-  import { systemPrompt, weeklyReviewPrompt } from '$lib/infra/ai/prompts';
-  import { verifyNumbers } from '$lib/infra/ai/verify';
+import { generate } from '$lib/infra/ai/provider';
+import { buildCoachContext } from '$lib/infra/ai/context';
+import { buildWeeklyReview, verifyReview } from '$lib/infra/ai/review';
 
   let chatInput = $state('');
   let notes = $state<AiNote[]>([]);
@@ -69,23 +68,30 @@
     reviewError = null;
 
     try {
-      const prompt = weeklyReviewPrompt(ctx);
-      const response = await generate(prompt, systemPrompt());
+      const request = buildWeeklyReview(ctx);
+      const response = await generate(request.prompt, request.system);
 
-      // Verify every number in the response appears in context
-      const rendered = JSON.stringify(ctx);
-      const result = verifyNumbers(response.text, rendered);
+      // Checked against exactly what the model was shown — see review.ts for why the
+      // prompt and the verification target cannot be swapped for the raw object.
+      const result = verifyReview(request, response.text);
 
-      if (!result.ok) {
+      if (!result.ok || result.text === null) {
         console.error('[zonadua] coach hallucinated:', result.ungrounded);
         reviewError = 'The coach invented numbers. This answer was blocked.';
         return;
       }
 
-      review = response.text;
+      review = result.text;
     } catch (err) {
       console.error('[zonadua] generateReview failed:', err);
-      reviewError = err instanceof Error ? err.message : 'Could not generate review';
+      // A timeout aborts with a DOMException whose `.message` is the string
+      // "signal timed out" — true, but it tells the rider nothing about what to do.
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
+      reviewError = timedOut
+        ? 'The provider did not answer in 45 seconds. Check your connection and try again.'
+        : err instanceof Error
+          ? err.message
+          : 'Could not generate review';
     } finally {
       reviewLoading = false;
     }
@@ -175,7 +181,7 @@
           <p class="text-xs text-rose font-medium">{reviewError}</p>
         </div>
       {:else if review}
-        <div class="prose prose-sm prose-p:text-ink prose-p:leading-relaxed prose-p:my-2">
+        <div class="flex flex-col gap-2 text-[13px] leading-relaxed text-ink">
           {#each review.split('\n\n') as para}
             <p>{para}</p>
           {/each}
@@ -239,11 +245,11 @@
       <div class="grid h-11 w-11 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim">
         <Icon name="lock" size={20} strokeWidth={1.5} />
       </div>
-      <h2 class="text-sm font-extrabold tracking-tight text-ink">Reviews, plans & chat are locked</h2>
+      <h2 class="text-sm font-extrabold tracking-tight text-ink">The weekly review needs your key</h2>
       <p class="text-[12px] text-ink-dim leading-relaxed max-w-[36ch]">
-        Add your own API key so Zonadua is ready for the coach. Nothing reads it yet — the weekly
-        review, training plans and chat all land in M5, and every other part of the app works
-        without a key.
+        Add your own API key and Zonadua will write a review of your last seven days, using
+        only the metrics it derived on this device. Every other part of the app works without
+        a key, and training plans and chat are still to come.
       </p>
       <button
         class="mt-1 h-10 px-5 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-2 glow-signal active:scale-[0.98] transition-transform"
@@ -256,7 +262,7 @@
     {/if}
 
     <p class="text-center text-xs text-ink-dim">
-      Coach ships in M5 — context is built from derived metrics only (Strava API Policy §5.3).
+      Coach context is built from derived metrics only (Strava API Policy §5.3).
     </p>
   </div>
 </div>

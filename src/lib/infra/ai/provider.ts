@@ -22,6 +22,16 @@ export interface LlmResponse {
   usage?: { input: number; output: number };
 }
 
+/**
+ * How long to wait before giving up on a provider.
+ *
+ * Without this a request can hang indefinitely — a phone in a tunnel, a proxy that
+ * never answers — and the Coach button would spin on "Reading your week…" forever
+ * with no way out. Long enough for a slow 2k-token generation, short enough that
+ * the rider is not left staring at a spinner.
+ */
+const TIMEOUT_MS = 45_000;
+
 const ENDPOINTS: Record<Provider, (key: string) => { url: string; headers: HeadersInit; body: unknown }> = {
   gemini: (key) => ({
     url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
@@ -97,7 +107,8 @@ export async function generate(prompt: string, systemPrompt: string): Promise<Ll
   const res = await fetch(base.url, {
     method: 'POST',
     headers: base.headers,
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS)
   });
 
   if (!res.ok) {
