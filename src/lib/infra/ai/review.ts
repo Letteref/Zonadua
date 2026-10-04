@@ -16,7 +16,7 @@
  * than having no gate because the rider learns to dismiss it.
  */
 
-import { weeklyReviewPrompt, systemPrompt } from './prompts';
+import { weeklyReviewPrompt, raceBriefingPrompt, systemPrompt } from './prompts';
 import { verifyNumbers, type Verification } from './verify';
 import type { CoachContext } from './context';
 
@@ -33,6 +33,20 @@ export interface ReviewResult extends Verification {
 /** Build the exact pair that `verifyReview` will later check the answer against. */
 export function buildWeeklyReview(ctx: CoachContext): ReviewRequest {
   return { prompt: weeklyReviewPrompt(ctx), system: systemPrompt() };
+}
+
+/**
+ * Build a race briefing, or report why one cannot be written.
+ *
+ * Refuses when the context carries no fueling block at all. That is not the same as a
+ * fueling block whose `reason` says the plan could not be solved — the second case still
+ * gets a briefing, one that is told to stay silent about grams and hours. The first case
+ * means nobody ever established what event is being discussed, and a model handed that
+ * will happily invent a race and a plan for it.
+ */
+export function buildRaceBriefing(ctx: CoachContext): ReviewRequest | null {
+  if (!ctx.nutrition) return null;
+  return { prompt: raceBriefingPrompt(ctx), system: systemPrompt() };
 }
 
 /**

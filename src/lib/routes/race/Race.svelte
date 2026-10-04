@@ -23,6 +23,10 @@ import {
 import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
 import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
 import { toast } from '$lib/toast.svelte';
+import { buildNutritionContext, buildCoachContext } from '$lib/infra/ai/context';
+import { buildRaceBriefing, verifyReview } from '$lib/infra/ai/review';
+import { generate } from '$lib/infra/ai/provider';
+import { appSettings } from '$lib/data/queries.svelte';
   
   // ---------- setup state (persisted to Dexie) ----------
   let raceId = $state<string | null>(null);
@@ -140,6 +144,92 @@ import { toast } from '$lib/toast.svelte';
 
   /** Chart rows: the same solver output the crosshair reads its buffer from. */
   const chartRows = $derived<PlanSeriesPoint[]>(racePlan ? planSeries(racePlan) : []);
+
+  /**
+   * Race fueling, computed from this rider's mass and the plan's own energy.
+   *
+   * Deliberately *not* behind the AI key gate. g/h is arithmetic, not advice: it follows
+   * from body weight and the solved plan, needs no network, and is the one number a rider
+   * reads on race morning. Asking a model for it would add a failure mode and a bill to a
+   * figure the app can derive exactly. The AI briefing below is prose *around* these
+   * numbers; it never produces them.
+   */
+  const raceStops = $derived({
+    count: stopsMin > 0 ? Math.max(1, Math.round(stopsMin / 15)) : 0,
+    minutesEach: 15
+  });
+
+  const fueling = $derived(
+    racePlan
+      ? buildNutritionContext({
+          raceName: name,
+          distanceKm: raceKm,
+          plan: {
+            ok: racePlan.ok,
+            reason: racePlan.reason,
+            energyKJ: racePlan.energyKJ,
+            movingSec: racePlan.movingSec
+          },
+          stops: raceStops,
+          riderKg: weightSeries.current?.at(-1)?.kg
+        })
+      : null
+  );
+
+  /** Only a fully-solved plan with a real fueling block can be briefed on. */
+  const canBrief = $derived(fueling?.carbPerHour != null);
+
+  let briefing = $state<string | null>(null);
+  let briefingBusy = $state(false);
+  let briefingError = $state<string | null>(null);
+
+  async function generateBriefing(): Promise<void> {
+    if (briefingBusy || !fueling) return;
+    briefingBusy = true;
+    briefingError = null;
+    try {
+      const ctx = buildCoachContext({
+        rides: [],
+        athlete: { weightKg: weightSeries.current?.at(-1)?.kg, ftp, heightCm: undefined },
+        nutrition: fueling,
+        now: new Date()
+      });
+      // `buildCoachContext` returns null for an empty ride week; a briefing is about an
+      // event, not a week, so the context is constructed here rather than reused from the
+      // weekly path where an empty window legitimately means "nothing to review".
+      const request = ctx
+        ? buildRaceBriefing(ctx)
+        : buildRaceBriefing({
+            week: { weekOf: '', rides: 0, distanceKm: 0, elevGainM: 0, movingSec: 0, tss: 0, withPower: 0, includesDemo: false },
+            athlete: { weightKg: null, ftp: null, heightCm: null },
+            load: { ctl: null, atl: null, tsb: null, form: null, loaded: false },
+            nutrition: fueling
+          });
+      if (!request) {
+        briefingError = 'No race plan to brief on.';
+        return;
+      }
+
+      const response = await generate(request.prompt, request.system);
+      const result = verifyReview(request, response.text);
+      if (!result.ok || result.text === null) {
+        console.error('[zonadua] briefing hallucinated:', result.ungrounded);
+        briefingError = 'The coach invented numbers. This briefing was blocked.';
+        return;
+      }
+      briefing = result.text;
+    } catch (err) {
+      console.error('[zonadua] generateBriefing failed:', err);
+      const timedOut = err instanceof DOMException && err.name === 'TimeoutError';
+      briefingError = timedOut
+        ? 'The provider did not answer in 45 seconds. Check your connection and try again.'
+        : err instanceof Error
+          ? err.message
+          : 'Could not write a briefing';
+    } finally {
+      briefingBusy = false;
+    }
+  }
   const gates = $derived<CutoffGate[]>([
     ...checkpoints.filter((c) => c.cutoffMin != null).map((c) => ({ km: c.km, cutoffMin: c.cutoffMin!, label: c.label })),
     { km: raceKm, cutoffMin, label: 'Finish' }
@@ -708,6 +798,64 @@ import { toast } from '$lib/toast.svelte';
         <span><span style="color:#ff4d5e">{targetWatts} W</span> NP</span>
       </div>
     </SectionCard>
+
+    <!-- FUELING — computed from this rider's mass and the plan's energy. No key, no network. -->
+    {#if fueling}
+      <SectionCard kicker="Fueling · from your plan">
+        {#snippet right()}
+          {#if fueling.carbIsCapped && fueling.carbPerHour != null}
+            <span class="text-[10px] font-bold uppercase tracking-wider text-aman">ceiling</span>
+          {/if}
+        {/snippet}
+        {#if fueling.carbPerHour == null}
+          <!-- No plan, no stops, or an unknown weight: say which, never print a zero -->
+          <p class="text-[12px] leading-relaxed text-ink-dim">{fueling.reason}.</p>
+        {:else}
+          <div class="flex items-baseline gap-2">
+            <span class="text-[34px] leading-none font-extrabold tracking-tight text-tabular text-crimson">{fueling.carbPerHour}</span>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-ink-dim">g carb / h</span>
+          </div>
+          <div class="flex items-center justify-between text-ink-dim font-bold text-[11px] pt-2 border-t border-hairline text-tabular">
+            <span>FLUID <span class="text-ink">{fueling.fluidPerHour} L/H</span></span>
+            <span class="text-ink-dim/40">·</span>
+            <span>MIX <span class="text-ink">{fueling.mixPerStopG} G</span> × {fueling.stopCount} STOPS</span>
+          </div>
+          {#if fueling.carbIsCapped}
+            <p class="text-[11px] leading-relaxed text-ink-dim">
+              Carbohydrate only covers part of a {Math.round((fueling.movingSec / 3600) * 10) / 10} h effort at
+              the most a gut absorbs, so treat {fueling.carbPerHour} g/h as a ceiling, not a target to beat.
+            </p>
+          {/if}
+          {#if fueling.stopBudget && !/enough/.test(fueling.stopBudget)}
+            <p class="text-[11px] leading-relaxed text-warn">{fueling.stopBudget}.</p>
+          {/if}
+
+          <!-- The prose is the only part that needs a model; the figures above never do. -->
+          {#if appSettings.current?.aiKey}
+            <div class="pt-1">
+              {#if briefingBusy}
+                <p class="text-[12px] text-ink-dim">Briefing your race…</p>
+              {:else if briefingError}
+                <p class="text-[12px] text-kritis font-medium">{briefingError}</p>
+              {:else if briefing}
+                <div class="flex flex-col gap-2 text-[13px] leading-relaxed text-ink">
+                  {#each briefing.split('\n\n') as para}
+                    <p>{para}</p>
+                  {/each}
+                </div>
+              {:else if canBrief}
+                <button
+                  class="h-9 px-4 rounded-pill bg-surface border border-hairline-strong text-ink font-extrabold uppercase text-[10px] tracking-wider active:scale-[0.98] transition-transform"
+                  onclick={generateBriefing}
+                >
+                  Write race briefing
+                </button>
+              {/if}
+            </div>
+          {/if}
+        {/if}
+      </SectionCard>
+    {/if}
 
     <!-- 3 slowest sectors -->
     <SectionCard kicker="3 slowest sectors">

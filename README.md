@@ -36,7 +36,7 @@ Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
 > mean-max curve + CP/W' fit, time in zones), `course.ts` (GPX/TCX), `units.ts`, `trend.ts`,
 > and the M3 solver pair `physics.ts` + `pacing.ts` (power→speed → finish time → checkpoints →
-interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **397 unit tests** (395 passing, 2 waiting on a real device ride) and **62 Playwright E2E tests**.
+interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **405 unit tests** (403 passing, 2 waiting on a real device ride) and **65 Playwright E2E tests**.
 Still missing: everything in M5 — the AI Coach has no LLM call, and Strava sync has no backend.
 
 ## Commands

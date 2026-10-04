@@ -411,7 +411,7 @@ sekarang **langkah 0–4 sudah selesai** (2 Okt 2026), tinggal `race.ts` untuk M
 | 2 | **M4 race projection** — ✅ selesai 2 Okt 2026 | `domain/race.ts` memakai solver M3 → proyeksi finish, buffer, required pace, feasibility AMAN/WASPADA/KRITIS | KRITIS bisa muncul dari fixture W′; input checkpoint < 100 ms |
 | 3 | **Sisa M1** — ✅ selesai 2 Okt 2026 | zone editor (F2-AC4) + template, grafik tren berat/FTP overlay (F2-AC2), satuan imperial dipakai di 4 tampilan, `domain/units.ts` + `domain/trend.ts` + parser `domain/course.ts` (16 tes) | F2-AC2 & F2-AC4 terpenuhi; M1 ditutup |
 | 4 | **Activity detail** — ✅ selesai 2 Okt 2026 | route `#/rides/:id` (router param), header + angka dark, kurva ride vs all-time best, time in zones, sparkline asli di list Rides | daftar ride bisa dibuka; ride tanpa power menampilkan empty state jujur |
-| 5 | **M5 AI Coach** — 🟡 in progress | adapter provider (4 providers, BYO key), context builder (hanya metrik turunan), prompt statis, number verification | hanya setelah angka/domain tepercaya — kalau context-nya salah, AI mengarang |
+| 5 | **M5 AI Coach** — 🟡 in progress | adapter provider (4 providers, BYO key), context builder (hanya metrik turunan), prompt statis, number verification, kartu fueling race | hanya setelah angka/domain tepercaya — kalau context-nya salah, AI mengarang |
 | 6 | **M6 Strava** | OAuth PKCE via Worker, sync + throttle, pruner 7 hari | terakhir, butuh backend |
 
 M2 dan M1 sisa bisa dikerjakan berurutan seperti biasa; M4 **wajib** setelah M3; M5 **wajib** setelah
@@ -448,5 +448,7 @@ ditampilkan. Respons yang mengandung angka yang tidak ada di context diblok deng
 error.
 
 Sisa M5:
-- Race briefing dengan g/h + strategi berhenti (butuh `nutrition.ts` integration)
+- Race briefing dengan g/h + strategi berhenti — ✅ selesai: kartu `Fueling` di Race,
+  angka diturunkan dari `planNutrition` (massa outrageous + energi plan), **tanpa key dan
+  tanpa jaringan**; briefing prose opsional di atasnya tapi tidak pernah menghasilkannya
 - Headwind estimator via Open-Meteo dengan fixture mock

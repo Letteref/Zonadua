@@ -24,6 +24,8 @@
  * expose. The wiring to live queries lives with the caller.
  */
 
+import { checkStopBudget, planNutrition } from '../../domain/nutrition';
+
 /** Where a figure came from, so the prompt layer can label it honestly. */
 export type Provenance = 'measured' | 'derived';
 
@@ -69,6 +71,37 @@ export interface LoadContext {
   form: 'fresh' | 'detraining' | 'balanced' | 'productive' | 'peaking' | null;
   /** whether the rider has ridden enough for any of the above to mean anything */
   loaded: boolean;
+}
+
+export interface NutritionContext {
+  /** the event these figures are for */
+  raceName: string;
+  /** distance_km */
+  distanceKm: number;
+  /** riding seconds the plan solved for, excluding stops */
+  movingSec: number;
+  /** energy the solved plan costs, kJ — the basis every gram below is derived from */
+  energyKJ: number;
+  /** g/h of carbohydrate, already clamped to what a gut absorbs; null when unfuellable */
+  carbPerHour: number | null;
+  /** true when the plan's raw demand exceeded that ceiling and was clamped */
+  carbIsCapped: boolean;
+  /** litres of fluid per hour, derived from body mass; null when unfuellable */
+  fluidPerHour: number | null;
+  /** grams of mix per stop at 60 g/L — the figure that goes on the bag */
+  mixPerStopG: number | null;
+  /** how many stops the plan already budgets; zero means the plan rides straight through */
+  stopCount: number;
+  /** `checkStopBudget`'s verdict, or null when there are no stops to budget */
+  stopBudget: string | null;
+  /**
+   * Why this block is absent, when it is.
+   *
+   * Carried rather than thrown away because "no fueling plan" and "here is your fueling
+   * plan" are different states and the rider is entitled to know which one they are
+   * looking at before any model is asked to comment on it.
+   */
+  reason: string | null;
 }
 
 /** UTC day key, matching how activity dates are stored and bucketed everywhere else. */
@@ -154,6 +187,8 @@ export function buildCoachContext(input: {
   athlete: { weightKg?: number; ftp?: number; heightCm?: number };
   /** ctl / atl / tsb / form from `computePmc`, when the caller has them */
   load?: { ctl: number | null; atl: number | null; tsb: number | null; form: LoadContext['form'] };
+  /** race fueling, when the caller is briefing a specific event rather than the week */
+  nutrition?: NutritionContext | null;
   now: Date;
 }): CoachContext | null {
   const week = buildWeekContext(input.rides, input.now);
@@ -175,13 +210,99 @@ export function buildCoachContext(input: {
     loaded: (input.load?.ctl ?? 0) > 0
   };
 
-  return { week, athlete, load };
+  return { week, athlete, load, nutrition: input.nutrition ?? null };
 }
 
 export interface CoachContext {
   week: WeekContext;
   athlete: AthleteContext;
   load: LoadContext;
+  /**
+   * Race fueling, or `null` for a weekly review that is not about an event.
+   *
+   * Separate from the rest of the context on purpose. A weekly review can be written from
+   * this week's rides alone; a race briefing cannot be written at all without a solved
+   * plan, so its absence is a real limit on what the model is allowed to say — and that
+   * limit has to be visible to the prompt rather than implied by a missing section.
+   */
+  nutrition: NutritionContext | null;
+}
+
+/**
+ * Turn a solved plan into the fueling figures a briefing is allowed to quote.
+ *
+ * Every number here comes out of `planNutrition`, which is a tested function of the
+ * rider's own mass and the plan's own energy. That is the whole point: g/h is the single
+ * number a model is most likely to answer from population averages, and it is the number
+ * a rider would act on at 5am. The model may phrase the result; it may not produce it.
+ *
+ * Returns a block carrying `reason` rather than `null` when the plan cannot fuel, so the
+ * caller can say *which* input was missing instead of falling silent.
+ */
+export function buildNutritionContext(input: {
+  raceName: string;
+  distanceKm: number;
+  plan: {
+    ok: boolean;
+    reason?: string;
+    energyKJ?: number;
+    movingSec?: number;
+    stopSec?: number;
+  };
+  stops: { count: number; minutesEach: number };
+  riderKg?: number;
+}): NutritionContext | null {
+  const base = {
+    raceName: input.raceName,
+    distanceKm: Math.round(input.distanceKm * 10) / 10,
+    movingSec: Math.round(input.plan.movingSec ?? 0),
+    energyKJ: Math.round(input.plan.energyKJ ?? 0),
+    stopCount: input.stops.count,
+    // null, never 0: an unmeasured gram figure printed as 0 would read as "eat nothing"
+    carbPerHour: null,
+    carbIsCapped: false,
+    fluidPerHour: null,
+    mixPerStopG: null,
+    stopBudget: null
+  };
+
+  if (!input.plan.ok) {
+    return { ...base, reason: input.plan.reason ?? 'the plan could not be solved' };
+  }
+
+  const plan = planNutrition({
+    riderKg: input.riderKg,
+    energyKJ: input.plan.energyKJ,
+    movingSec: input.plan.movingSec,
+    stopCount: input.stops.count,
+    stopMinutes: input.stops.minutesEach
+  });
+
+  if (!plan) {
+    // planNutrition refuses rather than guessing; report the missing input, not a number
+    const missing = !input.riderKg ? 'body weight' : !input.plan.energyKJ ? 'the plan energy' : 'the planned duration';
+    return { ...base, reason: `${missing} is not known, so no fueling plan can be computed` };
+  }
+
+  // No stops means fuel is carried from the start, which is a different plan and not one
+  // this module can advise on. Saying so beats quoting a per-stop figure for zero stops.
+  if (input.stops.count <= 0) {
+    return { ...base, reason: 'the plan has no stops, so there is nothing to fuel at' };
+  }
+
+  const budget = checkStopBudget(input.stops.minutesEach);
+
+  return {
+    ...base,
+    carbPerHour: plan.carbPerHour,
+    carbIsCapped: plan.carbIsCapped,
+    fluidPerHour: plan.fluidPerHour,
+    mixPerStopG: plan.mixPerStopG,
+    stopBudget: budget.adequate
+      ? `each stop allows ${budget.minutesEach} min, enough to eat and drink`
+      : `each stop allows only ${budget.minutesEach} min — ${budget.shortfallMin} min short of a real feed stop`,
+    reason: null
+  };
 }
 
 function finiteOrNull(v: unknown): number | null {
@@ -223,5 +344,32 @@ export function renderContext(ctx: CoachContext): string {
     `form: ${ctx.load.form ?? 'not measured'}`,
     `has_load_history: ${ctx.load.loaded}`
   ];
+
+  // The fueling block is printed only when one exists, and printed with its reason when
+  // the plan could not produce one. An empty section would read as "nothing to say" and
+  // invite the model to fill the gap; a section that says *why* it is empty cannot be
+  // mistaken for a measured zero.
+  if (ctx.nutrition) {
+    const f = ctx.nutrition;
+    lines.push(
+      '',
+      '## Race fueling',
+      `race: ${f.raceName}`,
+      `distance_km: ${f.distanceKm}`,
+      `planned_moving_min: ${Math.round(f.movingSec / 60)}`,
+      `planned_energy_kj: ${f.energyKJ}`
+    );
+    if (f.reason) {
+      lines.push(`fueling: NOT AVAILABLE — ${f.reason}`);
+      lines.push('Do not suggest carbohydrate, fluid or feeding amounts for this race.');
+    } else {
+      lines.push(`carb_g_per_h: ${f.carbPerHour}${f.carbIsCapped ? ' (ceiling — gut absorption limit)' : ''}`);
+      lines.push(`fluid_l_per_h: ${f.fluidPerHour}`);
+      lines.push(`mix_g_per_stop: ${f.mixPerStopG}`);
+      lines.push(`stops_planned: ${f.stopCount}`);
+      lines.push(`stop_budget: ${f.stopBudget}`);
+    }
+  }
+
   return lines.join('\n');
 }
