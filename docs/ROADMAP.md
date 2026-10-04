@@ -348,15 +348,20 @@ harus selalu tampil bersama RMS, rentang kecepatan, jumlah sample, dan peringata
 
 ## M5 — AI Coach (F5) + polish
 
-> **Status: stub.** Chat disimpan ke `ai_notes` dan ditampilkan kembali; tidak ada panggilan LLM,
-> context builder, maupun template prompt. Yang sudah benar: aplikasi tetap berfungsi penuh tanpa
-> key (F5-AC1), dan `Settings` sudah punya slot provider + key.
+> **Status: DoD lengkap (5 Okt 2026).** Provider adapter (Gemini/OpenAI/OpenRouter/Anthropic,
+> BYO key), context builder yang hanya bisa menghasilkan angka terukur atau `null`, verifikasi
+> angka di balasan model, kartu fueling race, dan estimator angin dua-iterasi. Belum ada
+> **satu pun** panggilan ke API LLM atau Open-Meteo sungguhan yang terverifikasi — semuanya
+> diuji dari fixture/stub, jadi bentuk respons provider adalah asumsi berdasarkan
+> dokumentasi, bukan hasil observasi.
 
 **Tujuan:** asisten latihan kontekstual + kalibrasi + cuaca.
 
 - AI provider adapter (Gemini default, OpenAI-compatible) + BYO key + onboarding
 - Context builder (metrik turunan saja — kepatuhan §5.3)
 - Weekly review, chat, rencana latihan (simpan ke kalender sederhana), pre-race briefing (pacing + nutrisi dari `domain/nutrition.ts`)
+  - ✅ weekly review, pre-race briefing. ⬜ **chat dan rencana latihan belum ada** — `sendChat` masih
+    hanya menyimpan pertanyaan ke `ai_notes` tanpa menjawabnya.
 - Weather-aware estimator (Open-Meteo, 2-iterasi koreksi)
 - Kalibrasi estimasi dari pasangan estimasi-vs-aktual (faktor pribadi per kondisi rute)
 - Race plan export teks (untuk stem cap)
