@@ -213,6 +213,13 @@ export function solveRide(
   let powerLimitedCount = 0;
   let powerLimitedKm = 0;
   let steepestGradePct = 0;
+  /**
+   * Altitude where that steepest ramp *is*, kept so the headline figure can be evaluated in
+   * the same air the segment rides in. `null` until a positive grade is seen — a route with
+   * no climb has no altitude to derive a density from, and `peakRequiredW` then falls back
+   * to the caller's own reference altitude rather than inventing one.
+   */
+  let steepestAltM: number | null = null;
 
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1];
@@ -234,7 +241,10 @@ export function solveRide(
       powerLimitedCount++;
       powerLimitedKm += segKm;
     }
-    if (gradePct > steepestGradePct) steepestGradePct = gradePct;
+    if (gradePct > steepestGradePct) {
+      steepestGradePct = gradePct;
+      steepestAltM = b.altM;
+    }
     cumTimeSec += sec;
     cumDistKm += segKm;
 
@@ -263,8 +273,31 @@ export function solveRide(
     avgKph: totalTimeSec > 0 ? (cumDistKm / (totalTimeSec / 3600)) : 0,
     powerLimitedCount,
     powerLimitedPct: cumDistKm > 0 ? Math.round((powerLimitedKm / cumDistKm) * 1000) / 10 : 0,
-    // one evaluation on the steepest ramp, at a speed a racer would actually hold on a climb
-    peakRequiredW: Math.round(requiredPower(params, steepestGradePct, 15, densityOf(params)))
+    // One evaluation on the steepest ramp, at a speed a racer would actually hold on a climb.
+    //
+    // The density has to be the air *at that ramp*. This used to call `densityOf(params)`,
+    // which falls back to `referenceAltitudeM ?? 0` — and since no caller ever sets
+    // `referenceAltitudeM`, that was always sea level. Every segment in this same loop was
+    // solved at its own altitude, so the headline figure was the one number on the card not
+    // describing the ride it was describing.
+    //
+    // How much it was wrong is worth stating precisely, because it is easy to overstate: air
+    // at 2,000 m really is ~18 % thinner, but a 10 % wall held at 15 km/h is dominated by the
+    // gravity term — aero is only ~4 % of the total there — so the correction is about 1 %
+    // (3 W in the measured case). Small, but it was a real inconsistency, not a rounding one,
+    // and it grew with the wall's altitude and its speed.
+    peakRequiredW: Math.round(
+      requiredPower(
+        params,
+        steepestGradePct,
+        15,
+        params.airDensity ??
+          airDensity(
+            steepestAltM ?? params.referenceAltitudeM ?? 0,
+            params.temperatureC ?? 20
+          )
+      )
+    )
   };
 }
 

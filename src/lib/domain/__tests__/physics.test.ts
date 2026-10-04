@@ -281,6 +281,35 @@ describe('solveRide', () => {
     expect(sol.peakRequiredW).toBeGreaterThan(solveRide(flat(10), RIDER, 200).peakRequiredW);
   });
 
+  it('measures the steepest ramp in the air at that ramp, not at sea level', () => {
+    // RIDER pins `airDensity` so the analytic comparisons in this file stay exact. This one
+    // deliberately drops that pin, because the bug it guards was only reachable *without*
+    // it: with no explicit density, the headline figure used to fall back to sea level while
+    // every segment in the same loop was solved at its own altitude.
+    const { airDensity: _pinned, ...atmosphere } = RIDER;
+
+    // The same 10 % wall, once at sea level and once from 2,000 m. Thinner air means the
+    // same speed costs less power, so the high wall must not read high — the opposite of
+    // what it did, and the number a rider would take as "this is what the ramp demands".
+    const atSea = solveRide([{ distKm: 0, altM: 0 }, { distKm: 10, altM: 1000 }], atmosphere, 200);
+    const atHeight = solveRide([{ distKm: 0, altM: 2000 }, { distKm: 10, altM: 3000 }], atmosphere, 200);
+    expect(atHeight.peakRequiredW).toBeLessThan(atSea.peakRequiredW);
+
+    // The stronger claim: the headline must equal what the steepest segment itself needed.
+    // Anything else means the card is quoting a different ride than the chart drew.
+    const steepest = atHeight.segments.reduce((a, s) => (s.gradePct > a.gradePct ? s : a));
+    expect(atHeight.peakRequiredW).toBe(
+      Math.round(requiredPower(atmosphere, steepest.gradePct, 15, airDensity(steepest.altM, 20)))
+    );
+
+    // A route with no climb has no altitude to derive an atmosphere from, so it must fall
+    // back rather than invent one — the flat case still reports the rolling+aero cost.
+    const flatSea = solveRide(flat(10), atmosphere, 200);
+    expect(flatSea.peakRequiredW).toBe(
+      Math.round(requiredPower(atmosphere, 0, 15, airDensity(0, 20)))
+    );
+  });
+
   it('reports total climb and descent separately', () => {
     const profile = [
       { distKm: 0, altM: 100 },
