@@ -13,20 +13,15 @@
   import { ftpOnDate, rideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
   import { distanceUnit, formatDistance, formatElevation, type UnitSystem } from '$lib/domain/units';
   import { appSettings } from '$lib/data/queries.svelte';
+  import { toast } from '$lib/toast.svelte';
+
+  /** the global pill (UI-SPEC §46); this route only picks the words */
+  const showToast = (msg: string): void => toast.ok(msg);
   
   type Filter = 'all' | 'rides' | 'commutes' | 'power';
   let filter = $state<Filter>('all');
   let query = $state('');
   let importInput: HTMLInputElement | null = $state(null);
-  let importing = $state(false);
-  let toast: string | null = $state(null);
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function showToast(msg: string): void {
-    toast = msg;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = null), 3400);
-  }
 
   const filtered = $derived.by<Activity[]>(() => {
     let items = recentActivities.current ?? [];
@@ -72,9 +67,11 @@
 
   async function importFiles(files: File[]): Promise<void> {
     if (files.length === 0) return;
-    importing = true;
+    // sticky: a spinner that dismisses itself mid-parse tells the rider it finished
+    toast.busy('Parsing files…');
     const bike = activeBike.current?.bike;
     let ok = 0;
+    let failed = 0;
     try {
       for (const file of files) {
         try {
@@ -136,14 +133,20 @@
           });
           ok++;
         } catch (err) {
+          failed++;
           console.error('[zonadua] import failed:', file.name, err);
         }
       }
-      showToast(
-        ok > 0 ? `${ok} ride${ok > 1 ? 's' : ''} imported — odometer updated` : 'Import failed — check the file format'
-      );
+      // a mixed batch says so: "2 rides imported" over three picked files is a lie the
+      // rider cannot act on, so the count that failed is part of the message
+      if (ok > 0 && failed === 0) {
+        showToast(`${ok} ride${ok > 1 ? 's' : ''} imported — odometer updated`);
+      } else if (ok > 0) {
+        toast.error(`${ok} imported, ${failed} failed — check the file format`);
+      } else {
+        toast.error('Import failed — check the file format');
+      }
     } finally {
-      importing = false;
       if (importInput) importInput.value = '';
     }
   }
@@ -289,16 +292,3 @@
   </p>
 </div>
 
-{#if toast || importing}
-  <div class="fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px)+8px)] z-[55] mx-auto max-w-md px-5">
-    <div class="flex items-center justify-center gap-2 rounded-pill bg-mono text-on-mono px-4 py-2.5 elevation-raised">
-      {#if importing}
-        <Icon name="loader-circle" size={15} strokeWidth={2} class="animate-spin text-rose" />
-        <span class="text-[11px] font-bold uppercase tracking-wider">Parsing files…</span>
-      {:else}
-        <Icon name="check-circle" size={15} strokeWidth={2} class="text-aman" />
-        <span class="text-[11px] font-bold uppercase tracking-wider">{toast}</span>
-      {/if}
-    </div>
-  </div>
-{/if}

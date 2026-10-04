@@ -22,6 +22,7 @@ import {
 } from '$lib/domain/race';
 import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
 import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
+import { toast } from '$lib/toast.svelte';
   
   // ---------- setup state (persisted to Dexie) ----------
   let raceId = $state<string | null>(null);
@@ -60,6 +61,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       }
     } catch (err) {
       console.error('[zonadua] race load failed:', err);
+      toast.error('Could not load your races');
     }
   })();
 
@@ -277,6 +279,7 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       enterLive();
     } catch (err) {
       console.error('[zonadua] saveAndStart failed:', err);
+      toast.error('Could not start the race');
     }
   }
 
@@ -442,7 +445,10 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       await db.race_logs.put(entry);
       kmInput = '';
     } catch (err) {
+      // the field is not cleared: a cleared field reads as a logged checkpoint, and this
+      // is the number the rider used to decide whether they were making the cut-off
       console.error('[zonadua] logCheckpoint failed:', err);
+      toast.error(`Could not log ${km} km`);
     }
   }
 
@@ -458,8 +464,13 @@ import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
       releaseWakeLock();
       liveMode = false;
       raceId = null;
+      toast.ok('Race finished');
     } catch (err) {
+      // the cockpit deliberately stays live on failure: tearing down the wake lock and
+      // leaving live mode would end the session's recording, and the result is the one
+      // write that cannot be reconstructed by logging another km
       console.error('[zonadua] finishRace failed:', err);
+      toast.error('Could not finish the race — try again');
     }
   }
 

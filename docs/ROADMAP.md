@@ -416,3 +416,22 @@ sekarang **langkah 0–4 sudah selesai** (2 Okt 2026), tinggal `race.ts` untuk M
 
 M2 dan M1 sisa bisa dikerjakan berurutan seperti biasa; M4 **wajib** setelah M3; M5 **wajib** setelah
 M2; M6 bebas kapan saja tapi tidak masuk MVP.
+
+### Prasyarat yang dijaga sebelum M5 (4 Okt 2026)
+
+Langkah 5 mensyaratkan "angka/domain tepercaya". Dua hal diperbaiki lebih dulu karena keduanya
+menyentuh data, bukan cuma tampilan:
+
+- **`peakRequiredW` salah fisika** — solver `solveRide` menghitung kebutuhan daya pada
+  tanjakan paling-curam memakai massa udara di permukaan laut. Di tanjakan setinggi 1.450 m
+  seperti rute seed, selisihnya berarti; di dinding 10% pada 15 km/h hanya sekitar 2–3 W,
+  karena bagian aero kecil dibanding gravitasi. Angka mentahnya disimpan untuk M5.
+- **Kegagalan tulis senyap** — 27 `catch` hanya menulis ke konsol, dan tiga salinan
+  `showToast` menggambar centang hijau untuk tulisan yang gagal. Sekarang satu pil global
+  dengan nada berbeda untuk kegagalan, `catch` senyap nol, dan `saveComponent`/`finishRace`
+  tidak lagi berpura-pura berhasil (UI-SPEC §46).
+
+Kesimpulan audit: tidak ada angka karangan tanpa perhitungan yang lolos ke layar. Badge
+`demo` berasal dari `synthetic === true`, metrik ride dihitung dari trace-nya sendiri,
+`extractPower` mengembalikan `null` — bukan 0 W — saat tidak ada watt, dan belum ada satu
+pun panggilan LLM.

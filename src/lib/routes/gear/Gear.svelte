@@ -7,6 +7,7 @@
   import { convertDistance, distanceUnit, type UnitSystem } from '$lib/domain/units';
   import { db, type BikeComponent, type Bike } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
+  import { toast } from '$lib/toast.svelte';
   
   const bikes = $derived(allBikesWithComponents.current ?? []);
 
@@ -84,17 +85,26 @@
       // plain object only: Dexie/IndexedDB cannot structured-clone $state proxies
       await db.components.put(rec);
     } catch (err) {
+      // the sheet stays open on purpose: closing it after a failed write makes the
+      // component look saved, and the rider's typed values are gone with it
       console.error('[zonadua] saveComponent failed:', err);
+      toast.error(`Could not save ${rec.name}`);
+      return;
     }
     sheetOpen = false;
+    toast.ok(`${rec.name} saved`);
   }
 
   // ---------- service: wear clock resets at the current odometer ----------
   async function service(comp: BikeComponent, odoKm: number): Promise<void> {
     try {
       await db.components.update(comp.id, { installedAtOdoKm: odoKm, updatedAt: Date.now() });
+      toast.ok(`${comp.name} serviced`);
     } catch (err) {
       console.error('[zonadua] service failed:', err);
+      // the wear bar is derived from the stored odometer, so a silent failure here
+      // leaves a serviced part counting up to its next due service anyway
+      toast.error(`Could not service ${comp.name}`);
     }
   }
 
@@ -107,8 +117,12 @@
     }
     try {
       await db.components.delete(comp.id);
+      toast.ok(`${comp.name} deleted`);
     } catch (err) {
       console.error('[zonadua] remove failed:', err);
+      // the row is still there: without this the part silently stays and the rider
+      // assumes the delete worked
+      toast.error(`Could not delete ${comp.name}`);
     }
     confirmId = null;
   }
@@ -127,6 +141,9 @@
       });
     } catch (err) {
       console.error('[zonadua] setActive failed:', err);
+      // the transaction is all-or-nothing, so the old bike is still the active one —
+      // saying so beats a header that keeps showing the bike the rider just switched off
+      toast.error(`Could not switch to ${bike.name}`);
     }
   }
 </script>

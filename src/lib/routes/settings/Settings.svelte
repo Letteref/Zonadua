@@ -15,6 +15,14 @@
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
   import TrendChart from '$lib/components/TrendChart.svelte';
+  import { toast } from '$lib/toast.svelte';
+
+  /** one global pill; this route only decides the words (UI-SPEC §46) */
+  const showToast = (msg: string): void => toast.ok(msg);
+  const showFailure = (msg: string, err: unknown): void => {
+    console.error('[zonadua] settings failed:', err);
+    toast.error(msg);
+  };
   
   // ---------- form state (hydrated once from Dexie) ----------
   let hydrated = $state(false);
@@ -32,13 +40,6 @@
   let keyDirty = $state(false);
   // theme lives only in the DB record for now — the switch lands with race-day theming (F7)
 
-  let toast = $state<string | null>(null);
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
-  function showToast(msg: string): void {
-    toast = msg;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = null), 3000);
-  }
 
   void (async () => {
     try {
@@ -64,7 +65,9 @@
       }
       hydrated = true;
     } catch (err) {
-      console.error('[zonadua] settings load failed:', err);
+      // the form is still editable with the seeded defaults, so this is not fatal — but
+      // "my settings did not load" must not look identical to "your settings are saved"
+      showFailure('Could not load your settings', err);
     }
   })();
 
@@ -75,8 +78,7 @@
       await db.athlete.put(a);
       showToast('Profile saved');
     } catch (err) {
-      console.error('[zonadua] saveProfile failed:', err);
-      showToast('Could not save profile');
+      showFailure('Could not save profile', err);
     }
   }
 
@@ -88,7 +90,7 @@
       await db.weight_log.put(rec);
       showToast(`Weight ${kg} kg logged`);
     } catch (err) {
-      console.error('[zonadua] logWeight failed:', err);
+      showFailure('Could not log weight', err);
     }
   }
 
@@ -109,8 +111,7 @@
           : `FTP ${ftp} W logged — applies from today`
       );
     } catch (err) {
-      console.error('[zonadua] logFtp failed:', err);
-      showToast('Could not log FTP');
+      showFailure('Could not log FTP', err);
     }
   }
 
@@ -165,8 +166,7 @@
       });
       showToast(`Zones saved — v${version}`);
     } catch (err) {
-      console.error('[zonadua] saveZones failed:', err);
-      showToast('Could not save zones');
+      showFailure('Could not save zones', err);
     }
   }
 
@@ -177,7 +177,9 @@
       zoneStops = t.stops.map((s) => ({ ...s }));
       showToast('Zones reset to Coggan 8-zone');
     } catch (err) {
-      console.error('[zonadua] resetZones failed:', err);
+      // the table still holds the old bands while the form shows Coggan's, so saying
+      // nothing here would leave the rider editing zones that are not in effect
+      showFailure('Could not reset zones', err);
     }
   }
 
@@ -187,7 +189,9 @@
       await db.settings.put({ ...cur, ...patch, updatedAt: Date.now() });
       showToast(msg);
     } catch (err) {
-      console.error('[zonadua] savePrefs failed:', err);
+      // this carries the unit/language/weather switches and the API key: a silent
+      // failure here means the rider flips a switch and reloads into the old state
+      showFailure(`Could not save — ${msg}`, err);
     }
   }
 
@@ -232,8 +236,7 @@
       // clears the bell's backup-overdue reminder (PRD §10)
       await savePrefs({ lastBackupAt: Date.now() }, 'Backup downloaded');
     } catch (err) {
-      console.error('[zonadua] backup failed:', err);
-      showToast('Backup failed');
+      showFailure('Backup failed', err);
     }
   }
 
@@ -269,8 +272,7 @@
       });
       showToast('Backup restored — data merged');
     } catch (err) {
-      console.error('[zonadua] restore failed:', err);
-      showToast('Restore failed — invalid backup file');
+      showFailure('Restore failed — invalid backup file', err);
     }
   }
 
@@ -286,8 +288,7 @@
       location.hash = '#/';
       location.reload();
     } catch (err) {
-      console.error('[zonadua] wipe failed:', err);
-      showToast('Wipe failed');
+      showFailure('Wipe failed', err);
       wipeStep = 0;
     }
   }
@@ -773,11 +774,3 @@
   {/if}
 </div>
 
-{#if toast}
-  <div class="fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px)+8px)] z-[55] mx-auto max-w-md px-5">
-    <div class="flex items-center justify-center gap-2 rounded-pill bg-mono text-on-mono px-4 py-2.5 elevation-raised">
-      <Icon name="check" size={15} strokeWidth={2.2} class="text-aman" />
-      <span class="text-[11px] font-bold uppercase tracking-wider">{toast}</span>
-    </div>
-  </div>
-{/if}

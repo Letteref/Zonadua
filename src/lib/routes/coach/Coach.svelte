@@ -4,6 +4,7 @@
     import { db, type AiNote } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { appSettings } from '$lib/data/queries.svelte';
+  import { toast } from '$lib/toast.svelte';
 
   let chatInput = $state('');
   let notes = $state<AiNote[]>([]);
@@ -14,6 +15,7 @@
       notes = rows.slice(0, 5);
     } catch (err) {
       console.error('[zonadua] coach load failed:', err);
+      toast.error('Could not load your saved questions');
     }
   })();
 
@@ -33,7 +35,10 @@
       notes = [note, ...notes].slice(0, 5);
       chatInput = '';
     } catch (err) {
+      // the question stays in the box: clearing it on a failed write loses the only
+      // thing the rider typed, and this screen has no other copy
       console.error('[zonadua] sendChat failed:', err);
+      toast.error('Could not save your question');
     }
   }
 </script>
@@ -153,7 +158,9 @@
       </div>
       <h2 class="text-sm font-extrabold tracking-tight text-ink">Reviews, plans & chat are locked</h2>
       <p class="text-[12px] text-ink-dim leading-relaxed max-w-[36ch]">
-        Add your own API key to unlock the weekly review, training plans and the coach chat — everything else in Zonadua works without it.
+        Add your own API key so Zonadua is ready for the coach. Nothing reads it yet — the weekly
+        review, training plans and chat all land in M5, and every other part of the app works
+        without a key.
       </p>
       <button
         class="mt-1 h-10 px-5 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-2 glow-signal active:scale-[0.98] transition-transform"

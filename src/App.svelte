@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { route } from '$lib/router.svelte';
   import AppNav from '$lib/components/AppNav.svelte';
+  import Toast from '$lib/components/Toast.svelte';
   import Dashboard from '$lib/routes/dashboard/Dashboard.svelte';
   import Rides from '$lib/routes/rides/Rides.svelte';
   import ActivityDetail from '$lib/routes/rides/ActivityDetail.svelte';
@@ -43,3 +44,6 @@
 </div>
 
 <AppNav />
+
+<!-- mounted once, above the nav: any route can report a failed write without owning a pill -->
+<Toast />

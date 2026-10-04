@@ -2229,3 +2229,60 @@ dan tiap tile diberi **bar 4 px** (76 % lebar tile) yang menaruh nilainya pada s
 `svelte-check` 0 err/0 warn · `npm test` **335 passed, 2 skipped** · `build` sukses ·
 `playwright` **55 passed** — termasuk “load tiles stay compact” yang kini juga mengunci
 aritmetika bar terhadap figure-nya sendiri dan keberadaan kapsi skala.
+
+---
+
+## §46 · Satu pil untuk satu aplikasi, dan kegagalan tidak pernah menyamar jadi keberhasilan
+
+Tiga rute masing-masing tumbuh dengan `showToast` sendiri: Rides 3400 ms, Routes 3400 ms
++ flag `sticky`, Settings 3000 ms. Tiga salinan satu ide yang tidak pernah bertemu. Yang
+lebih buruk, ketiganya **menggambar centang hijau yang sama untuk tulisan yang gagal** —
+`Backup failed` muncul dengan tampalan yang persis sama seperti `Zones saved`.
+
+Dua puluh tujuh `catch` di kode non-test hanya `console.error` lalu `return`. Dalam aplikasi
+local-first itu bukan detail: satu-satunya catatan bahwa data tidak tersimpan adalah baris
+konsol yang tidak akan pernah dibuka pemiliknya.
+
+### Yang berubah
+
+| | Sebelum | Sesudah |
+| --- | --- | --- |
+| implementasi toast | 3, masing-masing dengan duranya | 1 di `lib/toast.svelte.ts` |
+| centang untuk kegagalan | centang hijau yang sama | `octagon-alert` rose |
+| `saveComponent` gagal | sheet tetap tertutup, nilai hilang | sheet tetap terbuka, nilai tertahan |
+| `finishRace` gagal | wake lock dilepas, live mode mati | tetap live, bisa diulang |
+| `logCheckpoint` gagal | field dikosongkan | field tertahan |
+| `catch` senyap | 27 | 0 |
+| rejections tak tertangani | hanya konsol | pil + konsol |
+
+Nada menentukan glif **dan** warnanya; tidak ada komponen yang boleh memilihnya sendiri.
+`busy` lengket secara sengaja — spinner yang hilang sendiri di tengah tugas memberi tahu
+pekali tugasnya selesai, padahal belum. Durasi: konfirmasi 3,4 s, kegagalan 6 s (sekitar
+dua kali, karena harus dibaca sekali).
+
+### Batas yang digaris
+
+- `main.ts` menyaring dua hal dan alasannya tercatat di kode: kegagalan *resource* (`<img>`
+  404, font gagal) bukan kegagalan aplikasi, dan `ResizeObserver loop completed with
+  undelivered notifications` adalah housekeeping peramban yang datang terus-menerus saat
+  chart di-resize — tanpa saringan itu ia menimpa pesan sebenarnya dengan pesan yang lebih
+  buruk.
+- Satu kegagalan bisa sampai ke dua listener (Chromium melaporkan rejection yang sama ke
+  `unhandledrejection` **dan** `error`). Bendera yang dibersihkan di macrotask berikutnya
+  yang dipasangkan, karena kedua event membawa objek berbeda — identitas tidak bisa
+  keduanya.
+
+### Verifikasi
+
+Di DOM preview (produksi build, `vite preview`): kegagalan → `COULD NOT SAVE CASSETTE`
+dengan `text-rose`, sheet tetap terbuka, `Cassette` tertahan; setelahnya → `CASSETTE SAVED`
+dengan `text-aman`, sheet tertutup. Kegagalan disuntik di `IDBObjectStore.prototype.put`,
+**bukan** di `IDBDatabase.transaction` — Dexie mengikat `transaction` sekali saat koneksi
+dibuka (`createDBCore` → `transaction: db.transaction.bind(db)`), jadi patch di database
+tertangkap sebelum tes berjalan dan tidak pernah melihat satu pun tulisan.
+
+### Gerbang (dijalankan setelah perubahan kode terakhir)
+
+`svelte-check` 0 err/0 warn · `npm test` **343 passed, 2 skipped** · `build` sukses ·
+`playwright` **58 passed** — termasuk "a component that fails to save keeps the sheet open
+and says why", yang mengunci kegagalan pada jalur tulis sungguhan, bukan pada mock.

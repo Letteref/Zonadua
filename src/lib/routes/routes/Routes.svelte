@@ -12,6 +12,11 @@
   import type { ProfilePoint } from '$lib/domain/physics';
   import { buildPlan, clockOf, durationOf, planSeries } from '$lib/domain/pacing';
   import { formatDistance, formatElevation, formatWeight, type UnitSystem } from '$lib/domain/units';
+  import { toast } from '$lib/toast.svelte';
+
+  /** the global pill (UI-SPEC §46); this route only picks the words */
+  const showToast = (msg: string, tone: 'ok' | 'error' = 'ok'): void =>
+    tone === 'ok' ? toast.ok(msg) : toast.error(msg);
 
   // ---------- route state (real GPX replaces the M0 preview) ----------
   let routeName = $state('Bukit Barisan 200');
@@ -19,15 +24,6 @@
   /** real elevation profile in km/alt — the physics input, never chart-normalised */
   let rawProfile = $state<ProfilePoint[] | null>(null);
   let fileInput: HTMLInputElement | null = $state(null);
-  let parsing = $state(false);
-  let toast = $state<string | null>(null);
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function showToast(msg: string, sticky = false): void {
-    toast = msg;
-    clearTimeout(toastTimer);
-    if (!sticky) toastTimer = setTimeout(() => (toast = null), 3400);
-  }
 
   /**
    * Sample route used when no GPX is loaded: 200.4 km with a long climb to 1450 m and a
@@ -138,8 +134,7 @@
   let dragOver = $state(false);
 
   async function importRouteFile(file: File): Promise<void> {
-    parsing = true;
-    showToast('Parsing route…', true);
+    toast.busy('Parsing route…');
     try {
       // the tested domain parser owns distance, gain and the point list
       const ride = parseCourse(await file.text(), file.name);
@@ -188,9 +183,7 @@
       );
     } catch (err) {
       console.error('[zonadua] route import failed:', err);
-      showToast('Import failed — use a GPX file with trackpoints');
-    } finally {
-      parsing = false;
+      showToast('Import failed — use a GPX file with trackpoints', 'error');
     }
   }
 
@@ -254,7 +247,7 @@
       setTimeout(() => route.navigate('race'), 800);
     } catch (err) {
       console.error('[zonadua] saveAsRacePlan failed:', err);
-      showToast('Could not save the plan');
+      showToast('Could not save the plan', 'error');
     }
   }
 </script>
@@ -621,16 +614,3 @@
   </button>
 </div>
 
-{#if toast || parsing}
-  <div class="fixed inset-x-0 bottom-[calc(88px+env(safe-area-inset-bottom,0px)+8px)] z-[55] mx-auto max-w-md px-5">
-    <div class="flex items-center justify-center gap-2 rounded-pill bg-mono text-on-mono px-4 py-2.5 elevation-raised">
-      {#if parsing}
-        <Icon name="loader-circle" size={15} strokeWidth={2} class="animate-spin text-rose" />
-        <span class="text-[11px] font-bold uppercase tracking-wider">Parsing route…</span>
-      {:else}
-        <Icon name="check-circle" size={15} strokeWidth={2} class="text-aman" />
-        <span class="text-[11px] font-bold uppercase tracking-wider">{toast}</span>
-      {/if}
-    </div>
-  </div>
-{/if}
