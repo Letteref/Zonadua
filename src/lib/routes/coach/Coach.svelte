@@ -1,13 +1,20 @@
 <script lang="ts">
   import Icon from '$lib/components/Icon.svelte';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
-    import { db, type AiNote } from '$lib/data/db';
+  import { db, type AiNote } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
-  import { appSettings } from '$lib/data/queries.svelte';
+  import { appSettings, allActivities, latestFtp, athlete, weightSeries } from '$lib/data/queries.svelte';
   import { toast } from '$lib/toast.svelte';
+  import { generate } from '$lib/infra/ai/provider';
+  import { buildCoachContext } from '$lib/infra/ai/context';
+  import { systemPrompt, weeklyReviewPrompt } from '$lib/infra/ai/prompts';
+  import { verifyNumbers } from '$lib/infra/ai/verify';
 
   let chatInput = $state('');
   let notes = $state<AiNote[]>([]);
+  let review = $state<string | null>(null);
+  let reviewLoading = $state(false);
+  let reviewError = $state<string | null>(null);
 
   void (async () => {
     try {
@@ -22,10 +29,69 @@
   // F5-AC1: without a key the AI features stay behind onboarding; app stays fully functional
   const keySaved = $derived(appSettings.current?.aiKey != null);
 
+  // Build context from this rider's data (no hallucination possible — only measured/derived)
+  const coachContext = $derived(() => {
+    const activities = allActivities.current;
+    const ftp = latestFtp.current?.ftp;
+    const ath = athlete.current;
+    if (!activities || activities.length === 0) return null;
+
+    const rides = activities
+      .filter(a => a.synthetic !== true) // demo data must not influence coaching
+      .map(a => ({
+        date: a.date,
+        distanceKm: a.distanceKm,
+        elevGainM: a.elevGainM,
+        movingSec: a.movingSec,
+        tss: a.tss,
+        np: a.np,
+        synthetic: a.synthetic
+      }));
+
+    return buildCoachContext({
+      rides,
+      athlete: { weightKg: weightSeries.current?.at(-1)?.kg, ftp, heightCm: ath?.heightCm },
+      now: new Date()
+    });
+  });
+
+  // Generate weekly review on demand
+  async function generateReview(): Promise<void> {
+    if (reviewLoading) return;
+
+    const ctx = coachContext();
+    if (!ctx) {
+      reviewError = 'No rides to review yet.';
+      return;
+    }
+
+    reviewLoading = true;
+    reviewError = null;
+
+    try {
+      const prompt = weeklyReviewPrompt(ctx);
+      const response = await generate(prompt, systemPrompt());
+
+      // Verify every number in the response appears in context
+      const rendered = JSON.stringify(ctx);
+      const result = verifyNumbers(response.text, rendered);
+
+      if (!result.ok) {
+        console.error('[zonadua] coach hallucinated:', result.ungrounded);
+        reviewError = 'The coach invented numbers. This answer was blocked.';
+        return;
+      }
+
+      review = response.text;
+    } catch (err) {
+      console.error('[zonadua] generateReview failed:', err);
+      reviewError = err instanceof Error ? err.message : 'Could not generate review';
+    } finally {
+      reviewLoading = false;
+    }
+  }
+
   // M5 wires the LLM call (BYO key, derived metrics only — Strava API Policy §5.3).
-  // Until then this only files the question locally. It never pretends an answer exists,
-  // and nothing on this screen is derived from a literal: every number that used to sit
-  // here was invented and none of it came from this rider.
   async function sendChat(): Promise<void> {
     const q = chatInput.trim();
     if (!q) return;
@@ -80,34 +146,51 @@
     </section>
 
     {#if keySaved}
-    <!--
-      Key present, M5 not shipped.
-
-      This branch used to render a weekly review, three insights, a next-week plan and a
-      coaching answer, every one of them built from literals: `CTL 68`, `TSB +8`,
-      `IF 0.68`, `Target 740 TSS`, `12%` above baseline, `3.1%` decoupling. None of it
-      came from this rider, and all of it contradicted the dashboard, which reports the
-      real CTL 23 / TSB -16. Worse, it appeared the moment an API key was saved — precisely
-      when a user concludes the feature is live. `sendChat` answered nothing either: it
-      wrote the question to `ai_notes` and returned.
-
-      Fabricated numbers were removed rather than relabelled. A "sample" badge on a screen
-      is still a number that can be read at 5am before a 200 km event, and this app has one
-      rule about that: an unmeasurable thing renders as an honest state, never as a number
-      that reads like data.
-
-      What stays is the part that is real — questions the rider typed, stored locally. It
-      now says plainly that nothing has answered them.
-    -->
-    <section class="rounded-card border border-dashed border-hairline-strong p-6 flex flex-col items-center text-center gap-2">
-      <div class="grid h-11 w-11 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim">
-        <Icon name="message-circle" size={20} strokeWidth={1.5} />
+    <!-- Weekly review: generated from this rider's data only -->
+    <section class="rounded-card bg-surface border border-hairline p-4 elevation-card flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="h-10 w-10 rounded-pill bg-tile grid place-items-center border border-hairline">
+            <Icon name="calendar" size={18} strokeWidth={1.5} class="text-ink" />
+          </div>
+          <h2 class="text-base font-bold text-ink tracking-tight">Weekly review</h2>
+        </div>
+        {#if !review && !reviewLoading}
+          <button
+            class="h-9 px-4 rounded-pill bg-crimson-fill text-white font-extrabold uppercase text-[10px] tracking-wider glow-peak active:scale-95 transition-transform"
+            onclick={generateReview}
+          >
+            Generate
+          </button>
+        {/if}
       </div>
-      <h2 class="text-sm font-extrabold tracking-tight text-ink">Coach has not shipped yet</h2>
-      <p class="text-[12px] text-ink-dim leading-relaxed max-w-[36ch]">
-        Your key is saved, but Zonadua does not generate reviews, plans or answers yet — that is M5.
-        Nothing on this screen is made up in the meantime.
-      </p>
+
+      {#if reviewLoading}
+        <div class="flex items-center gap-3 py-4">
+          <div class="animate-spin h-5 w-5 border-2 border-crimson-fill border-t-transparent rounded-full"></div>
+          <span class="text-sm text-ink-dim">Reading your week…</span>
+        </div>
+      {:else if reviewError}
+        <div class="rounded-pill bg-rose/10 border border-rose/30 px-4 py-3">
+          <p class="text-xs text-rose font-medium">{reviewError}</p>
+        </div>
+      {:else if review}
+        <div class="prose prose-sm prose-p:text-ink prose-p:leading-relaxed prose-p:my-2">
+          {#each review.split('\n\n') as para}
+            <p>{para}</p>
+          {/each}
+        </div>
+        <button
+          class="h-8 px-3 rounded-pill bg-surface border border-hairline text-ink-dim font-bold text-[10px] tracking-wider active:scale-95 transition-transform self-start"
+          onclick={() => { review = null; reviewError = null; }}
+        >
+          Clear
+        </button>
+      {:else}
+        <p class="text-[13px] text-ink-dim leading-relaxed">
+          Generate a review of your last 7 days — built from your CTL, TSB, and ride history. No numbers are invented.
+        </p>
+      {/if}
     </section>
 
     <section class="flex flex-col gap-2">
