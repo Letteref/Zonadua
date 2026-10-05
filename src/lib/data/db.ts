@@ -186,6 +186,19 @@ export interface SyncState {
   lastSyncAt?: number;
   cursor?: number;
   rateWindow?: string;
+  /**
+   * OAuth credentials from the code↔token exchange (ARCHITECTURE.md §6.1).
+   *
+   * Stored in IndexedDB like everything else: they are read by this device only, sent to
+   * Strava only, and never included in an export or the AI context (§5.5). They need no
+   * Dexie index, so adding them here does not require a schema version bump — the row is
+   * simply written with more fields.
+   */
+  accessToken?: string;
+  refreshToken?: string;
+  /** epoch seconds, Strava's own `expires_at` clock */
+  expiresAt?: number;
+  athleteId?: number;
   updatedAt: number;
 }
 
