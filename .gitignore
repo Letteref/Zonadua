@@ -10,6 +10,14 @@ npm-debug.log*
 .vite/
 coverage/
 
+# Cloudflare local dev. `.dev.vars` is where `wrangler pages dev` reads the Strava
+# client secret for the local Function, and `.wrangler/` holds miniflare state including
+# a local D1 copy — neither belongs in the repo (see docs/STRAVA-SETUP.md). The bare
+# `.dev.vars` pattern has no slash, so it also covers copies in nested directories.
+.dev.vars
+.dev.vars.*
+.wrangler/
+
 # Freebuff desktop app metadata (preview logs, thread ids) — not part of the project
 .freebuff/
 

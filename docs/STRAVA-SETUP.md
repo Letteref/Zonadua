@@ -68,6 +68,12 @@ The secret is only read by `functions/api/strava/token.js`. It must never be giv
 prefix: Vite inlines every `VITE_`-prefixed variable into the client bundle, which is exactly
 the leak this Function exists to prevent.
 
+Names with no values live in [.env.example](../.env.example), which also says which consumer
+reads each one. To run the Function locally, put `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET`
+in a `.dev.vars` file — Cloudflare's local counterpart to a project's variables, read by
+`wrangler pages dev`. `.dev.vars` and `.wrangler/` are gitignored and have to stay that way:
+the client secret is the one value in this project that must never be published.
+
 ### 3. Verify the Function is live before writing any UI
 
 With the variables unset, the route should answer:
