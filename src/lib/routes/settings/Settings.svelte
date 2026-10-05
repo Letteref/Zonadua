@@ -6,12 +6,12 @@
     syncState,
     weightSeries,
     latestFtp,
-    allBikes,
     powerZones
   } from '$lib/data/queries.svelte';
   import { db, type Settings as SettingsRec, type WeightLog, type FtpHistory, type Athlete } from '$lib/data/db';
   import { markWiped, newId } from '$lib/data/seed';
   import { BACKUP_CREDENTIALS_NOTE, buildBackupPayload, redactCredentials } from '$lib/data/backup';
+  import { disconnectStrava, startStravaConnect } from '$lib/infra/strava/connect';
   import { recomputeSince } from '$lib/data/recompute';
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
@@ -24,6 +24,22 @@
     console.error('[zonadua] settings failed:', err);
     toast.error(msg);
   };
+
+  /** Start the OAuth round trip; Strava returns to `/` and App.svelte reads the callback. */
+  async function onConnect(): Promise<void> {
+    const r = await startStravaConnect();
+    if (!r.ok) showFailure('Strava is not configured on this deployment yet', new Error('missing VITE_STRAVA_CLIENT_ID'));
+  }
+
+  /** Tokens only — the sync cursor and lastSyncAt stay, so a reconnect resumes the log. */
+  async function onDisconnect(): Promise<void> {
+    try {
+      await disconnectStrava();
+      showToast('Strava disconnected — sync position kept');
+    } catch (err) {
+      showFailure('Could not disconnect Strava', err);
+    }
+  }
   
   // ---------- form state (hydrated once from Dexie) ----------
   let hydrated = $state(false);
@@ -308,7 +324,7 @@
   const weightDelta = $derived(weights.length >= 2 ? Math.round((weights.at(-1)!.kg - weights.at(-2)!.kg) * 10) / 10 : null);
   const ftpVal = $derived(latestFtp.current?.ftp ?? null);
   const sync = $derived(syncState.current);
-  const bikeCount = $derived((allBikes.current ?? []).length);
+  const connected = $derived(Boolean(sync?.accessToken));
   const lastSync = $derived(sync?.lastSyncAt ? new Date(sync.lastSyncAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null);
   const lastWeight = $derived(weights.at(-1)?.kg);
 </script>
@@ -681,18 +697,37 @@
           <Icon name="refresh-cw" size={17} strokeWidth={1.5} class="text-signal" />
           <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-dim">Strava sync</span>
         </div>
-        <StatusChip label={lastSync ? `Last sync ${lastSync}` : 'Never synced'} status={lastSync ? 'aman' : 'neutral'} />
+        <StatusChip
+          label={connected
+            ? lastSync
+              ? `Connected · synced ${lastSync}`
+              : 'Connected'
+            : lastSync
+              ? `Last sync ${lastSync}`
+              : 'Not connected'}
+          status={connected ? 'aman' : 'neutral'}
+        />
       </div>
       <p class="text-[12px] text-ink-dim leading-relaxed">
-        File import is the primary path — sync is optional and obeys Strava API policy. Reconnect to pull activities since the last cursor.
+        File import is the primary path and stays local-first. Connecting stores Strava's authorization on this device only — Zonadua never uploads, edits or deletes anything in your Strava account.
       </p>
-      <button
-        class="h-10 w-full rounded-pill bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-hairline-strong transition-colors"
-        onclick={() => showToast(`Sync stored locally · ${bikeCount} bikes · file import stays primary`)}
-      >
-        <Icon name="refresh-cw" size={14} strokeWidth={1.8} />
-        Re-sync now
-      </button>
+      {#if connected}
+        <button
+          class="h-10 w-full rounded-pill bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink-dim hover:text-kritis flex items-center justify-center gap-1.5 hover:border-kritis/40 transition-colors"
+          onclick={onDisconnect}
+        >
+          <Icon name="plug" size={14} strokeWidth={1.8} />
+          Disconnect Strava
+        </button>
+      {:else}
+        <button
+          class="h-10 w-full rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+          onclick={onConnect}
+        >
+          <Icon name="plug" size={14} strokeWidth={1.8} />
+          Connect Strava
+        </button>
+      {/if}
     </section>
 
     <!-- DATA: BACKUP / RESTORE / WIPE -->

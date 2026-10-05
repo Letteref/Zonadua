@@ -12,13 +12,31 @@
   import Coach from '$lib/routes/coach/Coach.svelte';
   import Settings from '$lib/routes/settings/Settings.svelte';
   import { ensureSeeded } from '$lib/data/seed';
+  import { handleStravaCallback } from '$lib/infra/strava/connect';
+  import { toast } from '$lib/toast.svelte';
 
   // Bottom clearance: nav capsule (64px) + floating gap (16px) + safe area (DESIGN.md)
   const navClearance = 'calc(88px + env(safe-area-inset-bottom, 0px))';
 
   onMount(() => {
     void ensureSeeded();
+    void reportStravaCallback();
   });
+
+  /**
+   * A Strava redirect lands on `/` with its `code` *before* the hash, so no route ever sees
+   * it — this boot-time check is the only reader. The outcome becomes one honest toast; the
+   * query string was already scrubbed inside the handler.
+   */
+  async function reportStravaCallback(): Promise<void> {
+    const r = await handleStravaCallback(window.location.search);
+    if (!r.handled) return;
+    if (r.status === 'connected') toast.ok('Strava connected');
+    else if (r.status === 'denied') toast.error(`Strava authorization declined (${r.error})`);
+    else if (r.status === 'expired') toast.error('Connect timed out — press Connect Strava again');
+    else if (r.status === 'state_mismatch') toast.error('Sign-in could not be verified — press Connect Strava again');
+    else toast.error('Strava connection failed — press Connect Strava again');
+  }
 </script>
 
 <div class="min-h-dvh" style="padding-bottom: {navClearance};">

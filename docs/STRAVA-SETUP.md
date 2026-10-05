@@ -22,23 +22,26 @@ device picks up after the last activity it pulled.
 
 ## What is still open
 
-The **UI connect flow and the sync loop** are not written yet, and cannot be written against
-nothing: they need a Strava app (client id) and the Function deployed with its secret, or the
-first real request returns `503 strava_not_configured`. Concretely, the remaining work is:
+The connect flow is written and shipped in `src/lib/infra/strava/connect.ts`: `startStravaConnect`
+parks the PKCE pair + `state` in `sessionStorage` and redirects to the authorize URL;
+`handleStravaCallback` verifies `state`, exchanges the code through the Function and writes the
+parsed token to `sync_state`. Every branch is tested — unit
+(`src/lib/infra/strava/__tests__/connect.test.ts`) and E2E (`tests/e2e/strava-connect.spec.ts`,
+which simulates only Strava's own pages). Settings renders the honest state: **Connect Strava**
+when unconfigured, **Connected** with a Disconnect that drops tokens but keeps the cursor. What
+still cannot work without credentials is the ride-pulling half:
 
-1. A **Connect Strava** action that generates a verifier + state (`randomCodeVerifier`,
-   `randomState`), stores both in `sessionStorage` (the page navigates away and back), and
-   redirects to `authorizeUrl({ clientId, redirectUri, state, codeChallenge })`.
-2. A **callback handler** on load: `readCallback(location.search)`, compare `state` with the
-   stored one, then `POST /api/strava/token` with `tokenExchangeBody(...)` and write the parsed
-   result (`parseTokenResponse`) to `sync_state`.
-3. A **sync loop**: page `/athlete/activities` via `activitiesListUrl(cursor)` in batches of
+1. A **sync loop**: page `/athlete/activities` via `activitiesListUrl(cursor)` in batches of
    `SYNC_BATCH_DEFAULT` (50), map with `mapSummary`, fetch streams only for activities without a
    fresh one, and check `parseRateLimit` + `shouldThrottle` after every response — stopping and
    scheduling a retry via `retryDelayMs` when the guard trips.
-4. Run `pruneExpiredApiStreams()` after a sync.
-5. Refresh the access token on `401` using `refreshBody(...)`; Strava omits `refresh_token` on a
+2. Run `pruneExpiredApiStreams()` after a sync.
+3. Refresh the access token on `401` using `refreshBody(...)`; Strava omits `refresh_token` on a
    refresh, so keep the stored one.
+
+The production connect button also needs `VITE_STRAVA_CLIENT_ID` in the Pages build environment
+(Production + Preview): without it the button refuses honestly with "not configured" instead of
+redirecting to a broken authorize page.
 
 ## Make it live
 
@@ -62,7 +65,7 @@ Cloudflare dashboard → the Pages project → **Settings → Environment variab
 | --- | --- | --- |
 | `STRAVA_CLIENT_ID` | Production + Preview | no |
 | `STRAVA_CLIENT_SECRET` | Production + Preview | **yes** |
-| `VITE_STRAVA_CLIENT_ID` (once step 1 of the UI work exists) | build environment | no |
+| `VITE_STRAVA_CLIENT_ID` (read by the connect button in `src/lib/infra/strava/connect.ts`) | build environment | no |
 
 The secret is only read by `functions/api/strava/token.js`. It must never be given a `VITE_`
 prefix: Vite inlines every `VITE_`-prefixed variable into the client bundle, which is exactly
