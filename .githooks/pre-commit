@@ -1,0 +1,59 @@
+#!/bin/sh
+# Optional pre-commit secret scan (gitleaks).
+#
+# This is the convenience layer, not the enforcement layer. CI runs the same scan over the
+# whole history on every push and pull request (`.github/workflows/secret-scan.yml`); this
+# hook exists so a credential is caught seconds earlier — before it is written into a local
+# commit that then has to be rewritten.
+#
+# It is opt-in, because activating it changes a git setting in your clone:
+#
+#     git config core.hooksPath .githooks
+#
+# `.githooks/` rather than `.git/hooks/` so the hook is version-controlled and identical for
+# everyone. Turn it off again with `git config --unset core.hooksPath`.
+#
+# The executable bit is recorded in the repository. If your checkout predates it, set it once
+# on Linux/macOS: `chmod +x .githooks/pre-commit`.
+
+set -u
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed — staged secret scan SKIPPED."
+  echo "pre-commit: CI still scans every push. Install it from"
+  echo "pre-commit: https://github.com/gitleaks/gitleaks/releases to get the local check."
+  exit 0
+fi
+
+# gitleaks v8.19 renamed `protect --staged` to `git --staged`. Feature-detect instead of
+# assuming, so a machine with an older binary still gets a working hook.
+if gitleaks git --help >/dev/null 2>&1; then
+  staged_scan() { gitleaks git --staged --redact --no-banner; }
+else
+  staged_scan() { gitleaks protect --staged --redact --no-banner; }
+fi
+
+output=$(staged_scan 2>&1)
+status=$?
+
+if [ "$status" -eq 0 ]; then
+  exit 0
+fi
+
+if [ "$status" -eq 1 ]; then
+  printf '%s\n' "$output"
+  echo ""
+  echo "pre-commit: gitleaks flagged the staged changes above. The commit was NOT created."
+  echo "pre-commit: if this is a false positive (a documented test fixture, say), add a"
+  echo "pre-commit: 'gitleaks:allow' comment on that line, or record its fingerprint in"
+  echo "pre-commit: .gitleaksignore — prefer either over disabling the rule."
+  exit 1
+fi
+
+# Anything else — an unreadable repository, a usage error on an unexpected CLI shape — means
+# the scan did not run. That is reported as itself rather than as a clean scan, but it does
+# not block the commit: a convenience hook that fails closed on a broken tool is one people
+# uninstall, and the CI job is what actually enforces this.
+printf '%s\n' "$output"
+echo "pre-commit: gitleaks could not complete (exit $status) — scan SKIPPED."
+exit 0

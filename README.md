@@ -63,6 +63,29 @@ First build requires the icons: run `npm run icons` once (or just open the dev s
 
 `npm run dev` needs the `$lib` alias declared in [vite.config.ts](vite.config.ts) — tsconfig `paths` alone only satisfies the type checker, not Vite's dev transform.
 
+## Secret scanning
+
+[gitleaks](https://github.com/gitleaks/gitleaks) runs over the **entire history** on every push
+and pull request ([.github/workflows/secret-scan.yml](.github/workflows/secret-scan.yml)), pinned
+to `8.30.1` rather than whatever the runner resolves. It reads history, not the working tree,
+because a credential that reaches the remote stays in the remote's history after the line is
+deleted: [.gitignore](.gitignore) covers the expected filenames (`.env`, `.dev.vars`) and cannot
+cover the unexpected one — a key pasted into a config file or a scratch script.
+
+The same scan is available locally, and can be wired into commits:
+
+```bash
+gitleaks git --redact --no-banner .     # whole history — what CI runs
+
+git config core.hooksPath .githooks    # opt-in, per clone: scan the staged diff on every commit
+chmod +x .githooks/pre-commit          # once per clone on Linux/macOS (the bit is already recorded)
+```
+
+The hook is the convenience layer, not the enforcement layer: if gitleaks is not installed it
+warns and lets the commit through, and it distinguishes a real finding (exit 1, commit blocked)
+from a tool that could not run at all. Turn it off with `git config --unset core.hooksPath`.
+See the header of [.githooks/pre-commit](.githooks/pre-commit) for why it is shaped that way.
+
 ## Project layout
 
 ```
