@@ -58,6 +58,31 @@ dicentang. Keduanya kini punya tes yang gagal bila bugnya dikembalikan:
 `table "power_curves" did not round-trip`. Kedua guard seed dimatikan → tes gagal dengan
 `the wipe left activities behind … Received: 24`. Dipulihkan: 25/25 hijau.
 
+### Temuan keempat: backup mengekspor kredensial (5 Okt 2026)
+
+Cadangan JSON dibangun dari `db.tables`, jadi ia mengambil `settings` dan `sync_state` **utuh** —
+dan bersama keduanya `settings.aiKey` (kunci AI milik pelaku) serta `accessToken` /
+`refreshToken` milik Strava. Berkas `zonadua-backup-*.json` mendarat di folder Downloads, ikut
+sinkron ke folder cloud, dan justru berkas yang diminta pelaku melampirkan saat melaporkan
+masalah. Jadi kebocorannya nyata hari ini, bukan hipotetis; begitu tombol connect Strava jadi,
+`refresh_token` memberi akses baca ke **seluruh riwayat aktivitas** orang tersebut.
+
+**Perbaikan:** [src/lib/data/backup.ts](src/lib/data/backup.ts) membuang `table.field` yang
+berupa kredensial — daftar kecil dan eksplisit, bukan sekadar "semua ikut kecuali kredensial",
+sebab nilai baru yang ditambahkan nanti harus gagal diam-diam kalau tidak didaftarkan. Redaksi ini
+dijalankan **saat keluar maupun saat masuk**, sehingga backup versi lama atau berkas yang diedit
+tangan tidak bisa memasukkan kembali kredensial. `cursor` dan `lastSyncAt` tetap ikut, supaya
+restore melanjutkan sinkronisasi alih-alih mengunduh ulang.
+
+**Ongkosnya disengaja:** karena `bulkPut` menulis baris utuh, field yang tidak ada di berkas juga
+hilang dari perangkat — sehingga setelah restore pelaku **harus** memasukkan ulang kunci AI dan
+menghubungkan ulang Strava. Halaman Settings menyatakannya di layar.
+
+**Bukti menangkap regresi:** redaksi dimatikan sementara (disimulasikan kondisi pra-perbaikan) →
+tes gagal tepat pada `expect(exported).not.toContain(E2E_FAKE_AI_KEY)`. Dipulihkan: 9 tes unit baru
++ 70 Playwright hijau, byte yang benar-benar keluar dari browser diperiksa, bukan hanya kode
+pembangunnya.
+
 ### Temuan ketiga: impor membuang power (2 Okt 2026)
 
 Ketemu bukan dari DoD, tapi dari satu pertanyaan sederhana saat membangun harness §33: dari mana

@@ -1,5 +1,14 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { seedDashboardFixture } from './fixtures/dashboardFixture';
+
+/**
+ * Deliberately recognisable placeholders written into IndexedDB by the backup test. They are
+ * obvious fakes — the point is to be findable in the exported bytes, not to resemble a real key.
+ */
+const E2E_FAKE_AI_KEY = 'sk-E2E-FAKE-AI-KEY-0001';
+const E2E_FAKE_ACCESS_TOKEN = 'strava-E2E-FAKE-ACCESS-0001';
+const E2E_FAKE_REFRESH_TOKEN = 'strava-E2E-FAKE-REFRESH-0001';
 
 /**
  * Platform E2E — the M0/M1/M2 Definition-of-Done lines that were ticked as "Done" without
@@ -527,8 +536,51 @@ test.describe('M1 — data in', () => {
     await page.getByText('YOUR RIDES').first().waitFor({ timeout: 20_000 });
     await seedDashboardFixture(page);
     await page.reload();
+
+    // Put a credential and a Strava sync row on the device *before* the snapshot, so the
+    // export has something real to leak and the identity comparison below still holds. Without
+    // this the test would pass on a device that simply had no secrets.
+    //
+    // The fakes are passed in rather than closed over: `page.evaluate` ships this function to
+    // the browser, where module scope does not exist.
+    await page.evaluate(async (creds) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const put = (store: string, row: Record<string, unknown>) =>
+        new Promise<void>((resolve, reject) => {
+          const req = db.transaction(store, 'readwrite').objectStore(store).put(row);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      const read = (store: string) =>
+        new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+          const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      const settings = (await read('settings'))[0] ?? {};
+      await put('settings', { ...settings, aiKey: creds.aiKey, updatedAt: Date.now() });
+      await put('sync_state', {
+        id: 'strava',
+        lastSyncAt: 1,
+        cursor: 2,
+        accessToken: creds.accessToken,
+        refreshToken: creds.refreshToken,
+        expiresAt: 1_700_000_000,
+        updatedAt: Date.now()
+      });
+      db.close();
+    }, { aiKey: E2E_FAKE_AI_KEY, accessToken: E2E_FAKE_ACCESS_TOKEN, refreshToken: E2E_FAKE_REFRESH_TOKEN });
+    await page.reload();
+
     const before = await dumpState(page);
     expect((before.activities ?? []).length, 'nothing seeded to back up').toBeGreaterThan(0);
+    expect((before.sync_state?.[0] as Record<string, unknown> | undefined)?.refreshToken).toBe(
+      E2E_FAKE_REFRESH_TOKEN
+    );
 
     await openApp(page, '#/settings');
     await page.getByText('DATA MANAGEMENT').waitFor({ timeout: 20_000 });
@@ -541,6 +593,20 @@ test.describe('M1 — data in', () => {
     ]);
     const file = await download.path();
     expect(file).toBeTruthy();
+
+    // The one assertion that matters here: the bytes that left the browser carry no
+    // credential. A `zonadua-backup-*.json` lands in Downloads, syncs to cloud folders, and
+    // is the file riders attach to issue reports — so this is checked on the downloaded file
+    // itself, not on the code that built it.
+    const exported = await readFile(file!, 'utf8');
+    expect(exported).not.toContain(E2E_FAKE_AI_KEY);
+    expect(exported).not.toContain(E2E_FAKE_ACCESS_TOKEN);
+    expect(exported).not.toContain(E2E_FAKE_REFRESH_TOKEN);
+    const exportedData = JSON.parse(exported).data as Record<string, Array<Record<string, unknown>>>;
+    expect((exportedData.settings?.[0] ?? {}).aiKey).toBeUndefined();
+    expect((exportedData.sync_state?.[0] ?? {}).refreshToken).toBeUndefined();
+    // ...while the sync bookkeeping that a restore genuinely needs is still in there.
+    expect((exportedData.sync_state?.[0] ?? {}).cursor).toBe(2);
 
     // Wipe, through the two-step confirmation the UI requires.
     await page.getByRole('button', { name: /delete all data/i }).click();
@@ -563,12 +629,16 @@ test.describe('M1 — data in', () => {
 
     const after = await dumpState(page);
 
-    // `lastBackupAt` is stamped by the export itself, so it is expected to differ; every
-    // other byte of user data is not.
+    // Two settings fields are expected to differ and are removed from both sides before the
+    // comparison: `lastBackupAt` is stamped by the export itself, and `aiKey` is redacted — the
+    // whole point of this change — so `before` has it and `after` must not. Every other byte of
+    // user data, including `sync_state`'s non-secret bookkeeping, must be identical.
     const strip = (s: Record<string, unknown[]>) => {
       const copy = JSON.parse(JSON.stringify(s)) as Record<string, Array<Record<string, unknown>>>;
       copy.settings = (copy.settings ?? []).map((row) => {
-        const { lastBackupAt, ...rest } = row;
+        const { lastBackupAt, aiKey, ...rest } = row;
+        void lastBackupAt;
+        void aiKey;
         return rest;
       });
       return copy;
@@ -578,10 +648,45 @@ test.describe('M1 — data in', () => {
     // versions. A hand-maintained export list is exactly how `power_curves` went missing.
     expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
     for (const table of Object.keys(before)) {
+      // `sync_state` is the exception, and deliberately so: its credential fields were never in
+      // the file, and a restore writes whole rows, so they are gone afterwards rather than
+      // surviving from the row that was on the device. The rider reconnects; that cost is the
+      // point of the feature. Its non-secret bookkeeping (`cursor`, `lastSyncAt`) still comes
+      // back, which is why this is asserted rather than the table being skipped.
+      if (table === 'sync_state') {
+        const { accessToken, refreshToken, expiresAt, ...expected } = strip(before)[table][0] ?? {};
+        void accessToken;
+        void refreshToken;
+        void expiresAt;
+        expect(strip(after)[table][0], 'sync bookkeeping did not round-trip').toEqual(expected);
+        continue;
+      }
       expect(strip(after)[table], `table "${table}" did not round-trip`).toEqual(
         strip(before)[table]
       );
     }
+
+    // The credential is genuinely absent from the device afterwards, not merely absent from
+    // the file: a restore must not be a way to bring one back in.
+    const keyStillThere = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const read = (store: string) =>
+        new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+          const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      const settings = (await read('settings'))[0] ?? {};
+      const sync = (await read('sync_state'))[0] ?? {};
+      db.close();
+      return { aiKey: settings.aiKey, refreshToken: sync.refreshToken };
+    });
+    expect(keyStillThere.aiKey, 'restore resurrected the AI key').toBeUndefined();
+    expect(keyStillThere.refreshToken, 'restore resurrected the Strava token').toBeUndefined();
   });
 });
 

@@ -126,7 +126,17 @@ Cloudflare Pages: build `npm run build`, output `dist/`. Hash routing means no r
 Definition-of-Done line verified. M0–M2 were marked Done while carrying nine unticked DoD lines; those
 were run for real, and **two turned out to be genuine bugs** the boxes had been hiding — the JSON
 backup silently dropped the power-curve table, and "Delete all data" was undone by the seed on the
-next boot. Both now have regression tests. A third surfaced while building the prediction-accuracy
+next boot. Both now have regression tests.
+
+**A backup file carries your training history, not your credentials.** Because the export is derived
+from the live schema, it used to sweep up `settings` and `sync_state` whole — including your AI
+provider key and, once Strava connects, your OAuth tokens. A `zonadua-backup-*.json` lands in
+Downloads, syncs to whatever cloud folder, and is the file you are asked to attach when reporting a
+problem, so those are now stripped by [src/lib/data/backup.ts](src/lib/data/backup.ts) on the way
+out *and* on the way in (an older or hand-edited file cannot reintroduce one). Sync bookkeeping —
+`cursor`, `lastSyncAt` — is kept, so a restore resumes rather than re-downloading. **The cost, by
+design: after restoring a backup you re-enter your AI key and reconnect Strava.** The Settings page
+says so on screen. A third surfaced while building the prediction-accuracy
 harness: the GPX/TCX importer read position, altitude and time and **threw away the power data that
 was in the file** — a head-unit TCX carries `<Watts>` at every trackpoint — so every imported ride
 arrived without NP/IF/TSS. It stayed invisible because the honest "no power stream" empty state

@@ -11,6 +11,7 @@
   } from '$lib/data/queries.svelte';
   import { db, type Settings as SettingsRec, type WeightLog, type FtpHistory, type Athlete } from '$lib/data/db';
   import { markWiped, newId } from '$lib/data/seed';
+  import { BACKUP_CREDENTIALS_NOTE, buildBackupPayload, redactCredentials } from '$lib/data/backup';
   import { recomputeSince } from '$lib/data/recompute';
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
@@ -224,9 +225,14 @@
       // schema v2 — so a backup-and-restore cycle quietly dropped the mean-max power curves,
       // and with them the CP/W' fit. A hand-written list fails at exactly the moment it is
       // extended; reading it off `db.tables` cannot.
+      //
+      // Reading the live schema is also why `buildBackupPayload` exists: it strips the AI key
+      // and the Strava tokens back out (src/lib/data/backup.ts) before anything is written to
+      // the file. Restore has no counterpart by design — `bulkPut` replaces whole rows, so a
+      // field left out of the file does not survive an old row on the device either.
       const dump: Record<string, unknown[]> = {};
       for (const t of db.tables) dump[t.name] = await t.toArray();
-      const payload = { app: 'zonadua', schema: 2, exportedAt: new Date().toISOString(), data: dump };
+      const payload = buildBackupPayload(dump, new Date().toISOString());
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
@@ -261,12 +267,16 @@
           console.warn('[zonadua] backup contains unknown table, skipped:', tn);
         }
       }
-      const tableNames = Object.keys(parsed.data ?? {}) as string[];
+      // Redact on the way in as well as out. Exports no longer carry credentials, so a
+      // credential in a file is either from an older build or was put there by hand — and a
+      // restore should not be a way to reintroduce one. Same list, both directions.
+      const data = redactCredentials(parsed.data ?? {});
+      const tableNames = Object.keys(data) as string[];
       await db.transaction('rw', db.tables, async () => {
         for (const tn of tableNames) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const t = (db as any)[tn] as undefined | { bulkPut: (rows: unknown[]) => Promise<unknown> };
-          const rows = parsed.data?.[tn];
+          const rows = data[tn];
           if (t && Array.isArray(rows) && rows.length > 0) await t.bulkPut(rows);
         }
       });
@@ -705,6 +715,7 @@
         </button>
       </div>
       <input bind:this={restoreInput} class="hidden" type="file" accept=".json" onchange={onRestorePick} aria-label="Restore backup" />
+      <p class="text-[10px] leading-relaxed text-ink-dim">{BACKUP_CREDENTIALS_NOTE}</p>
 
       {#if wipeStep === 0}
         <button
