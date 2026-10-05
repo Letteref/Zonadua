@@ -3,6 +3,8 @@
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
+  import CircleButton from '$lib/components/CircleButton.svelte';
+  import SyncHint from '$lib/components/SyncHint.svelte';
   import { allBikesWithComponents, appSettings, computeWear, type ComponentWear } from '$lib/data/queries.svelte';
   import { convertDistance, distanceUnit, type UnitSystem } from '$lib/domain/units';
   import { db, type BikeComponent, type Bike } from '$lib/data/db';
@@ -47,6 +49,69 @@
   let cInterval = $state(4000);
 
   const KINDS = ['chain', 'brake-pads', 'tires', 'cassette', 'chainring', 'cable-housing', 'bar-tape'];
+
+  // ---------- add bike (bottom sheet) ----------
+  /**
+   * Physics defaults per bike type.
+   *
+   * The route solver needs a rolling-resistance coefficient and a drag area to model any
+   * ride, and a rider has no reason to know either. These are the same values the demo
+   * stable carries for each kind of machine, so a bike added here can be estimated
+   * immediately instead of showing a "no active bike" dead end on Routes and Race.
+   */
+  const BIKE_DEFAULTS: Record<Bike['type'], { crr: number; cda: number; weightKg: number }> = {
+    road: { crr: 0.0045, cda: 0.32, weightKg: 9.4 },
+    gravel: { crr: 0.0068, cda: 0.38, weightKg: 10.2 },
+    mtb: { crr: 0.01, cda: 0.45, weightKg: 12.5 }
+  };
+  const BIKE_TYPES: Bike['type'][] = ['road', 'gravel', 'mtb'];
+
+  let bikeSheetOpen = $state(false);
+  let bName = $state('');
+  let bType = $state<Bike['type']>('road');
+  let bWeight = $state(BIKE_DEFAULTS.road.weightKg);
+
+  function openAddBike(): void {
+    bName = '';
+    bType = 'road';
+    bWeight = BIKE_DEFAULTS.road.weightKg;
+    bikeSheetOpen = true;
+  }
+
+  /** Picking a type re-suggests that type's weight; the rider can still overwrite it. */
+  function pickBikeType(t: Bike['type']): void {
+    bType = t;
+    bWeight = BIKE_DEFAULTS[t].weightKg;
+  }
+
+  async function saveBike(): Promise<void> {
+    const weightKg = Number(bWeight);
+    if (!bName.trim() || !Number.isFinite(weightKg) || weightKg <= 0) return;
+    const rec: Bike = {
+      id: newId(),
+      name: bName.trim(),
+      type: bType,
+      weightKg,
+      crr: BIKE_DEFAULTS[bType].crr,
+      cda: BIKE_DEFAULTS[bType].cda,
+      odometerKm: 0,
+      // the first bike is also the active one: otherwise Routes and Race have no machine to
+      // model, and the rider would have to add a bike and then activate it as a second step
+      active: ordered.length === 0,
+      updatedAt: Date.now()
+    };
+    try {
+      await db.bikes.put(rec);
+    } catch (err) {
+      // the sheet stays open, same as the component form: a closed sheet after a failed write
+      // looks like the bike was saved and leaves the rider with nowhere to see what happened
+      console.error('[zonadua] saveBike failed:', err);
+      toast.error(`Could not save ${rec.name}`);
+      return;
+    }
+    bikeSheetOpen = false;
+    toast.ok(`${rec.name} added`);
+  }
 
   function openAdd(bikeId: string): void {
     const bike = bikes.find((b) => b.bike.id === bikeId);
@@ -154,7 +219,37 @@
     headline="The stable"
     sub={ordered.length === 0 ? 'No machines yet —' : ordered.length === 1 ? 'One machine on rotation —' : `${ordered.length} machines on rotation —`}
     accent="wear tracked by odometer."
-  />
+  >
+    <CircleButton icon="plus" label="Add bike" onclick={openAddBike} />
+  </EditorialHeader>
+
+  {#if ordered.length === 0}
+    <!--
+      Production first-launch lands here with no bike: the demo stable is dev-only, and until
+      this block existed the page was a dead end — a "No machines yet" header over an empty
+      column, with no way to add a machine and nothing to say what would fill it. Wear is
+      measured against a bike's odometer, so this is the page's real entry point.
+    -->
+    <section class="rounded-card border border-dashed border-hairline-strong p-5 flex flex-col items-center gap-3 text-center">
+      <div class="grid h-11 w-11 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim">
+        <Icon name="bike" size={20} strokeWidth={1.5} />
+      </div>
+      <h2 class="text-base font-extrabold tracking-tight">Add your first bike</h2>
+      <p class="text-sm text-ink-dim leading-relaxed">
+        Wear is tracked against a bike's odometer, so the stable starts empty. Add one machine and
+        every component you log gets its own service clock.
+      </p>
+      <button
+        class="mt-1 h-10 px-4 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider glow-signal active:scale-[0.98] transition-transform flex items-center gap-1.5"
+        onclick={openAddBike}
+      >
+        <Icon name="plus" size={14} strokeWidth={2.4} />
+        Add a bike
+      </button>
+    </section>
+
+    <SyncHint />
+  {/if}
 
   {#if primary}
     <!-- PRIMARY BIKE — ember-lit monolith, pinned right under the header -->
@@ -444,6 +539,82 @@
     >
       <Icon name="check" size={16} strokeWidth={2.4} />
       {editing ? 'Save changes' : 'Add component'}
+    </button>
+  </div>
+{/if}
+
+{#if bikeSheetOpen}
+  <button
+    class="fixed inset-0 z-[60] bg-ink/40 backdrop-blur-[2px]"
+    aria-label="Close form"
+    onclick={() => (bikeSheetOpen = false)}
+  ></button>
+
+  <div
+    class="fixed inset-x-0 bottom-0 z-[70] mx-auto max-w-md rounded-t-[28px] bg-surface border-t border-hairline elevation-raised p-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] flex flex-col gap-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Add bike"
+  >
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-extrabold tracking-tight">Add bike</h2>
+      <button
+        class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-ink transition-colors"
+        onclick={() => (bikeSheetOpen = false)}
+        aria-label="Close"
+      >
+        <Icon name="x" size={16} strokeWidth={1.8} />
+      </button>
+    </div>
+
+    <label class="flex flex-col gap-1.5">
+      <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Name</span>
+      <input
+        class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink outline-none focus:border-signal transition-colors"
+        type="text"
+        bind:value={bName}
+        placeholder="e.g. Domane SL6"
+      />
+    </label>
+
+    <div class="flex flex-col gap-1.5">
+      <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Type</span>
+      <div class="flex flex-wrap gap-1.5">
+        {#each BIKE_TYPES as t (t)}
+          <button
+            class="h-8 px-3 rounded-pill text-[11px] font-bold border transition-colors {bType === t
+              ? 'bg-ink text-on-mono border-ink'
+              : 'bg-tile text-ink-dim border-hairline hover:text-ink'}"
+            onclick={() => pickBikeType(t)}
+          >
+            {typeLabel[t] ?? t}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <label class="flex flex-col gap-1.5">
+      <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Weight (kg)</span>
+      <input
+        class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+        type="number"
+        min="0"
+        step="0.1"
+        bind:value={bWeight}
+      />
+    </label>
+
+    <p class="text-[11px] text-ink-dim leading-relaxed">
+      Rolling resistance and drag are set from the type — the route solver uses them right away.
+    </p>
+
+    <button
+      class="h-12 rounded-pill bg-crimson-fill text-white font-extrabold uppercase text-[11px] tracking-wider glow-signal active:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-40"
+      disabled={!bName.trim() || Number(bWeight) <= 0}
+      onclick={saveBike}
+    >
+      <Icon name="check" size={16} strokeWidth={2.4} />
+      Add bike
     </button>
   </div>
 {/if}

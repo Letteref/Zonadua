@@ -66,6 +66,25 @@ export function markWiped(): void {
   localStorage.setItem(WIPE_FLAG, '1');
 }
 
+/**
+ * Whether this build should carry the demo content at all.
+ *
+ * ## Why this is a build-time decision, not a runtime one
+ *
+ * A production rider meeting the app for the first time should see their own empty
+ * training log, not 24 rides named after someone else's bike. But the E2E suite runs
+ * against a production build (`npm run build && vite preview`), so the gate cannot be
+ * `import.meta.env.PROD` alone — that would make the suite assert against an app shape
+ * no test ever exercised. The demo data is therefore dev-only, and the E2E tests that
+ * need populated tables seed exactly the rows they assert on (see `tests/e2e/fixtures`).
+ *
+ * `VITE_SEED_DEMO=1` is the escape hatch for running the E2E suite against demo content
+ * deliberately. It exists so the choice stays visible in the command that made it,
+ * rather than in a build profile nobody remembers the meaning of.
+ */
+export const DEMO_SEEDING_ENABLED: boolean =
+  import.meta.env.DEV || import.meta.env.VITE_SEED_DEMO === '1';
+
 export async function ensureSeeded(): Promise<void> {
   if (isSeedingSuppressed()) return;
   if (flag(SEED_FLAG, LEGACY_SEED_FLAG) === '1') return;
@@ -100,6 +119,15 @@ export async function ensureSeeded(): Promise<void> {
   }
 
   const bikes = await db.bikes.count();
+  // Everything below this line is demo content — a fake rider, someone else's bikes, a
+  // fabricated training history. Production boots without any of it; see
+  // `DEMO_SEEDING_ENABLED` for why the gate is build-time and why the E2E suite is
+  // unaffected.
+  if (!DEMO_SEEDING_ENABLED) {
+    await backfillMetrics();
+    if (typeof localStorage !== 'undefined') localStorage.setItem(SEED_FLAG, '1');
+    return;
+  }
   if (bikes === 0) {
     const road: Bike = {
       id: newId(),

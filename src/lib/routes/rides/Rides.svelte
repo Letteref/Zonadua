@@ -4,6 +4,7 @@
   import CircleButton from '$lib/components/CircleButton.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
+  import SyncHint from '$lib/components/SyncHint.svelte';
   import { recentActivities, allActivities, computeWeek, activeBike, powerCurves } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
   import { db, activityProvenance, type Activity } from '$lib/data/db';
@@ -247,8 +248,21 @@
   {#if recentActivities.ready && filtered.length === 0}
     <div class="rounded-card border border-dashed border-hairline-strong p-8 text-center space-y-2">
       <span class="kicker block">{query ? 'No rides match your search' : 'No rides here yet'}</span>
-      <p class="text-sm text-ink-dim">Import GPX/TCX or sync from Strava.</p>
+      {#if query}
+        <p class="text-sm text-ink-dim">Try another name, or clear the search.</p>
+      {:else}
+        <p class="text-sm text-ink-dim">Import a GPX/TCX file, or connect Strava to pull your rides in.</p>
+      {/if}
     </div>
+    <!--
+      An empty log is ambiguous on its own: it can mean nothing has been imported yet, or that
+      a sync is silently broken. The hint answers that with the stored sync state instead of
+      leaving the rider to guess — it is only shown with no rides, and never for an empty search
+      result, where a sync status would be answering a question nobody asked.
+    -->
+    {#if !query}
+      <SyncHint />
+    {/if}
   {:else}
     <ul class="space-y-2.5">
       {#each filtered as a (a.id)}

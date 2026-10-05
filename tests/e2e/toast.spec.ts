@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedDashboardFixture } from './fixtures/dashboardFixture';
 
 /**
  * Failed-write E2E — the rider-visible half of the local-first promise.
@@ -23,6 +24,20 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function openApp(page: Page, hash = '#/'): Promise<void> {
   await page.goto(`/?r=${Date.now()}${hash}`);
+  await page.locator('#app').waitFor({ timeout: 20_000 });
+}
+
+/**
+ * Open the gear page with the dashboard fixture in place.
+ *
+ * Production no longer seeds demo bikes, and the `Add` button renders once per bike —
+ * a first-launch rider with an empty garage has no button to click. The fixture supplies
+ * the bike the sheet opens against, the same way it supplies weight and FTP for the hero.
+ */
+async function openGear(page: Page): Promise<void> {
+  await openApp(page, '#/gear');
+  await seedDashboardFixture(page);
+  await page.reload();
   await page.locator('#app').waitFor({ timeout: 20_000 });
 }
 
@@ -80,7 +95,7 @@ async function openAddSheet(page: Page) {
 
 test.describe('failed writes are reported, never swallowed', () => {
   test('a component that fails to save keeps the sheet open and says why', async ({ page }) => {
-    await openApp(page, '#/gear');
+    await openGear(page);
 
     const sheet = await openAddSheet(page);
     await breakWrites(page, 'components');
@@ -96,7 +111,7 @@ test.describe('failed writes are reported, never swallowed', () => {
   });
 
   test('a successful save confirms, and never says "could not"', async ({ page }) => {
-    await openApp(page, '#/gear');
+    await openGear(page);
 
     const sheet = await openAddSheet(page);
     await sheet.getByLabel('Name').fill('Bar tape');

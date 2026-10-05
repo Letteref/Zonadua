@@ -14,6 +14,7 @@
  */
 
 import type { Page } from '@playwright/test';
+import { seedDashboardFixture } from './dashboardFixture';
 
 /** Race the whole suite rides. Mirrors the defaults the cockpit itself configures. */
 export const RACE = {
@@ -170,6 +171,11 @@ export async function openRaceCockpit(
   await page.goto(`/?r=${Date.now()}#/race`);
   // first paint creates the schema; wait for the app shell before touching the stores
   await page.locator('#app').waitFor({ timeout: 15_000 });
+  // The cockpit solves its plan against the rider's weight and FTP, which production no
+  // longer seeds. `seedDashboardFixture` supplies athlete, weight, FTP and a bike — the
+  // same rows the app used to get from its demo seeder. It runs before `seedFixture` so
+  // both land before the single reload below.
+  await seedDashboardFixture(page);
   await seedFixture(page);
   await page.reload();
   await page.getByText('RACE SETUP').waitFor({ timeout: 15_000 });

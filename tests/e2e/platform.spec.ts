@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seedDashboardFixture } from './fixtures/dashboardFixture';
 
 /**
  * Platform E2E — the M0/M1/M2 Definition-of-Done lines that were ticked as "Done" without
@@ -56,29 +57,6 @@ async function gaugeArcMid(page: Page): Promise<number> {
     const bottom = Math.max(at(0), at(dash)) + half;
     return (top - half + bottom) / 2;
   });
-}
-
-/**
- * Wait for the first-launch seed to finish.
- *
- * The seed writes bikes, components, weight/FTP history and activities asynchronously after
- * the shell paints, so a snapshot taken the instant `#app` exists can legitimately see zero
- * activities. Polling is the honest fix; asserting against a racy read would either flake or
- * force the test to sleep for a guessed duration.
- */
-async function waitForSeed(page: Page, timeoutMs = 25_000): Promise<Record<string, unknown[]>> {
-  const deadline = Date.now() + timeoutMs;
-  let last: Record<string, unknown[]> = {};
-  while (Date.now() < deadline) {
-    last = await dumpState(page);
-    if ((last.activities ?? []).length > 0 && (last.bikes ?? []).length > 0) return last;
-    await page.waitForTimeout(250);
-  }
-  throw new Error(
-    `seed never populated: ${Object.entries(last)
-      .map(([k, v]) => `${k}=${v.length}`)
-      .join(' ')}`
-  );
 }
 
 /**
@@ -334,6 +312,10 @@ test.describe('M1 — data in', () => {
   }) => {
     await openApp(page, '#/rides');
     await page.getByText('YOUR RIDES').first().waitFor({ timeout: 20_000 });
+    // scoring needs an FTP on file; production no longer seeds one
+    await seedDashboardFixture(page);
+    await page.reload();
+    await page.getByText('YOUR RIDES').first().waitFor({ timeout: 20_000 });
 
     await page.evaluate(async (xml) => {
       const input = document.querySelector(
@@ -344,15 +326,39 @@ test.describe('M1 — data in', () => {
       dt.items.add(file);
       input.files = dt.files;
       input.dispatchEvent(new Event('change', { bubbles: true }));
-      await new Promise<void>((resolve) => {
-        const tick = () =>
-          document.body.innerText.includes('E2E Power TCX')
-            ? resolve()
-            : requestAnimationFrame(tick);
-        if (performance.now() > 10_000) resolve();
-        else requestAnimationFrame(tick);
-      });
     }, tcxWithPower(24, 'E2E Power TCX'));
+
+    // Waited with a locator rather than the old requestAnimationFrame poll inside
+    // evaluate: rAF stops firing on a backgrounded page, and after the fixture reload
+    // above that poll never resolved and the test died on the harness, not the app.
+    //
+    // The wait below polls the *database*, not the list: the row is what the assertions
+    // read, and a list that has not re-rendered yet says nothing about whether the import
+    // succeeded. Once the row exists the list check runs separately, so a rendering
+    // regression still fails — just with its own message instead of a timeout.
+    await expect
+      .poll(
+        async () => {
+          return page.evaluate(async () => {
+            const db = await new Promise<IDBDatabase>((res, rej) => {
+              const req = indexedDB.open('zonadua');
+              req.onsuccess = () => res(req.result);
+              req.onerror = () => rej(req.error);
+            });
+            const rows = await new Promise<Array<Record<string, unknown>>>((res, rej) => {
+              const req = db.transaction('activities', 'readonly').objectStore('activities').getAll();
+              req.onsuccess = () => res(req.result as never);
+              req.onerror = () => rej(req.error);
+            });
+            db.close();
+            return rows.some((r) => String(r.name).includes('E2E Power TCX'));
+          });
+        },
+        { timeout: 20_000, message: 'the imported TCX ride never reached IndexedDB' }
+      )
+      .toBe(true);
+
+    await page.getByText('E2E Power TCX').first().waitFor({ timeout: 20_000 });
 
     const stored = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((res, rej) => {
@@ -400,6 +406,10 @@ test.describe('M1 — data in', () => {
 
   test('importing adds the distance to the active bike odometer', async ({ page }) => {
     await openApp(page, '#/gear');
+    await page.getByText(/GEAR|BIKES/i).first().waitFor({ timeout: 20_000 });
+    // the odometer belongs to a bike; production no longer seeds one
+    await seedDashboardFixture(page);
+    await page.reload();
     await page.getByText(/GEAR|BIKES/i).first().waitFor({ timeout: 20_000 });
 
     const before = await page.evaluate(async () => {
@@ -515,7 +525,9 @@ test.describe('M1 — data in', () => {
   }) => {
     await openApp(page, '#/rides');
     await page.getByText('YOUR RIDES').first().waitFor({ timeout: 20_000 });
-    const before = await waitForSeed(page);
+    await seedDashboardFixture(page);
+    await page.reload();
+    const before = await dumpState(page);
     expect((before.activities ?? []).length, 'nothing seeded to back up').toBeGreaterThan(0);
 
     await openApp(page, '#/settings');
@@ -746,6 +758,11 @@ test.describe('routes hero stat strip', () => {
   for (const width of WIDTHS) {
     test(`stays on one line at ${width} px with the longest figures`, async ({ page }) => {
       await openApp(page, '#/routes');
+      await page.getByText('PROJECTED RIDE TIME').waitFor({ timeout: 20_000 });
+      // the plan's kcal/eta are computed from the rider's weight and FTP; production
+      // no longer seeds those, so this test supplies the figures its assertion expects
+      await seedDashboardFixture(page);
+      await page.reload();
       await page.getByText('PROJECTED RIDE TIME').waitFor({ timeout: 20_000 });
       await page.setViewportSize({ width, height: 900 });
       await maxOutPlan(page);
@@ -1002,7 +1019,8 @@ test.describe('dashboard hero form gauge', () => {
     // before the rides exist measures an arc built from the all-zero window — which is
     // exactly the state the dashboard now refuses to draw, and which used to pass this test
     // only because a fabricated zero still produced a plausible-looking sweep.
-    await waitForSeed(page);
+    await seedDashboardFixture(page);
+    await page.reload();
     await page.getByText(/Fitness \(CTL\)/i).first().waitFor({ timeout: 20_000 });
 
     const gauge = await page.evaluate(() => {
@@ -1073,7 +1091,8 @@ test.describe('dashboard hero form gauge', () => {
     page
   }) => {
     await openApp(page, '#/');
-    await waitForSeed(page);
+    await seedDashboardFixture(page);
+    await page.reload();
     await page.getByText(/Fitness \(CTL\)/i).first().waitFor({ timeout: 20_000 });
 
     const figure = await page.evaluate(() => {
@@ -1172,7 +1191,8 @@ test.describe('dashboard hero form gauge', () => {
  */
   test('the form band sits inside the gauge mouth, centred and clear of the caps', async ({ page }) => {
     await openApp(page, '#/');
-    await waitForSeed(page);
+    await seedDashboardFixture(page);
+    await page.reload();
     await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
 
     const band = await page.evaluate(() => {
@@ -1464,7 +1484,8 @@ for (const width of [320, 390, 430]) {
     await openApp(page, '#/');
     // The Today pane carries the week's change in its status pill, and that pill is shorter
     // without it — so an unseeded read measures a different card height than the rider sees.
-    await waitForSeed(page);
+    await seedDashboardFixture(page);
+    await page.reload();
     await page.getByText('Fitness').first().waitFor({ timeout: 20_000 });
     await page.setViewportSize({ width, height: 900 });
     await page.getByRole('tab', { name: 'Today' }).click();
@@ -1557,11 +1578,11 @@ for (const width of [320, 390, 430]) {
  */
 test('a rider with no rides in the window is told NO DATA rather than a form band', async ({
   page
-}) => {
-  await openApp(page, '#/');
-  await waitForSeed(page);
+}) => {    await openApp(page, '#/');
+    await seedDashboardFixture(page);
+    await page.reload();
 
-  await page.evaluate(async () => {
+    await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('zonadua');
       req.onsuccess = () => resolve(req.result);
@@ -1617,4 +1638,44 @@ test('a rider with no rides in the window is told NO DATA rather than a form ban
     'the page still claims a 7-day form change with no rides in the window'
   ).not.toContain('pts / 7d');
 });
+});
+
+test.describe('first launch without demo data — the Gear page has a way in', () => {
+  /**
+   * The demo stable is dev-only (see `DEMO_SEEDING_ENABLED`), so a production first launch
+   * lands on Gear with **no bike at all**. Until this change that page was a dead end: a
+   * "No machines yet" subtitle over an empty column, no control that writes a bike, and
+   * nothing to say where gear would come from.
+   *
+   * This is the receipt for the fix, and it goes through the UI the rider uses rather than
+   * asserting on the markup: the empty state must explain itself, say what has not synced,
+   * and the header action must actually store a bike — which then becomes the primary
+   * machine, because a bike that is not active leaves Routes and Race with nothing to model.
+   */
+  test('offers an add-bike action and stores the bike', async ({ page }) => {
+    await openApp(page, '#/gear');
+
+    await expect(page.getByRole('heading', { name: /add your first bike/i })).toBeVisible();
+    await expect(page.getByText(/no machines yet/i)).toBeVisible();
+    // where rides come from, and the honest sync state — the two things an empty log hides
+    await expect(page.getByText(/not synced yet/i)).toBeVisible();
+    await expect(page.getByText(/import a gpx\/tcx file/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /^add a bike$/i }).click();
+    const sheet = page.getByRole('dialog', { name: 'Add bike' });
+    await expect(sheet).toBeVisible();
+
+    await sheet.getByPlaceholder('e.g. Domane SL6').fill('Weekend bike');
+    // the type buttons carry the type's suggested weight; overwrite it to prove the stored
+    // value is the rider's and not the suggestion
+    await sheet.getByRole('button', { name: 'Gravel' }).click();
+    await sheet.getByRole('spinbutton').fill('10.6');
+    await sheet.getByRole('button', { name: /^add bike$/i }).click();
+
+    // really stored: it lands as the primary machine, from an empty odometer
+    await expect(page.getByRole('heading', { name: 'Weekend bike' })).toBeVisible();
+    await expect(page.getByText(/primary bike/i)).toBeVisible();
+    await expect(page.getByText(/no machines yet/i)).toHaveCount(0);
+    await expect(page.getByText('10.6 kg')).toBeVisible();
+  });
 });
