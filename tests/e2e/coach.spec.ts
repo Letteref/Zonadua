@@ -62,6 +62,18 @@ async function seedCoachData(page: Page): Promise<void> {
     const dayMs = 86_400_000;
     const now = new Date();
 
+    // Both rides must land inside the Monday-based window `weekWindow` uses. Spreading them
+    // backwards from "now" (`now - i days`) put the second ride in the *previous* week
+    // whenever the suite ran on a Monday, and the review then saw one ride instead of two —
+    // so the prompt never carried 68.7 / 2 / 126 / 149 and an honest answer quoting them was
+    // blocked as a hallucination. Anchoring the pair to that Monday keeps them in-window on
+    // every day of the week (both collapse onto today when today *is* Monday), and the clamp
+    // keeps them out of the future. UTC throughout, matching `weekWindow` itself.
+    const sinceMonday = (now.getUTCDay() + 6) % 7;
+    const weekStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday);
+    const rideIso = (i: number): string =>
+      new Date(Math.min(weekStartMs + i * dayMs, now.getTime())).toISOString();
+
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('zonadua');
       req.onsuccess = () => resolve(req.result);
@@ -99,8 +111,8 @@ async function seedCoachData(page: Page): Promise<void> {
       for (const [i, r] of rides.entries()) {
         tx.objectStore('activities').put({
           id: r.id,
-          // spread across the current week, newest first
-          date: new Date(now.getTime() - i * dayMs).toISOString(),
+          // inside the current week, newest first (see `rideIso`)
+          date: rideIso(i),
           name: `Coach fixture ride ${i + 1}`,
           source: 'manual',
           distanceKm: r.km,
