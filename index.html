@@ -11,6 +11,31 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Zonadua — Cycling Performance Lab</title>
+    <!--
+      Social cards.
+
+      `og:url` is deliberately omitted: the public origin depends on the deployment (a
+      Cloudflare Pages preview subdomain or a custom domain) and this is a static file with
+      no build-time knowledge of it. Naming a domain here would give every share a canonical
+      URL that may not be the one serving the page — worse than leaving it for the crawler
+      to infer. `og:image` stays root-relative for the same reason and resolves against
+      whatever origin hosts the build.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Zonadua" />
+    <meta property="og:title" content="Zonadua — Cycling Performance Lab" />
+    <meta
+      property="og:description"
+      content="Local-first cycling performance, route estimation and race-day tracking. Your rides stay on your device."
+    />
+    <meta property="og:image" content="/pwa-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Zonadua — Cycling Performance Lab" />
+    <meta
+      name="twitter:description"
+      content="Local-first cycling performance, route estimation and race-day tracking. Your rides stay on your device."
+    />
+    <meta name="twitter:image" content="/pwa-512.png" />
   </head>
   <body>
     <div id="app"></div>

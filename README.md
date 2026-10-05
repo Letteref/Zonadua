@@ -36,8 +36,12 @@ Svelte 5 (runes) · Vite 8 · TypeScript strict · Tailwind 4 · Dexie 4 · vite
 > The domain layer is in: `metrics.ts`, `pmc.ts`, `power-curve.ts`, `zones.ts` (NP/IF/TSS, CTL/ATL/TSB,
 > mean-max curve + CP/W' fit, time in zones), `course.ts` (GPX/TCX), `units.ts`, `trend.ts`,
 > and the M3 solver pair `physics.ts` + `pacing.ts` (power→speed → finish time → checkpoints →
-interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), with **428 unit tests** (426 passing, 2 waiting on a real device ride) and **69 Playwright E2E tests**.
-Still missing: everything in M5 — the AI Coach has no LLM call, and Strava sync has no backend.
+interactive chart series), plus `race.ts` (cut-off buffer, feasibility, CP/W′ sustainability, post-race estimate-vs-actual), and the Strava client
+(`infra/strava/`: PKCE, authorize URL + token-response parsing, rate-limit guard, activity/stream mapping, 7-day pruner, sync status),
+with **479 unit tests** (477 passing, 2 waiting on a real device ride) and **70 Playwright E2E tests**.
+M5 (AI Coach) is wired to Gemini/OpenAI-compatible endpoints behind a verified-response gate; the remaining
+Strava work is the connect button + sync loop, which needs a deployed token-exchange Function and a Strava
+client id — see [docs/STRAVA-SETUP.md](docs/STRAVA-SETUP.md).
 
 ## Commands
 
@@ -84,6 +88,7 @@ status table in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - [docs/PRD.md](docs/PRD.md) — features F1–F8, acceptance criteria, MVP scope
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, data model, physics, Strava integration, compliance
+- [docs/STRAVA-SETUP.md](docs/STRAVA-SETUP.md) — what the Strava integration ships, and the exact steps to make it live
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phase status + the recommended execution order
 - [docs/UI-SPEC.md](docs/UI-SPEC.md) — per-screen hierarchy, Stitch adoption rules, decisions up to §41
 - [docs/STITCH-PROMPTS-v5.md](docs/STITCH-PROMPTS-v5.md) — Google Stitch prompt source (historical reference)
@@ -121,6 +126,6 @@ the reliable index and the version is not.):
 | M3 estimator | **Done** — `domain/physics.ts` (gravity + rolling + aero + drivetrain loss, bisection speed solver) and `domain/pacing.ts` (IF target, stop policy, checkpoint ETAs with `legKph` + buffer vs cut-off, chart series), 66 tests. `AVG_KMH = 30` is gone: a 200,4 km / 1 345 m route solves to 6h 47m at 31,9 km/h, legs read 23,7 km/h climbing vs 40,8 km/h descending, and a 25 km/h headwind projects 19h 33m with a "too slow to be credible" warning. The profile card is an interactive uPlot chart: altitude area + solved-speed line on twin scales, with a crosshair tooltip reading km, grade, speed, elapsed and clock time |
 | M4 race mode | **Done** — setup, live cockpit and checkpoint logging to Dexie all work offline. `domain/race.ts` (cut-off buffer, feasibility, `clockAtKm`/`kmAtClock`/`planMinutesBetween`, `wPrimeSpentAt` + `sustainAt`) judges the ride against the fitted CP/W′ rather than a constant average: the hero BUFFER / PROJECTED FINISH / REQUIRED AVG come from the solved plan (`RACE_KM` and `AVG_KMH` are gone), the crosshair reports `±n min vs <cut-off>` anywhere on the profile, and the "3 slowest sectors" come from the solver instead of hard-coded names. 17 Playwright E2E tests cover buffer arithmetic, offline operation and the readout geometry. Finished races are reported against their own estimate (a **Past races · estimate vs actual** card), and the correction is deliberately *not* fed back into the next plan — one race is not enough evidence to bend the solver |
 | M5 AI coach | **Stub** — chat persisted to `ai_notes`, no LLM call. App correctly stays fully functional without a key (F5-AC1) |
-| M6 Strava/cloud | **Not started** — no backend in the repo; `sync_state` stays empty. P1, out of MVP scope |
+| M6 Strava/cloud | **In progress** — the client half is in the repo and unit-tested (`infra/strava/`: PKCE, authorize URL, token parsing, rate-limit guard at 80%, activity/stream mapping, 7-day pruner, sync status) and a Cloudflare Pages Function at `functions/api/strava/token.js` performs the code↔token exchange so the client secret never enters the bundle. Still open: the connect button + sync loop in the UI, and a Strava client id / Pages env vars. P1, out of MVP scope |
 
 Full breakdown and the recommended execution order: [docs/ROADMAP.md](docs/ROADMAP.md).

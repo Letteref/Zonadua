@@ -1,0 +1,5 @@
+# Zonadua is a single-page app with hash routing. There is nothing private to hide and no
+# per-user page to index: every screen lives behind a `#/` fragment, which crawlers do not
+# treat as a separate URL, and all rider data stays in the browser's IndexedDB.
+User-agent: *
+Allow: /
