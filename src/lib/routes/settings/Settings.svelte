@@ -69,10 +69,11 @@
       } else if (r.reason === 'network_error') {
         syncNote = 'Strava could not be reached — try again when the network is back.';
       } else {
-        syncNote =
-          r.pulled > 0
-            ? `Pulled ${r.pulled} ride${r.pulled === 1 ? '' : 's'}${r.streamsFetched > 0 ? ` and ${r.streamsFetched} power trace${r.streamsFetched === 1 ? '' : 's'}` : ''}.`
-            : 'Up to date — nothing new upstream.';
+        const traces = r.streamsFetched + r.streamsBackfilled;
+        const parts: string[] = [];
+        if (r.pulled > 0) parts.push(`Pulled ${r.pulled} ride${r.pulled === 1 ? '' : 's'}`);
+        if (traces > 0) parts.push(`${traces} power trace${traces === 1 ? '' : 's'}`);
+        syncNote = parts.length > 0 ? `${parts.join(' · ')}.` : 'Up to date — nothing new upstream.';
       }
     } catch (err) {
       showFailure('Sync failed', err);

@@ -52,11 +52,29 @@ export function activitiesListUrl(afterSec: number, page = 1): string {
  * Only the keys the app stores are asked for. `velocity_smooth` and `temp` are deliberately
  * omitted: neither is used by a single domain calculation, and every extra key is bytes the
  * rider's browser must fetch and the 7-day pruner must later delete.
+ *
+ * `key_by_type` is deliberately **not** set. With it, Strava answers
+ * `{"altitude": {"data": [...]}, "watts": {...}}`; without it, it answers the
+ * `[{type, data}, …]` list that `decodeStreams` parses and its tests pin. The two used to
+ * disagree, and the failure was silent in the worst way: every fetch succeeded with a full
+ * payload and the decoder rejected it as malformed, so a rider with a synced account had
+ * zero streams and therefore no NP, no power curve and no CP model — with no error anywhere
+ * to say why. The URL now matches the parser; `streamsResponseShape` pins that agreement.
  */
 export function streamsUrl(activityId: string | number): string {
   const keys = 'time,latlng,altitude,watts,heartrate,cadence';
-  const q = new URLSearchParams({ keys, key_by_type: 'true' });
+  const q = new URLSearchParams({ keys });
   return `${STRAVA_API}/activities/${encodeURIComponent(String(activityId))}/streams?${q.toString()}`;
+}
+
+/**
+ * The one accepted streams payload shape: Strava's un-keyed list.
+ *
+ * Exported so the sync loop can reject a mismatched payload as *shape*, with a reason,
+ * instead of discarding a good response in silence.
+ */
+export function isStreamsList(body: unknown): body is StravaStream[] {
+  return Array.isArray(body);
 }
 
 export interface StravaSummary {

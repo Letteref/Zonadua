@@ -26,7 +26,7 @@ describe('strava sync mapping', () => {
     it('asks for keyed streams, and only the keys the app stores', () => {
       const url = new URL(streamsUrl(4242));
       expect(url.origin + url.pathname).toBe(`${STRAVA_API}/activities/4242/streams`);
-      expect(url.searchParams.get('key_by_type')).toBe('true');
+      expect(url.searchParams.get('key_by_type')).toBeNull();
       const keys = url.searchParams.get('keys')!.split(',');
       expect(keys).toEqual(['time', 'latlng', 'altitude', 'watts', 'heartrate', 'cadence']);
       // unused series are not fetched: they are bytes to download and rows for the pruner to delete

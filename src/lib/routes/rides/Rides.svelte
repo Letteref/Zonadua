@@ -60,6 +60,25 @@
   }
 
   const month = $derived(computeWeek(allActivities.current ?? []));
+
+  /**
+   * All-time totals, over every activity on the device — pulled, imported or both.
+   *
+   * The week figures above are the planning window, and on a device whose rides are a few
+   * days old they read as zero, which is true and useless at the same time: the log was not
+   * empty, it simply held nothing from this week. These four numbers are what answers
+   * "how much is actually in here", and they are computed from the same rows the list below
+   * renders, so they cannot disagree with it.
+   */
+  const lifetime = $derived.by(() => {
+    const acts = allActivities.current ?? [];
+    return {
+      rides: acts.length,
+      km: acts.reduce((s, a) => s + (a.distanceKm || 0), 0),
+      hours: Math.round(acts.reduce((s, a) => s + (a.movingSec || 0), 0) / 3600),
+      elev: acts.reduce((s, a) => s + (a.elevGainM || 0), 0)
+    };
+  });
   const unit = $derived<UnitSystem>(appSettings.current?.unit ?? 'metric');
 
   // ---------- GPX/TCX import (PRD F1-AC1) ----------
@@ -180,6 +199,38 @@
     onchange={onImportPick}
     aria-label="Import GPX or TCX files"
   />
+
+  <!--
+    All-time strip, below the week card and above the search.
+
+    Reportedly missing: the log had 32 rides in it and the only figures on the page were this
+    week's, so a rider who had not ridden *this* week saw nothing at all. Four label + figure
+    pairs, the same rhythm as the week card, from the same rows.
+  -->
+  {#if lifetime.rides > 0}
+    <div class="grid grid-cols-4 gap-2 rounded-card bg-surface border border-hairline px-4 py-3 elevation-card" data-testid="rides-lifetime">
+      <div class="flex flex-col items-center">
+        <span class="text-[9.5px] font-bold uppercase tracking-wider text-ink-dim">All-time</span>
+        <span class="text-base font-extrabold text-ink text-tabular leading-tight">{lifetime.rides}</span>
+        <span class="text-[9px] uppercase tracking-wider text-ink-dim">rides</span>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-[9.5px] font-bold uppercase tracking-wider text-ink-dim">Distance</span>
+        <span class="text-base font-extrabold text-ink text-tabular leading-tight">{formatDistance(lifetime.km, unit, 0).split(' ')[0]}</span>
+        <span class="text-[9px] uppercase tracking-wider text-ink-dim">{distanceUnit(unit)}</span>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-[9.5px] font-bold uppercase tracking-wider text-ink-dim">Time</span>
+        <span class="text-base font-extrabold text-ink text-tabular leading-tight">{lifetime.hours}h</span>
+        <span class="text-[9px] uppercase tracking-wider text-ink-dim">moving</span>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-[9.5px] font-bold uppercase tracking-wider text-ink-dim">Climbing</span>
+        <span class="text-base font-extrabold text-ink text-tabular leading-tight">{formatElevation(lifetime.elev, unit).split(' ')[0]}</span>
+        <span class="text-[9px] uppercase tracking-wider text-ink-dim">gain</span>
+      </div>
+    </div>
+  {/if}
 
   <!--
     One rhythm, three figures, one action.

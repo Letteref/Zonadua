@@ -143,6 +143,13 @@ test.describe('strava sync', () => {
     await page.goto(`/?r=${Date.now()}#/rides`);
     await page.locator('#app').waitFor({ timeout: 20_000 });
     await expect(page.getByText('Morning Tempo')).toBeVisible({ timeout: 10_000 });
+
+    // and the all-time strip counts it — reported missing when the only figures on the page
+    // were this week's, so a rider whose rides were days old saw an empty-looking log
+    const lifetime = page.getByTestId('rides-lifetime');
+    await expect(lifetime).toBeVisible();
+    await expect(lifetime).toContainText('1');
+    await expect(lifetime).toContainText('42');
   });
 
   test('the 80% rate-limit guard stops the sync and says when it resumes', async ({ page }) => {
@@ -180,5 +187,93 @@ test.describe('strava sync', () => {
     await openSettings(page);
     await page.getByRole('button', { name: 'Sync now' }).click();
     await expect(syncNote(page)).toContainText(/rejected the saved authorization/i);
+  });
+});
+
+test.describe('strava trace backfill', () => {
+  /**
+   * A ride synced before its trace was stored must recover on its own.
+   *
+   * The cursor only moves forward, so a session that pulled summaries without usable traces
+   * would otherwise leave those rides at "— IF —" forever, with nothing to press. The
+   * backfill pass re-asks for exactly those rides, stamps them so it never asks twice, and
+   * then the derived metrics — NP, IF, TSS, the power curve — are computed from the trace
+   * through the same domain path an imported file takes.
+   */
+  test('an older ride with no trace gets one, and its metrics, on the next sync', async ({ page }) => {
+    await seedConnected(page);
+
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+      await new Promise<void>((res, rej) => {
+        const tx = db.transaction('activities', 'readwrite');
+        tx.objectStore('activities').put({
+          id: 'strava-old',
+          date: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+          name: 'Older ride',
+          source: 'strava',
+          distanceKm: 42,
+          movingSec: 5400,
+          elapsedSec: 6000,
+          elevGainM: 320,
+          kcal: 950,
+          synthetic: false,
+          updatedAt: Date.now()
+        });
+        tx.oncomplete = () => {
+          db.close();
+          res();
+        };
+        tx.onerror = () => rej(tx.error);
+      });
+    });
+
+    // nothing new upstream: the backfill alone has to do the work
+    await page.route('**/athlete/activities**', (route) => stravaFulfill(route, { body: [], headers: RATE_HEADERS }));
+    await page.route('**/activities/strava-old/streams**', (route) =>
+      stravaFulfill(route, {
+        body: [
+          { type: 'time', data: [0, 1, 2, 3] },
+          { type: 'watts', data: [200, 250, 230, 210] }
+        ],
+        headers: RATE_HEADERS
+      })
+    );
+
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Sync now' }).click();
+    await expect(syncNote(page)).toContainText(/power trace/i);
+
+    const row = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+      const act = await new Promise<Record<string, unknown>>((res) => {
+        const rq = db.transaction('activities', 'readonly').objectStore('activities').get('strava-old');
+        rq.onsuccess = () => res(rq.result as Record<string, unknown>);
+      });
+      const streams = await new Promise<number>((res) => {
+        const rq = db.transaction('activity_streams', 'readonly').objectStore('activity_streams').count();
+        rq.onsuccess = () => res(rq.result);
+      });
+      const curves = await new Promise<number>((res) => {
+        const rq = db.transaction('power_curves', 'readonly').objectStore('power_curves').count();
+        rq.onsuccess = () => res(rq.result);
+      });
+      db.close();
+      return { np: act.np as number | undefined, mVersion: act.mVersion as number | undefined, fetchedAt: act.streamsFetchedAt as number | undefined, streams, curves };
+    });
+
+    expect(row.fetchedAt).toBeGreaterThan(0);
+    expect(row.np).toBeGreaterThan(0); // derived from the trace that just landed
+    expect(row.mVersion).toBe(1);
+    expect(row.streams).toBe(1);
+    expect(row.curves).toBe(1);
   });
 });

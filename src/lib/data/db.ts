@@ -90,6 +90,16 @@ export interface Activity {
   notes?: string;
   /** demo/seed ride with a synthetic power trace — never real rider data */
   synthetic?: boolean;
+  /**
+   * When this ride's raw trace was last pulled from the API (epoch ms).
+   *
+   * Written only by a Strava sync, and only when the fetch actually produced a usable
+   * stream. Its absence is the signal for the backfill pass — this ride never had its
+   * trace — which is deliberately *not* the same as "no stream row": the 7-day pruner
+   * deletes API traces on purpose, and a device that re-pulled them every session would
+   * quietly undo the cache policy Strava's terms ask for.
+   */
+  streamsFetchedAt?: number;
   /** version of lib/domain/metrics that produced np/if/tss (see METRICS_VERSION) */
   mVersion?: number;
   updatedAt: number;

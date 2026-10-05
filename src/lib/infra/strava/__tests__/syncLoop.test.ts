@@ -9,9 +9,29 @@ import { runStravaSync, type StreamFetch, type SyncDeps, type SyncResult } from 
  * tests mock the data modules and record every write.
  */
 
+const store = vi.hoisted(() => {
+  const rows = new Map<string, Record<string, unknown>>();
+  return { rows, reset: () => rows.clear() };
+});
+
 vi.mock('../../../data/db', () => ({
   db: {
-    activities: { put: vi.fn(async () => undefined) },
+    activities: {
+      // a tiny in-memory stand-in: the backfill pass reads the table back through
+      // `where('source').equals('strava')`, so the mock has to behave like a store rather
+      // than a recorder
+      put: vi.fn(async (row: Record<string, unknown>) => {
+        store.rows.set(String(row.id), { ...(store.rows.get(String(row.id)) ?? {}), ...row });
+      }),
+      update: vi.fn(async (id: unknown, patch: Record<string, unknown>) => {
+        store.rows.set(String(id), { ...(store.rows.get(String(id)) ?? { id }), ...patch });
+      }),
+      where: (_index: string) => ({
+        equals: (value: unknown) => ({
+          toArray: async () => [...store.rows.values()].filter((r) => r.source === value)
+        })
+      })
+    },
     activity_streams: {
       get: vi.fn(async (_id: unknown) => undefined),
       put: vi.fn(async () => undefined)
@@ -29,7 +49,12 @@ vi.mock('../../../data/streams', () => ({
 
 vi.mock('../prune', () => ({ pruneExpiredApiStreams: vi.fn(async () => 3) }));
 
+vi.mock('../../../data/recompute', () => ({
+  backfillMetrics: vi.fn(async () => ({ scanned: 0, recomputed: 2, curvesComputed: 1, tracesGenerated: 0, noPower: 0 }))
+}));
+
 import { db } from '../../../data/db';
+import { backfillMetrics } from '../../../data/recompute';
 import { encodeStream } from '../../../data/streams';
 import { pruneExpiredApiStreams } from '../prune';
 
@@ -40,6 +65,7 @@ const streamsPut = db.activity_streams.put as unknown as ReturnType<typeof vi.fn
 const statePut = db.sync_state.put as unknown as ReturnType<typeof vi.fn>;
 const encode = encodeStream as unknown as ReturnType<typeof vi.fn>;
 const pruner = pruneExpiredApiStreams as unknown as ReturnType<typeof vi.fn>;
+const recompute = backfillMetrics as unknown as ReturnType<typeof vi.fn>;
 
 const NOW = 1_800_000_000_000;
 
@@ -121,6 +147,7 @@ function okResult(res: SyncResult): SyncResult {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  store.reset();
   streamsGet.mockResolvedValue(undefined);
   pruner.mockResolvedValue(0);
 });
@@ -303,5 +330,104 @@ describe('runStravaSync', () => {
     const res = await runStravaSync(h.deps);
     expect(res).toMatchObject({ ok: false, reason: 'rate_limited' });
     expect(res.retryInMs).toBeGreaterThan(0);
+  });
+});
+
+describe('runStravaSync — backfilling traces for rides the cursor already passed', () => {
+  /** A stored ride row as an earlier session would have left it. */
+  const stored = (id: string, date: string, source = 'strava') => ({
+    id,
+    date,
+    name: id,
+    source,
+    distanceKm: 40,
+    movingSec: 3600,
+    elapsedSec: 3600,
+    elevGainM: 200,
+    kcal: 800,
+    synthetic: false,
+    updatedAt: 1
+  });
+
+  beforeEach(() => {
+    recompute.mockResolvedValue({ scanned: 0, recomputed: 0, curvesComputed: 0, tracesGenerated: 0, noPower: 0 });
+  });
+
+  it('pulls traces for older rides that never had one, newest first', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [], RATE_HEADERS)); // nothing new upstream
+    store.rows.set('old-1', stored('old-1', '2026-09-01T00:00:00.000Z'));
+    store.rows.set('old-2', stored('old-2', '2026-09-02T00:00:00.000Z'));
+    store.rows.set('imported', stored('imported', '2026-09-03T00:00:00.000Z', 'gpx'));
+
+    const asked: string[] = [];
+    h.streamFor(async (id) => {
+      asked.push(id);
+      return { kind: 'ok', body: [{ type: 'time', data: [0, 1] }, { type: 'watts', data: [200, 240] }] };
+    });
+
+    const res = okResult(await runStravaSync(h.deps));
+
+    expect(res.streamsBackfilled).toBe(2);
+    expect(asked).toEqual(['old-2', 'old-1']); // newest first; the imported file is never touched
+    expect(store.rows.get('old-1')?.streamsFetchedAt).toBe(NOW);
+    expect(store.rows.get('imported')?.streamsFetchedAt).toBeUndefined();
+  });
+
+  it('does not re-pull a trace the 7-day pruner deleted on purpose', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [], RATE_HEADERS));
+    // marked as fetched once, and the stream row is gone: that is exactly what the pruner
+    // leaves behind, and it must not be mistaken for "never fetched"
+    store.rows.set('pruned', { ...stored('pruned', '2026-09-05T00:00:00.000Z'), streamsFetchedAt: NOW - 8 * 86_400_000 });
+
+    const asked: string[] = [];
+    h.streamFor(async (id) => {
+      asked.push(id);
+      return { kind: 'ok', body: [{ type: 'time', data: [0] }] };
+    });
+
+    const res = okResult(await runStravaSync(h.deps));
+    expect(res.streamsBackfilled).toBe(0);
+    expect(asked).toEqual([]);
+  });
+
+  it('stays within one session budget: the cap is the session, not the history', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [], RATE_HEADERS));
+    const asked: string[] = [];
+    h.streamFor(async (id) => {
+      asked.push(id);
+      return { kind: 'ok', body: [{ type: 'time', data: [0] }] };
+    });
+    for (let i = 0; i < 60; i++) {
+      store.rows.set(`r${i}`, stored(`r${i}`, new Date(Date.UTC(2026, 0, 1 + i)).toISOString()));
+    }
+
+    const res = okResult(await runStravaSync(h.deps));
+    expect(res.streamsBackfilled).toBe(50); // SYNC_BATCH_DEFAULT, the documented session cap
+    expect(asked).toHaveLength(50);
+    expect(res.streamsBackfilled + res.streamsFetched).toBeLessThanOrEqual(50);
+  });
+
+  it('recomputes derived metrics so a fresh trace is not left at "— IF —"', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [summary(7, '2026-09-30T02:00:00Z')], RATE_HEADERS));
+    h.streamFor(async () => ({ kind: 'ok', body: [{ type: 'time', data: [0, 1, 2] }, { type: 'watts', data: [150, 220, 180] }] }));
+    recompute.mockResolvedValue({ scanned: 1, recomputed: 1, curvesComputed: 1, tracesGenerated: 0, noPower: 0 });
+
+    const res = okResult(await runStravaSync(h.deps));
+    expect(recompute).toHaveBeenCalled();
+    expect(res.metricsComputed).toBe(2);
+  });
+
+  it('keeps the rides when the metric recompute throws — they are already stored', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [summary(8, '2026-09-30T02:00:00Z')], RATE_HEADERS));
+    recompute.mockRejectedValue(new Error('quota'));
+
+    const res = okResult(await runStravaSync(h.deps));
+    expect(res.pulled).toBe(1);
+    expect(h.saved).toEqual([{ cursor: 1_790_733_600, lastSyncAt: NOW }]); // 2026-09-30T02:00Z
   });
 });

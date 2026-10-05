@@ -29,11 +29,19 @@
  * HTTP branch is testable with fake servers.
  */
 
-import { db } from '../../data/db';
+import { db, type Activity } from '../../data/db';
+import { backfillMetrics } from '../../data/recompute';
 import { encodeStream } from '../../data/streams';
 import { pruneExpiredApiStreams } from './prune';
 import { parseRateLimit, retryDelayMs, shouldThrottle, type RateLimit } from './ratelimit';
-import { activitiesListUrl, decodeStreams, mapSummary, streamsUrl, type StravaSummary } from './sync';
+import {
+  SYNC_BATCH_DEFAULT,
+  activitiesListUrl,
+  decodeStreams,
+  mapSummary,
+  streamsUrl,
+  type StravaSummary
+} from './sync';
 
 export interface SyncDeps {
   /** Bearer token getter — returns undefined when nothing usable is stored. */
@@ -68,10 +76,14 @@ export interface SyncResult {
   ok: boolean;
   /** summaries mapped and stored this session */
   pulled: number;
-  /** stream rows written this session */
+  /** stream rows written this session, for rides pulled in this session */
   streamsFetched: number;
+  /** stream rows written this session for older rides that never had one */
+  streamsBackfilled: number;
   /** API streams deleted by the 7-day pruner after the pull */
   pruned: number;
+  /** NP/IF/TSS + power curves recomputed from the traces that just landed */
+  metricsComputed?: number;
   /** when the loop stopped early, why */
   reason?: SyncFailureReason;
   /** ms until the rate-limit window resets (only for `rate_limited`) */
@@ -114,7 +126,7 @@ async function fetchPage(deps: SyncDeps, url: string, token: string): Promise<Pa
  * that fails is a status the rider should read, not an exception the console should eat.
  */
 export async function runStravaSync(deps: SyncDeps): Promise<SyncResult> {
-  const result: SyncResult = { ok: false, pulled: 0, streamsFetched: 0, pruned: 0 };
+  const result: SyncResult = { ok: false, pulled: 0, streamsFetched: 0, streamsBackfilled: 0, pruned: 0 };
 
   const token = deps.token();
   if (!token) return { ...result, reason: 'not_connected' };
@@ -173,31 +185,43 @@ export async function runStravaSync(deps: SyncDeps): Promise<SyncResult> {
     const existing = await db.activity_streams.get(id);
     if (existing && existing.updatedAt > Date.parse(date)) continue;
 
-    let fetched: StreamFetch;
-    try {
-      fetched = await fetchStreams(id, bearer);
-    } catch {
-      fetched = { kind: 'failed' };
+    const fetched = await fetchOneStream(fetchStreams, id, bearer);
+    if (fetched.stopped) {
+      return { ...result, rateLimit, reason: 'rate_limited', retryInMs: rateLimit ? retryDelayMs(rateLimit, deps.now()) : undefined };
     }
-
-    // The guard applies to stream calls too: stop rather than push through.
-    if (fetched.kind === 'rate_limited') {
-      return {
-        ...result,
-        rateLimit,
-        reason: 'rate_limited',
-        retryInMs: rateLimit ? retryDelayMs(rateLimit, deps.now()) : undefined
-      };
-    }
-    if (fetched.kind !== 'ok') continue;
-
-    const samples = decodeStreams(fetched.body);
-    if (!samples) continue;
-    // Strava's `time` series is seconds; the stored convention is milliseconds so every
-    // reader (importer files, synthetic traces, this) shares one unit — see extractPower.
-    for (const s of samples) if (typeof s.t === 'number') s.t = s.t * 1000;
-    await db.activity_streams.put(await encodeStream(id, samples, 'strava'));
+    if (!fetched.written) continue;
+    await markStreamPulled(deps, id);
     result.streamsFetched++;
+  }
+
+  // ---- backfill: older rides that never had a trace ----
+  //
+  // A session only fetches streams for the rides it just pulled. That is correct for a
+  // fresh account and wrong for an established one: once the cursor has moved past a ride,
+  // nothing ever comes back for it, so a device that synced before streams were stored — or
+  // one whose stream fetch failed once — would keep a summary with no power data forever and
+  // no way to ask again.
+  //
+  // The marker is `streamsFetchedAt` on the activity row, not the presence of a stream row:
+  // the 7-day pruner deletes API traces deliberately, and re-fetching those every session
+  // would undo the cache policy. "Never fetched" and "pruned on purpose" must stay
+  // different states.
+  const backfill = await findNeverFetched();
+  // rides handled a moment ago must not be asked again in the same session, even when their
+  // fetch failed — one attempt per ride per session is the whole point of the budget
+  const handled = new Set(stored.map((s) => s.id));
+  let budget = Math.max(0, SYNC_BATCH_DEFAULT - result.streamsFetched);
+  for (const id of backfill) {
+    if (budget <= 0) break;
+    if (handled.has(id)) continue;
+    const fetched = await fetchOneStream(fetchStreams, id, bearer);
+    if (fetched.stopped) {
+      return { ...result, rateLimit, reason: 'rate_limited', retryInMs: rateLimit ? retryDelayMs(rateLimit, deps.now()) : undefined };
+    }
+    budget--;
+    if (!fetched.written) continue;
+    await markStreamPulled(deps, id);
+    result.streamsBackfilled++;
   }
 
   // ---- cursor + lastSyncAt: only after work actually completed ----
@@ -208,6 +232,22 @@ export async function runStravaSync(deps: SyncDeps): Promise<SyncResult> {
   } else {
     // nothing new upstream — still stamp the sync so "Synced x ago" is truthful
     await deps.save({ cursor: after, lastSyncAt });
+  }
+
+  // ---- derived metrics ----
+  //
+  // A stream on its own changes nothing a rider can see: NP, IF, TSS and the power curve
+  // are computed from the trace, and this app computes them through the same domain path as
+  // an imported file. `backfillMetrics` is idempotent (it only touches rows whose stored
+  // metrics version or curve version is behind), so running it after a pull is what makes
+  // the newly-synced rides appear *complete* rather than sitting at "— IF —" until the next
+  // cold boot. A failure here must not fail the sync: the rides are already stored, and
+  // their metrics can be rebuilt on the next launch.
+  try {
+    const backfilled = await backfillMetrics();
+    result.metricsComputed = backfilled.recomputed + backfilled.curvesComputed;
+  } catch (err) {
+    console.warn('[zonadua] strava sync: metric backfill failed, rides stay as stored:', err);
   }
 
   // ---- 7-day API cache policy ----
@@ -221,6 +261,51 @@ function statusReason(status: number): SyncFailureReason {
   if (status === 403) return 'forbidden';
   if (status === 429) return 'rate_limited';
   return 'network_error';
+}
+
+/** One stream fetch, decoded and stored; `stopped` means the guard tripped mid-session. */
+async function fetchOneStream(
+  fetchStreams: (activityId: string, token: string) => Promise<StreamFetch>,
+  id: string,
+  bearer: string
+): Promise<{ written: boolean; stopped: boolean }> {
+  let fetched: StreamFetch;
+  try {
+    fetched = await fetchStreams(id, bearer);
+  } catch {
+    fetched = { kind: 'failed' };
+  }
+  // The guard applies to stream calls too: stop rather than push through.
+  if (fetched.kind === 'rate_limited') return { written: false, stopped: true };
+  if (fetched.kind !== 'ok') return { written: false, stopped: false };
+
+  const samples = decodeStreams(fetched.body);
+  if (!samples) return { written: false, stopped: false };
+  // Strava's `time` series is seconds; the stored convention is milliseconds so every
+  // reader (importer files, synthetic traces, this) shares one unit — see extractPower.
+  for (const s of samples) if (typeof s.t === 'number') s.t = s.t * 1000;
+  await db.activity_streams.put(await encodeStream(id, samples, 'strava'));
+  return { written: true, stopped: false };
+}
+
+/** Stamp the activity so the backfill pass leaves it alone next time. */
+async function markStreamPulled(deps: SyncDeps, id: string): Promise<void> {
+  await db.activities.update(id, { streamsFetchedAt: deps.now() } as Partial<Activity>);
+}
+
+/**
+ * Ids of Strava rides whose raw trace was never pulled, newest first.
+ *
+ * Bounded by the query itself (the session cap) rather than by slicing afterwards, so a
+ * long history cannot turn one press of Sync now into a hundred requests.
+ */
+async function findNeverFetched(): Promise<string[]> {
+  const acts = (await db.activities.where('source').equals('strava').toArray()) as Activity[];
+  return acts
+    .filter((a) => a.streamsFetchedAt === undefined)
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    .slice(0, SYNC_BATCH_DEFAULT)
+    .map((a) => a.id);
 }
 
 /**
