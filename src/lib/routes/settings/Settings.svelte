@@ -12,6 +12,7 @@
   import { markWiped, newId } from '$lib/data/seed';
   import { BACKUP_CREDENTIALS_NOTE, buildBackupPayload, redactCredentials } from '$lib/data/backup';
   import { disconnectStrava, startStravaConnect } from '$lib/infra/strava/connect';
+  import { runLiveSync } from '$lib/infra/strava/runSync';
   import { recomputeSince } from '$lib/data/recompute';
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
@@ -38,6 +39,46 @@
       showToast('Strava disconnected — sync position kept');
     } catch (err) {
       showFailure('Could not disconnect Strava', err);
+    }
+  }
+
+  let syncing = $state(false);
+  let syncNote = $state('');
+
+  /** Run one sync session; the note says what happened, in words, whichever way it went. */
+  async function onSyncNow(): Promise<void> {
+    if (syncing) return;
+    syncing = true;
+    syncNote = '';
+    try {
+      const r = await runLiveSync();
+
+      // Branch on the reason itself, not on "a reason exists": every failure carries one,
+      // and a `'reason' in r` test sends a rate-limit stop and a rejected token down the
+      // "not connected" line, which is a different problem with a different fix.
+      if (r.reason === 'not_connected') {
+        syncNote = 'Not connected — press Connect Strava first.';
+      } else if (r.reason === 'rate_limited') {
+        const min = r.retryInMs ? Math.max(1, Math.round(r.retryInMs / 60_000)) : 15;
+        const pulled = r.pulled > 0 ? ` ${r.pulled} ride${r.pulled === 1 ? '' : 's'} pulled before stopping.` : '';
+        syncNote = `Stopped at Strava's rate-limit guard (80% of a window) — resumes in ~${min} min.${pulled}`;
+      } else if (r.reason === 'unauthorized' || r.reason === 'token_unrefreshable') {
+        syncNote = 'Strava rejected the saved authorization — disconnect and connect again.';
+      } else if (r.reason === 'forbidden') {
+        syncNote = 'Strava refused the read — check the app still has activity permission.';
+      } else if (r.reason === 'network_error') {
+        syncNote = 'Strava could not be reached — try again when the network is back.';
+      } else {
+        syncNote =
+          r.pulled > 0
+            ? `Pulled ${r.pulled} ride${r.pulled === 1 ? '' : 's'}${r.streamsFetched > 0 ? ` and ${r.streamsFetched} power trace${r.streamsFetched === 1 ? '' : 's'}` : ''}.`
+            : 'Up to date — nothing new upstream.';
+      }
+    } catch (err) {
+      showFailure('Sync failed', err);
+      syncNote = 'Sync failed — see the console for details.';
+    } finally {
+      syncing = false;
     }
   }
   
@@ -713,12 +754,23 @@
       </p>
       {#if connected}
         <button
+          class="h-10 w-full rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform disabled:opacity-60"
+          onclick={onSyncNow}
+          disabled={syncing}
+        >
+          <Icon name="refresh-cw" size={14} strokeWidth={1.8} class={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing…' : 'Sync now'}
+        </button>
+        <button
           class="h-10 w-full rounded-pill bg-tile border border-hairline text-[10px] font-extrabold uppercase tracking-wider text-ink-dim hover:text-kritis flex items-center justify-center gap-1.5 hover:border-kritis/40 transition-colors"
           onclick={onDisconnect}
         >
           <Icon name="plug" size={14} strokeWidth={1.8} />
           Disconnect Strava
         </button>
+        {#if syncNote}
+          <p class="text-[11px] leading-relaxed text-ink-dim" data-testid="strava-sync-note">{syncNote}</p>
+        {/if}
       {:else}
         <button
           class="h-10 w-full rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"

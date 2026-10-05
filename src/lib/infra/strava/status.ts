@@ -51,12 +51,22 @@ export function relativeAge(from: number, now: number): string {
  * ever come down — so they collapse to one answer.
  */
 export function syncStatus(
-  sync: { lastSyncAt?: number } | null | undefined,
+  sync: { lastSyncAt?: number; accessToken?: string } | null | undefined,
   now = Date.now()
 ): SyncStatus {
   const last = sync?.lastSyncAt;
 
   if (typeof last !== 'number' || !Number.isFinite(last)) {
+    // Connected but nothing pulled yet is a *different* state from never connected: the
+    // rider has already done the hard part, so telling them to "connect Strava" would send
+    // them to a button they have already pressed.
+    if (sync?.accessToken) {
+      return {
+        tone: 'neutral',
+        label: 'Connected, nothing pulled yet',
+        detail: 'Strava is connected on this device. No rides have been pulled yet — press Sync now in Settings.'
+      };
+    }
     return {
       tone: 'warn',
       label: 'Not synced yet',

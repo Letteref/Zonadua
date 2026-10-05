@@ -28,16 +28,28 @@ parks the PKCE pair + `state` in `sessionStorage` and redirects to the authorize
 parsed token to `sync_state`. Every branch is tested — unit
 (`src/lib/infra/strava/__tests__/connect.test.ts`) and E2E (`tests/e2e/strava-connect.spec.ts`,
 which simulates only Strava's own pages). Settings renders the honest state: **Connect Strava**
-when unconfigured, **Connected** with a Disconnect that drops tokens but keeps the cursor. What
-still cannot work without credentials is the ride-pulling half:
+when unconfigured, **Connected** with a Disconnect that drops tokens but keeps the cursor.
 
-1. A **sync loop**: page `/athlete/activities` via `activitiesListUrl(cursor)` in batches of
-   `SYNC_BATCH_DEFAULT` (50), map with `mapSummary`, fetch streams only for activities without a
-   fresh one, and check `parseRateLimit` + `shouldThrottle` after every response — stopping and
-   scheduling a retry via `retryDelayMs` when the guard trips.
-2. Run `pruneExpiredApiStreams()` after a sync.
-3. Refresh the access token on `401` using `refreshBody(...)`; Strava omits `refresh_token` on a
-   refresh, so keep the stored one.
+The ride-pulling half is shipped too, in `src/lib/infra/strava/syncLoop.ts` (loop, injected
+deps, unit-tested branch by branch) with `runSync.ts` as the production seam. One **Sync now**
+press runs one session: it fetches `/athlete/activities` with the stored cursor, maps through
+`mapSummary` (provenance `strava`, no invented zeros), stores the rows, pulls streams for
+activities whose stored stream is stale or missing, converts Strava's second-based `time`
+series to the app's millisecond convention, stamps `cursor` + `lastSyncAt` **only after work
+completed**, then runs `pruneExpiredApiStreams()` for the 7-day API cache policy. `parseRateLimit`
++ `shouldThrottle` gate every response: at 80% of either window the session stops and reports
+when it resumes, and a `401` triggers exactly one refresh through the Function (keeping the
+stored `refresh_token`, which Strava omits on refresh) before one retry.
+
+What is still open, honestly:
+
+1. **Automatic sync.** Nothing pulls on its own — a session starts when the rider presses
+   **Sync now**. Launch-time and post-ride triggers are not built.
+2. **Proactive refresh.** The token is refreshed only when Strava answers `401`; a token close
+   to expiry is not refreshed before the session.
+3. **Backfill of older history.** A session pulls the newest page after the cursor (100, above
+   the 50-session cap). Rides older than that first page are never reached, because the cursor
+   only moves forward — pulling them needs an explicit rewind, which is not built.
 
 The production connect button also needs `VITE_STRAVA_CLIENT_ID` in the Pages build environment
 (Production + Preview): without it the button refuses honestly with "not configured" instead of

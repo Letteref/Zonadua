@@ -1784,3 +1784,68 @@ test.describe('first launch without demo data — the Gear page has a way in', (
     await expect(page.getByText('10.6 kg')).toBeVisible();
   });
 });
+
+test.describe('dashboard monolith hero geometry', () => {
+  /**
+   * The monolith hero must stay a *card*, at every width and in every tab.
+   *
+   * Reported from the field as a hero that "keeps stretching". The shape of the bug is
+   * geometry, not content: the three panes share one grid cell so the card is exactly as
+   * tall as its tallest pane, and a pane whose chart wrapper was allowed to grow instead of
+   * absorbing slack pushes the whole dark card down past the fold — the numbers all stay
+   * correct, which is why it reads as "the layout feels wrong" rather than as a defect.
+   *
+   * Two invariants, both measured from the DOM rather than from the classes that fix them
+   * (searching for the fix's own class makes a test pass and fail for the wrong reason):
+   * the card stays under a bound that no amount of content crosses, and no pane is taller
+   * than another, so switching tabs cannot resize the card under the rider's thumb.
+   */
+  const CARD_MAX_H = 420;
+  const WIDTHS = [320, 390];
+
+  for (const width of WIDTHS) {
+    test(`the hero card stays bounded and tab-stable at ${width}px, with and without data`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+
+      const measureAllTabs = async (label: string) => {
+        const heights: Array<{ tab: string; card: number; panes: number[] }> = [];
+        for (const tab of ['Today', 'Form', 'Load']) {
+          await page.getByRole('tab', { name: tab }).click();
+          await page.waitForTimeout(250);
+          heights.push(
+            await page.evaluate((tabName) => {
+              const pane = document.querySelector('#hero-pane');
+              const card = pane?.closest('.bg-mono');
+              return {
+                tab: tabName,
+                card: card ? Math.round(card.getBoundingClientRect().height) : -1,
+                panes: pane ? [...pane.children].map((c) => Math.round(c.getBoundingClientRect().height)) : []
+              };
+            }, tab)
+          );
+        }
+        console.log(`[${label}@${width}]`, JSON.stringify(heights));
+        return heights;
+      };
+
+      await openApp(page, '#/');
+      await page.locator('#app').waitFor({ timeout: 20_000 });
+      const empty = await measureAllTabs('empty');
+
+      // and again with the fixture's rides, so the charts have something to draw
+      await seedDashboardFixture(page);
+      await page.reload();
+      await page.locator('#app').waitFor({ timeout: 20_000 });
+      const withData = await measureAllTabs('data');
+
+      for (const sample of [...empty, ...withData]) {
+        expect(sample.card, `${sample.tab} card height at ${width}px`).toBeGreaterThan(0);
+        expect(sample.card, `${sample.tab} card stretched to ${sample.card}px at ${width}px`).toBeLessThanOrEqual(CARD_MAX_H);
+        expect(sample.panes.length).toBe(3);
+        const tallest = Math.max(...sample.panes);
+        const shortest = Math.min(...sample.panes);
+        expect(tallest - shortest, `${sample.tab} panes disagree by ${tallest - shortest}px at ${width}px`).toBeLessThanOrEqual(2);
+      }
+    });
+  }
+});

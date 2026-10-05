@@ -21,6 +21,16 @@ describe('strava sync status', () => {
     expect(s.label).toBe('Not synced yet');
   });
 
+  it('separates "connected but nothing pulled" from "never connected"', () => {
+    const s = syncStatus({ accessToken: 'at-1' }, now);
+    expect(s.label).toBe('Connected, nothing pulled yet');
+    // it must not tell a connected rider to connect again
+    expect(s.detail).toMatch(/sync now/i);
+    expect(s.detail).not.toMatch(/connect strava/i);
+    // and the never-connected wording is untouched when there is no token
+    expect(syncStatus({ lastSyncAt: NaN }, now).label).toBe('Not synced yet');
+  });
+
   it('calls a fresh sync current, so an empty day reads as "no ride", not "broken"', () => {
     const s = syncStatus({ lastSyncAt: now - 2 * HOUR }, now);
     expect(s.tone).toBe('ok');
