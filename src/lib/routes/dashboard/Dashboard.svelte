@@ -240,14 +240,25 @@
    * sits on the bottom edge of the cell, level with the Today pane's own last row. All three
    * tabs then end on the same line, and the dead air becomes plotting area.
    *
-   * The height is read back off the element with `bind:clientHeight` rather than hard-coded to
-   * the measured 191.5px. It is derived from the tallest pane, which moves with the label
-   * wrapping and the type scale; a constant would drift the first time any of those changed.
-   * Width is bound for the same reason, and because `Sparkline` sizes itself from these two
-   * numbers alone.
+   * ## Why the sparkline's size is a constant and not a measurement
+   *
+   * It was measured, with `bind:clientWidth` / `bind:clientHeight` feeding `Sparkline`'s
+   * `width`/`height`. In a box whose height comes from `flex-1`, that is a feedback loop: the
+   * box asks for slack, the SVG is drawn at the slack's height, the SVG's intrinsic size
+   * becomes part of what the box wants, and the card grows again on every rerender — measured
+   * in the field at 1148px for a 900px screen, still climbing. The gain depends on which pane
+   * is tallest and on when the measurement lands relative to layout, which is why it looked
+   * random and why the fixture rides (which carry power, and take a different path) never
+   * caught it.
+   *
+   * So the loop is cut rather than damped: a constant viewBox, `fill` to stretch into whatever
+   * space the parent grants, and no measurement feeding back into layout. The chart still
+   * absorbs the slack — it simply no longer claims any height of its own. The Load bars keep
+   * their measured height because they are absolutely positioned: they read the box, they
+   * cannot contribute to it.
    */
-  let formChartW = $state(352);
-  let formChartH = $state(96);
+  const FORM_CHART_W = 352;
+  const FORM_CHART_H = 100;
   let loadChartH = $state(112);
   const ringDash = $derived(ringFrac * GAUGE_ARC);
   // Gated on the same signal as the values above: "+0 pts / 7d" is as much of a claim as
@@ -526,12 +537,8 @@
             <span class="text-[12px] font-bold text-tabular text-rose">{taperDelta >= 0 ? '+' : ''}{taperDelta} pts / 7d</span>
           {/if}
         </div>
-        <div
-          class="-mx-1 flex-1 min-h-0"
-          bind:clientWidth={formChartW}
-          bind:clientHeight={formChartH}
-        >
-          <Sparkline points={tsbSpark} width={formChartW} height={formChartH} showBaseline onDark ariaLabel="Form TSB last 30 days" />
+        <div class="-mx-1 flex-1 min-h-0">
+          <Sparkline points={tsbSpark} width={FORM_CHART_W} height={FORM_CHART_H} fill showBaseline onDark ariaLabel="Form TSB last 30 days" />
         </div>
         <div class="pt-4 border-t border-[#2b2d33] grid grid-cols-3 text-center shrink-0">
           <div>

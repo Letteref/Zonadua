@@ -5,6 +5,7 @@
     height = 32,
     showBaseline = false,
     onDark = false,
+    fill = false,
     ariaLabel = 'sparkline'
   }: {
     points: number[];
@@ -12,6 +13,17 @@
     height?: number;
     showBaseline?: boolean;
     onDark?: boolean;
+    /**
+     * Fill the parent box instead of drawing at `width` × `height` pixels.
+     *
+     * For a chart that lives in a flexible box (`flex-1`). The SVG is then sized by CSS, not
+     * by its own `width`/`height`: feeding a *measured* box size back into the element that
+     * fills that box is a feedback loop — box grows, chart grows with it, box grows again,
+     * and the hero card walks down the page on every rerender. With `fill` the caller passes
+     * a constant viewBox and lets the drawing stretch (`preserveAspectRatio="none"`) into
+     * whatever space the parent gives it, so the chart contributes no height of its own.
+     */
+    fill?: boolean;
     ariaLabel?: string;
   } = $props();
 
@@ -35,7 +47,15 @@
   });
 </script>
 
-<svg viewBox="0 0 {width} {height}" {width} {height} class="max-w-full h-auto" role="img" aria-label={ariaLabel}>
+<svg
+  viewBox="0 0 {width} {height}"
+  width={fill ? '100%' : width}
+  height={fill ? '100%' : height}
+  preserveAspectRatio={fill ? 'none' : undefined}
+  class={fill ? 'block h-full w-full' : 'max-w-full h-auto'}
+  role="img"
+  aria-label={ariaLabel}
+>
   <defs>
     <linearGradient id="spark-{uid}" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color={stroke} stop-opacity="0.22" />

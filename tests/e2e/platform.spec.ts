@@ -1849,3 +1849,99 @@ test.describe('dashboard monolith hero geometry', () => {
     });
   }
 });
+
+test.describe('dashboard monolith hero stability (powerless Strava data)', () => {
+  /**
+   * The reported field bug: the monolith hero "keeps stretching".
+   *
+   * It was a feedback loop, not a layout choice. The Form pane measures its flexible chart
+   * box with `bind:clientHeight` and handed that number straight back to the SVG as its
+   * `height` attribute: the box asked for slack, the chart was sized to the slack, the chart
+   * became content of the box, and every rerender grew the hero another few hundred pixels
+   * until the card was taller than the screen and pushed the rest of the dashboard — the
+   * week numbers, the tiles — below the fold.
+   *
+   * Why the fixture never caught it: the fixture's rides carry power, so the pane took a
+   * different path. The data that triggered it is what a rider who has connected Strava but
+   * rides without a power meter actually has — activities with distance and time, and no
+   * CTL/ATL/TSB to draw. So this test seeds exactly that, and asserts the two things the
+   * report was actually about: the card stays a card, and it *stops growing*.
+   */
+  const CARD_MAX_H = 420;
+
+  test('the hero card does not grow over time with powerless Strava activities', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openApp(page, '#/');
+    await page.locator('#app').waitFor({ timeout: 20_000 });
+
+    // 30 activities across ~10 weeks, no power fields: what the API returns for a rider
+    // with no power meter, and what the runaway chart was measured on.
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+      await new Promise<void>((res, rej) => {
+        const tx = db.transaction('activities', 'readwrite');
+        const store = tx.objectStore('activities');
+        for (let i = 0; i < 30; i++) {
+          const d = new Date(Date.UTC(2026, 6, 1 + i * 2));
+          store.put({
+            id: `strava-powerless-${String(i).padStart(3, '0')}`,
+            date: d.toISOString(),
+            name: `Strava ride ${i}`,
+            source: 'strava',
+            distanceKm: 42,
+            movingSec: 5400,
+            elapsedSec: 6000,
+            elevGainM: 320,
+            kcal: 950,
+            synthetic: false,
+            updatedAt: Date.now()
+          });
+        }
+        tx.oncomplete = () => {
+          db.close();
+          res();
+        };
+        tx.onerror = () => rej(tx.error);
+      });
+    });
+    await page.reload();
+    await page.locator('#app').waitFor({ timeout: 20_000 });
+    await page.getByRole('tab', { name: /form/i }).waitFor({ timeout: 20_000 });
+
+    const cardHeight = () =>
+      page.evaluate(() => {
+        const card = document.querySelector('#hero-pane')?.closest('.bg-mono');
+        return card ? Math.round(card.getBoundingClientRect().height) : -1;
+      });
+
+    // The Form pane is where the loop lived; sample it while it is visible and settling.
+    await page.getByRole('tab', { name: 'Form' }).click();
+    const samples: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      samples.push(await cardHeight());
+      await page.waitForTimeout(1200);
+    }
+    console.log('[powerless card samples]', JSON.stringify(samples));
+
+    expect(samples[0]).toBeGreaterThan(0);
+    for (const h of samples) {
+      expect(h, `monolith hero stretched to ${h}px`).toBeLessThanOrEqual(CARD_MAX_H);
+    }
+    const spread = Math.max(...samples) - Math.min(...samples);
+    expect(spread, `monolith hero grew ${spread}px while idle: ${samples.join(', ')}`).toBeLessThanOrEqual(4);
+
+    // and the tabs agree, so switching never resizes the card under the rider's thumb
+    const perTab: number[] = [];
+    for (const tab of ['Today', 'Load', 'Today']) {
+      await page.getByRole('tab', { name: tab }).click();
+      await page.waitForTimeout(500);
+      perTab.push(await cardHeight());
+    }
+    console.log('[powerless per-tab]', JSON.stringify(perTab));
+    expect(Math.max(...perTab) - Math.min(...perTab)).toBeLessThanOrEqual(4);
+  });
+});
