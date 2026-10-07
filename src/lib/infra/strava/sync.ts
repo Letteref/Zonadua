@@ -166,6 +166,10 @@ export function mapSummary(summary: StravaSummary, now = Date.now()): Activity |
     // enough for a load estimate and are the figure Strava itself displays.
     kcal: num(summary.kilojoules) ?? 0,
     commute: summary.commute === true ? true : undefined,
+    // Strava's sport type. Walks and runs the athlete logged are real activity but not
+    // riding; storing the type lets the stats layer exclude them instead of letting a
+    // 4 km walk inflate rides/distance.
+    sportType: typeof summary.type === 'string' ? summary.type : undefined,
     synthetic: false,
     updatedAt: now
   };

@@ -86,6 +86,13 @@ export interface Activity {
   maxHr?: number;
   kcal: number;
   commute?: boolean;
+  /**
+   * Strava sport type (`Ride`, `VirtualRide`, `Walk`, …). Stored so activities the sync
+   * pulls that are not riding — the athlete's walks, runs — can be excluded from riding
+   * statistics instead of silently inflating them. Absent on imported files and on rows
+   * written before this field existed; absence counts as a ride (see `isCyclingActivity`).
+   */
+  sportType?: string;
   flagged?: boolean;
   notes?: string;
   /** demo/seed ride with a synthetic power trace — never real rider data */
@@ -120,6 +127,31 @@ export interface Activity {
  */
 export function activityProvenance(act: Pick<Activity, 'source' | 'synthetic'>): string {
   return act.synthetic ? 'demo' : act.source;
+}
+
+/**
+ * Strava sport types that are cycling. Everything else a sync can pull (Walk, Hike,
+ * Run, Swim…) is real activity but not riding, and must not inflate riding statistics.
+ */
+export const CYCLING_SPORT_TYPES: ReadonlySet<string> = new Set([
+  'Ride',
+  'VirtualRide',
+  'EBikeRide',
+  'MountainBikeRide',
+  'GravelRide',
+  'Handcycle'
+]);
+
+/**
+ * Whether this row counts toward riding statistics.
+ *
+ * An absent `sportType` means "known to be a ride": GPX/TCX/FIT imports and manual
+ * entries are rides by definition, and rows synced before the type was stored cannot
+ * be reclassified from what is on the device — excluding them would silently rewrite
+ * history. Only an explicitly non-cycling Strava type is excluded.
+ */
+export function isCyclingActivity(act: { sportType?: string }): boolean {
+  return act.sportType === undefined || CYCLING_SPORT_TYPES.has(act.sportType);
 }
 
 export interface ActivityStreams {

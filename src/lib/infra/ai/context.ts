@@ -146,6 +146,8 @@ export interface RideRow {
   tss?: number;
   np?: number;
   synthetic?: boolean;
+  /** Strava sport type when known — non-cycling types are excluded from the week */
+  sportType?: string;
 }
 
 /**
@@ -154,9 +156,20 @@ export interface RideRow {
  * Rides outside the window are ignored rather than clamped in, so a window cannot
  * quietly accumulate last week's training and report it as this week's.
  */
+/**
+ * Strava sport types that are riding. Kept in step with `CYCLING_SPORT_TYPES` in
+ * data/db.ts; this module stays Dexie-free, so the list lives here too.
+ */
+const CYCLING_TYPES = new Set(['Ride', 'VirtualRide', 'EBikeRide', 'MountainBikeRide', 'GravelRide', 'Handcycle']);
+
 export function buildWeekContext(rides: readonly RideRow[], now: Date): WeekContext {
   const { from, to, weekOf } = weekWindow(now);
-  const inWindow = rides.filter((r) => r.date.slice(0, 10) >= from && r.date.slice(0, 10) <= to);
+  const inWindow = rides
+    .filter((r) => r.date.slice(0, 10) >= from && r.date.slice(0, 10) <= to)
+    // Non-cycling sport types (Walk, Run, …) are the athlete's real activity but not
+    // riding; a walk must not land in the week's rides or kilometres. Rows without a
+    // type are counted — file imports and legacy rows are rides by definition.
+    .filter((r) => r.sportType === undefined || CYCLING_TYPES.has(r.sportType));
 
   let distanceKm = 0;
   let elevGainM = 0;

@@ -175,6 +175,11 @@ export async function runStravaSync(deps: SyncDeps): Promise<SyncResult> {
   for (const raw of summaries) {
     const act = mapSummary(raw, deps.now());
     if (!act) continue;
+    // A re-pull (cursor reset, or a ride the window re-covered) overwrites the whole row.
+    // Carry the trace stamp across, or the backfill pass would read an already-fetched
+    // stream as never-fetched and download it all over again.
+    const prev = await db.activities.get(act.id);
+    if (prev?.streamsFetchedAt !== undefined) act.streamsFetchedAt = prev.streamsFetchedAt;
     stored.push({ id: act.id, date: act.date });
     await db.activities.put(act);
     result.pulled++;

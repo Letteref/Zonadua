@@ -7,7 +7,7 @@
   import SyncHint from '$lib/components/SyncHint.svelte';
   import { recentActivities, allActivities, computeWeek, activeBike, powerCurves, appSettings, syncState } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
-  import { db, activityProvenance, type Activity } from '$lib/data/db';
+  import { db, activityProvenance, isCyclingActivity, type Activity } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { decimateTrack, parseCourse } from '$lib/domain/course';
   import { deflateJson, extractPower } from '$lib/data/streams';
@@ -102,7 +102,8 @@
   const month = $derived(computeWeek(allActivities.current ?? []));
 
   /**
-   * All-time totals, over every activity on the device — pulled, imported or both.
+   * All-time totals, over every *riding* activity on the device — pulled, imported or both.
+   * Walks and runs a Strava sync pulled are excluded: real activity, but not riding.
    *
    * The week figures above are the planning window, and on a device whose rides are a few
    * days old they read as zero, which is true and useless at the same time: the log was not
@@ -111,7 +112,7 @@
    * renders, so they cannot disagree with it.
    */
   const lifetime = $derived.by(() => {
-    const acts = allActivities.current ?? [];
+    const acts = (allActivities.current ?? []).filter(isCyclingActivity);
     return {
       rides: acts.length,
       km: acts.reduce((s, a) => s + (a.distanceKm || 0), 0),

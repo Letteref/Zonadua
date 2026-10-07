@@ -20,6 +20,7 @@ vi.mock('../../../data/db', () => ({
       // a tiny in-memory stand-in: the backfill pass reads the table back through
       // `where('source').equals('strava')`, so the mock has to behave like a store rather
       // than a recorder
+      get: vi.fn(async (id: unknown) => store.rows.get(String(id))),
       put: vi.fn(async (row: Record<string, unknown>) => {
         store.rows.set(String(row.id), { ...(store.rows.get(String(row.id)) ?? {}), ...row });
       }),
@@ -247,6 +248,33 @@ describe('runStravaSync', () => {
     expect(res.streamsFetched).toBe(1); // only activity 2
     const samples = encode.mock.calls[0][1] as Array<{ t?: number }>;
     expect(samples.map((s) => s.t)).toEqual([0, 1000, 2000]);
+  });
+
+  it('carries streamsFetchedAt across a re-pull — a later session must not re-backfill', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+    h.streamFor(async () => ({ kind: 'ok', body: [{ type: 'time', data: [0, 1] }] }));
+    await runStravaSync(h.deps);
+    expect(store.rows.get('1')?.streamsFetchedAt).toBe(NOW); // stamped by session 1
+
+    // session 2: cursor reset to 0 — the same ride is re-pulled and its row overwritten
+    const h2 = harness(0);
+    h2.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+    okResult(await runStravaSync(h2.deps));
+
+    // session 3: cursor past everything, upstream empty. The carried stamp must keep
+    // the backfill pass from reading the trace as never-fetched and re-downloading it.
+    let backfillStreams = 0;
+    const h3 = harness(1_790_992_800);
+    h3.page(() => jsonResponse(200, [], RATE_HEADERS));
+    h3.streamFor(async () => {
+      backfillStreams += 1;
+      return { kind: 'ok', body: [{ type: 'time', data: [0, 1] }] };
+    });
+    const res = okResult(await runStravaSync(h3.deps));
+    expect(res.streamsBackfilled).toBe(0);
+    expect(backfillStreams).toBe(0);
+    expect(store.rows.get('1')?.streamsFetchedAt).toBe(NOW);
   });
 
   it('stops mid-streams when the stream call hits the guard', async () => {

@@ -1,5 +1,5 @@
 import { liveQuery, type Observable } from 'dexie';
-import { db, type Activity, type BikeComponent, type WeightLog } from './db';
+import { db, isCyclingActivity, type Activity, type BikeComponent, type WeightLog } from './db';
 import { DEFAULT_POWER_ZONES, bandsFromStops, stopsFromBands } from '../domain/zones';
 import { inflateJson } from './streams';
 import type { ProfilePoint } from '../domain/physics';
@@ -189,6 +189,9 @@ export function computeWeek(items: Activity[]): WeekTotals {
   let secs = 0;
   let km = 0;
   for (const a of items) {
+    // A Walk the athlete logged is real activity but not riding — it must not land in
+    // the week's rides, kilometres or load.
+    if (!isCyclingActivity(a)) continue;
     const d = new Date(a.date);
     if (d < cutoff) continue;
     const key = isoLocalDay(d);

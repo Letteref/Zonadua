@@ -31,6 +31,7 @@
   import { fitCriticalPower, mergePowerCurves, wPrimeExhaustionTime } from '$lib/domain/power-curve';
   import { fmtDuration } from '$lib/domain/zones';
   import { convertDistance, distanceUnit, formatDistance, formatPowerPerWeight, formatWeight, splitValue, type UnitSystem } from '$lib/domain/units';
+  import { isCyclingActivity } from '$lib/data/db';
   
   // H2 hero chrome: window tabs swap the monolith body (§17 UI-SPEC)
   type HeroTab = 'today' | 'form' | 'load';
@@ -92,7 +93,7 @@
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 6);
     cutoff.setHours(0, 0, 0, 0);
-    return (allActivities.current ?? []).filter((a) => new Date(a.date) >= cutoff).length;
+    return (allActivities.current ?? []).filter((a) => isCyclingActivity(a) && new Date(a.date) >= cutoff).length;
   });
   const pmc = $derived(computePmc(allActivities.current ?? [], 90));
   const lastPmc = $derived(pmc.at(-1));
@@ -286,6 +287,7 @@
       to.setDate(to.getDate() - (w - 1) * 7);
       const t = acts
         .filter((a) => {
+          if (!isCyclingActivity(a)) return false;
           const d = new Date(a.date);
           return d >= from && d < to;
         })

@@ -95,6 +95,27 @@ describe('buildWeekContext', () => {
     expect(week.distanceKm).toBe(0);
     expect(week.rides).toBe(1);
   });
+
+  it('excludes non-cycling sport types a Strava sync pulls', () => {
+    const week = buildWeekContext(
+      [
+        ...THIS_WEEK,
+        { date: '2026-10-06T06:00:00', distanceKm: 4, elevGainM: 0, movingSec: 3300, sportType: 'Walk' },
+        { date: '2026-10-06T07:00:00', distanceKm: 30, elevGainM: 100, movingSec: 3600, sportType: 'VirtualRide' }
+      ],
+      WED
+    );
+    // the walk is real activity but not riding — it must not inflate rides or kilometres;
+    // the virtual ride does count
+    expect(week.rides).toBe(3);
+    expect(week.distanceKm).toBe(180);
+  });
+
+  it('counts rows without a sport type as rides — imports and legacy rows are rides', () => {
+    const week = buildWeekContext([{ date: '2026-10-06T06:00:00', distanceKm: 20, elevGainM: 0, movingSec: 1800 }], WED);
+    expect(week.rides).toBe(1);
+    expect(week.distanceKm).toBe(20);
+  });
 });
 
 describe('buildCoachContext', () => {
