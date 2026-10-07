@@ -29,6 +29,7 @@
     latestWeight
   } from '$lib/data/queries.svelte';
   import { fitCriticalPower, mergePowerCurves, wPrimeExhaustionTime } from '$lib/domain/power-curve';
+  import { fmtDuration } from '$lib/domain/zones';
   import { convertDistance, distanceUnit, formatDistance, formatPowerPerWeight, formatWeight, splitValue, type UnitSystem } from '$lib/domain/units';
   
   // H2 hero chrome: window tabs swap the monolith body (§17 UI-SPEC)
@@ -117,11 +118,16 @@
   const mergedCurve = $derived(mergePowerCurves((powerCurves.current ?? []).map((c) => c.points)));
   const cpFit = $derived(mergedCurve.length >= 4 ? fitCriticalPower(mergedCurve) : undefined);
   const wPrimeTlim = $derived(cpFit ? wPrimeExhaustionTime(cpFit) : undefined);
-  // round to whole minutes first, otherwise 59.7 min formats as "0h 60m"
+  /**
+   * `wPrimeExhaustionTime` returns **seconds** — W′/CP is J/W, and its unit test pins it
+   * (20000 J / 250 W = 80). This label used to format that number as if it were minutes,
+   * so the card showed "1h 05m" for what the model puts at 65 s: a 60× overstatement of
+   * the tank. `fmtDuration` is the same helper this card's own "longest measured effort"
+   * line already uses, so both durations on the card render through one convention.
+   */
   const tlimLabel = $derived.by(() => {
     if (wPrimeTlim === undefined) return '—';
-    const mins = Math.round(wPrimeTlim);
-    return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
+    return fmtDuration(wPrimeTlim);
   });
   const curveRides = $derived((powerCurves.current ?? []).length);
   const weight = $derived(latestWeight(weightSeries.current ?? []));

@@ -5,7 +5,7 @@
   import Sparkline from '$lib/components/Sparkline.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import SyncHint from '$lib/components/SyncHint.svelte';
-  import { recentActivities, allActivities, computeWeek, activeBike, powerCurves } from '$lib/data/queries.svelte';
+  import { recentActivities, allActivities, computeWeek, activeBike, powerCurves, appSettings, syncState } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
   import { db, activityProvenance, type Activity } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
@@ -13,16 +13,56 @@
   import { deflateJson, extractPower } from '$lib/data/streams';
   import { ftpOnDate, rideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
   import { distanceUnit, formatDistance, formatElevation, type UnitSystem } from '$lib/domain/units';
-  import { appSettings } from '$lib/data/queries.svelte';
+  import { runLiveSync } from '$lib/infra/strava/runSync';
+  import { AUTO_SYNC_FLAG, AUTO_SYNC_IN_FLIGHT } from '$lib/infra/strava/autoSync';
   import { toast } from '$lib/toast.svelte';
 
   /** the global pill (UI-SPEC §46); this route only picks the words */
   const showToast = (msg: string): void => toast.ok(msg);
-  
+
   type Filter = 'all' | 'rides' | 'commutes' | 'power';
   let filter = $state<Filter>('all');
   let query = $state('');
   let importInput: HTMLInputElement | null = $state(null);
+  let syncing = $state(false);
+
+  /**
+   * Strava is the primary pipeline, so the header's primary action follows the connection:
+   * connected → one tap re-syncs right here; not connected → the button opens Settings,
+   * where the Connect flow lives. File import stays available next to the empty state.
+   */
+  const connected = $derived(Boolean(syncState.current?.accessToken));
+
+  async function onSyncNow(): Promise<void> {
+    if (syncing) return;
+    syncing = true;
+    try {
+      // Mark this tab's session so the boot gate's cooldown and in-flight rules see it.
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(AUTO_SYNC_FLAG, AUTO_SYNC_IN_FLIGHT);
+      const r = await runLiveSync();
+      if (r.reason === 'not_connected') {
+        showToast('Strava is not connected — open Settings to connect');
+      } else if (r.reason === 'rate_limited') {
+        showToast("Stopped at Strava's rate-limit guard — resumes shortly");
+      } else if (r.reason) {
+        showToast('Strava sync failed — see Settings for details');
+      } else {
+        const traces = r.streamsFetched + r.streamsBackfilled;
+        showToast(
+          r.pulled > 0
+            ? `Pulled ${r.pulled} ride${r.pulled === 1 ? '' : 's'} from Strava${traces > 0 ? ` · ${traces} trace${traces === 1 ? '' : 's'}` : ''}`
+            : 'Strava is up to date — nothing new upstream'
+        );
+      }
+    } catch {
+      showToast('Strava sync failed — try again when the network is back');
+    } finally {
+      // Stamp the cooldown so a boot right after a manual sync does not immediately re-run
+      // one; the boot gate reads this same marker.
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(AUTO_SYNC_FLAG, String(Date.now()));
+      syncing = false;
+    }
+  }
 
   const filtered = $derived.by<Activity[]>(() => {
     let items = recentActivities.current ?? [];
@@ -186,9 +226,19 @@
     "This week" hero, always visible rather than behind a toggle, which also removes the
     second click that the old design asked for before you could type anything.
   -->
-  <EditorialHeader kicker="Your rides" headline="Every watt counts" sub="From the last import —" accent="and the archive.">
-    <CircleButton icon="file-up" label="Import GPX/TCX/FIT" onclick={() => importInput?.click()} />
-  </EditorialHeader>
+  <EditorialHeader kicker="Your rides" headline="Every watt counts" sub="Pulled from Strava —" accent="or filed by hand.">
+      {#if connected}
+        <CircleButton
+          icon="refresh-cw"
+          label="Sync with Strava now"
+          onclick={onSyncNow}
+          disabled={syncing}
+          spinning={syncing}
+        />
+      {:else}
+        <CircleButton icon="link" label="Connect Strava in Settings" onclick={() => route.navigate('settings')} />
+      {/if}
+    </EditorialHeader>
 
   <input
     bind:this={importInput}
@@ -302,7 +352,7 @@
       {#if query}
         <p class="text-sm text-ink-dim">Try another name, or clear the search.</p>
       {:else}
-        <p class="text-sm text-ink-dim">Import a GPX/TCX file, or connect Strava to pull your rides in.</p>
+        <p class="text-sm text-ink-dim">Connect Strava in Settings and your rides pull in on their own — or import a GPX/TCX file below.</p>
       {/if}
     </div>
     <!--
@@ -353,7 +403,7 @@
   {/if}
 
   <p class="pt-2 text-center">
-    <StatusChip label="Local-first · no cloud needed" status="neutral" />
+    <StatusChip label="Rides come from Strava — computed on this device" status="neutral" />
   </p>
 </div>
 

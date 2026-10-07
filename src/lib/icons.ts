@@ -40,6 +40,7 @@ import Flag01Icon from '@hugeicons/core-free-icons/Flag01Icon';
 import GaugeIcon from '@hugeicons/core-free-icons/GaugeIcon';
 import HeartIcon from '@hugeicons/core-free-icons/HeartIcon';
 import KeyRoundIcon from '@hugeicons/core-free-icons/KeyRoundIcon';
+import Link01Icon from '@hugeicons/core-free-icons/Link01Icon';
 import Loading03Icon from '@hugeicons/core-free-icons/Loading03Icon';
 import LockIcon from '@hugeicons/core-free-icons/LockIcon';
 import Luggage01Icon from '@hugeicons/core-free-icons/Luggage01Icon';
@@ -101,6 +102,7 @@ export const ICONS = {
   'gauge': GaugeIcon,
   'heart': HeartIcon,
   'key-round': KeyRoundIcon,
+  'link': Link01Icon,
   'loader-circle': Loading03Icon,
   'lock': LockIcon,
   'luggage': Luggage01Icon,

@@ -64,13 +64,13 @@ export function syncStatus(
       return {
         tone: 'neutral',
         label: 'Connected, nothing pulled yet',
-        detail: 'Strava is connected on this device. No rides have been pulled yet — press Sync now in Settings.'
+        detail: 'Strava is connected on this device. No rides have been pulled yet — open the app once online and it syncs on its own, or press Sync now in Settings.'
       };
     }
     return {
       tone: 'warn',
       label: 'Not synced yet',
-      detail: 'No Strava sync on this device yet. Import a GPX/TCX file, or connect Strava to pull your rides.'
+      detail: 'No Strava sync on this device yet — connect Strava in Settings and your rides pull in on their own. A GPX/TCX import also works.'
     };
   }
 

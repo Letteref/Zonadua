@@ -85,8 +85,21 @@ const syncNote = (page: Page) => page.getByTestId('strava-sync-note');
  * Seed the connected state: a `sync_state` row with tokens, as the connect flow leaves it.
  * Same convention as the toast suite: boot the app once (it owns the schema), write the
  * row through it, then let the caller reload so the app reads the seeded state.
+ *
+ * The init script re-stamps the boot auto-sync marker **fresh on every navigation**, which
+ * keeps this tab permanently inside the cooldown window: these tests exercise the **manual**
+ * Sync now path (and the guard/rejection branches), so a boot that quietly synced first
+ * would make a later manual press answer "up to date". The auto path itself gets its own
+ * test, which passes `allowAuto` to leave the gate armed.
  */
-async function seedConnected(page: Page): Promise<void> {
+async function seedConnected(page: Page, { allowAuto = false }: { allowAuto?: boolean } = {}): Promise<void> {
+  // the key lives in src/lib/infra/strava/autoSync.ts; its value contract is pinned there
+  if (!allowAuto) {
+    await page.addInitScript(
+      ({ key }) => sessionStorage.setItem(key, String(Date.now())),
+      { key: 'zonadua.strava.autosync' }
+    );
+  }
   await page.goto(`/?r=${Date.now()}#/`);
   await page.locator('#app').waitFor({ timeout: 20_000 });
   await page.evaluate((tok) => {
@@ -187,6 +200,48 @@ test.describe('strava sync', () => {
     await openSettings(page);
     await page.getByRole('button', { name: 'Sync now' }).click();
     await expect(syncNote(page)).toContainText(/rejected the saved authorization/i);
+  });
+
+  test('booting the app pulls rides on its own — no button pressed', async ({ page }) => {
+    /**
+     * Strava is the primary pipeline: a connected rider who opens the app must get their
+     * rides without finding Settings first. seedConnected booted the app **before** the
+     * token row existed, so that boot refused to sync (not connected) and no request has
+     * been made yet. This reload is the first boot with a token — the auto-sync's exactly.
+     */
+    await seedConnected(page, { allowAuto: true });
+
+    let listCalls = 0;
+    await page.route('**/athlete/activities**', (route) => {
+      listCalls += 1;
+      return stravaFulfill(route, { body: [summary(9003, 'Boot Pulled Ride')], headers: RATE_HEADERS });
+    });
+    await page.route('**/activities/9003/streams**', (route) =>
+      stravaFulfill(route, { body: STREAMS, headers: RATE_HEADERS })
+    );
+
+    await page.goto(`/?r=${Date.now()}#/rides`);
+    await page.locator('#app').waitFor({ timeout: 20_000 });
+
+    // the ride arrives from the boot sync alone — the test never presses anything
+    await expect(page.getByText('Boot Pulled Ride')).toBeVisible({ timeout: 15_000 });
+    // and it stored the trace-derived metrics, not just the summary row
+    const row = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+      const act = await new Promise<Record<string, unknown>>((res) => {
+        const rq = db.transaction('activities', 'readonly').objectStore('activities').get('9003');
+        rq.onsuccess = () => res(rq.result as Record<string, unknown>);
+      });
+      db.close();
+      return { np: act.np as number | undefined, streams: act.streamsFetchedAt as number | undefined };
+    });
+    expect(row.np).toBeGreaterThan(0);
+    expect(row.streams).toBeGreaterThan(0);
+    expect(listCalls).toBe(1);
   });
 });
 

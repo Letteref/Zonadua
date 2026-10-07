@@ -12,7 +12,9 @@ describe('strava sync status', () => {
       const s = syncStatus(input, now);
       expect(s.tone).toBe('warn');
       expect(s.label).toBe('Not synced yet');
-      expect(s.detail).toMatch(/import a gpx\/tcx file/i);
+      // Strava is the primary pipeline now: connect is the first path named
+      expect(s.detail).toMatch(/connect strava in settings/i);
+      expect(s.detail).toMatch(/gpx\/tcx import also works/i);
     }
   });
 
@@ -24,9 +26,9 @@ describe('strava sync status', () => {
   it('separates "connected but nothing pulled" from "never connected"', () => {
     const s = syncStatus({ accessToken: 'at-1' }, now);
     expect(s.label).toBe('Connected, nothing pulled yet');
-    // it must not tell a connected rider to connect again
+    // it must not tell a connected rider to connect again — it names the auto-sync instead
+    expect(s.detail).toMatch(/syncs on its own/i);
     expect(s.detail).toMatch(/sync now/i);
-    expect(s.detail).not.toMatch(/connect strava/i);
     // and the never-connected wording is untouched when there is no token
     expect(syncStatus({ lastSyncAt: NaN }, now).label).toBe('Not synced yet');
   });

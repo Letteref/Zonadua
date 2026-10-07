@@ -1764,7 +1764,9 @@ test.describe('first launch without demo data — the Gear page has a way in', (
     await expect(page.getByText(/no machines yet/i)).toBeVisible();
     // where rides come from, and the honest sync state — the two things an empty log hides
     await expect(page.getByText(/not synced yet/i)).toBeVisible();
-    await expect(page.getByText(/import a gpx\/tcx file/i)).toBeVisible();
+    // Strava is the primary pipeline, so connect is named first and file import second
+    await expect(page.getByText(/connect strava in settings/i)).toBeVisible();
+    await expect(page.getByText(/gpx\/tcx import also works/i)).toBeVisible();
 
     await page.getByRole('button', { name: /^add a bike$/i }).click();
     const sheet = page.getByRole('dialog', { name: 'Add bike' });

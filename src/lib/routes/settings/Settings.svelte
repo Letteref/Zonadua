@@ -751,7 +751,7 @@
         />
       </div>
       <p class="text-[12px] text-ink-dim leading-relaxed">
-        File import is the primary path and stays local-first. Connecting stores Strava's authorization on this device only — Zonadua never uploads, edits or deletes anything in your Strava account.
+        Strava is the primary data pipeline: rides pull in on their own and every figure the app computes — NP/IF/TSS, fitness, the power curve — is derived from them. Connecting stores Strava's authorization on this device only — Zonadua never uploads, edits or deletes anything in your Strava account. File import stays for rides Strava does not have.
       </p>
       {#if connected}
         <button

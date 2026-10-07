@@ -4,12 +4,19 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       $lib: fileURLToPath(new URL('./src/lib', import.meta.url))
     }
   },
+  // The E2E suite (tests/e2e/strava-connect.spec.ts) tests the honest "not configured"
+  // refusal, whose premise is a build without a client id. That used to hold incidentally
+  // (no .env in the repo); once a machine's gitignored .env.local carries a real
+  // VITE_STRAVA_CLIENT_ID for live testing (docs/STRAVA-SETUP.md step 2), `npm run build:e2e`
+  // strips it at build time so the suite's premise stays explicit instead of incidental.
+  define:
+    mode === 'e2e' ? { 'import.meta.env.VITE_STRAVA_CLIENT_ID': 'undefined' } : undefined,
   plugins: [
     svelte(),
     tailwindcss(),
@@ -65,4 +72,4 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false
   }
-});
+}));

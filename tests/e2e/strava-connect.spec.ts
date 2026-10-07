@@ -11,9 +11,10 @@ import { expect, test, type Page } from '@playwright/test';
  * Function forwarding to Strava. Everything else is the shipped app: the parked session, the
  * state check, the Dexie write, the connected chip.
  *
- * The production preview build has no `VITE_STRAVA_CLIENT_ID`, so the button's honest
- * refusal ("not configured") is testable as-is, and the callback tests park their own
- * session the way `startStravaConnect` would have.
+ * The E2E build (`npm run build:e2e`, mode `e2e`) strips `VITE_STRAVA_CLIENT_ID` at build
+ * time, so the button's honest refusal ("not configured") is testable even on a machine
+ * whose gitignored .env.local carries a real client id for live testing, and the callback
+ * tests park their own session the way `startStravaConnect` would have.
  */
 
 const OAUTH_SESSION_KEY = 'strava_oauth';

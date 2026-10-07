@@ -32,7 +32,10 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   webServer: {
-    command: 'npm run build && npm run preview -- --port 4173 --strictPort',
+    // `build:e2e` (mode `e2e`) strips `VITE_STRAVA_CLIENT_ID` even when a local .env.local has
+    // one, so the "not configured" refusal in strava-connect.spec.ts stays testable on a
+    // machine set up for live Strava testing.
+    command: 'npm run build:e2e && npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000

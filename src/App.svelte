@@ -13,15 +13,28 @@
   import Settings from '$lib/routes/settings/Settings.svelte';
   import { ensureSeeded } from '$lib/data/seed';
   import { handleStravaCallback } from '$lib/infra/strava/connect';
+  import { runAutoSync } from '$lib/infra/strava/autoSync';
   import { toast } from '$lib/toast.svelte';
 
   // Bottom clearance: nav capsule (64px) + floating gap (16px) + safe area (DESIGN.md)
   const navClearance = 'calc(88px + env(safe-area-inset-bottom, 0px))';
 
   onMount(() => {
-    void ensureSeeded();
-    void reportStravaCallback();
+    void boot();
   });
+
+  /**
+   * Boot order: schema + seed first, then the OAuth callback reader, then the Strava-first
+   * auto-sync. The sync is last because it needs the schema open, and because its gate
+   * reads the token row the callback may just have written — so a rider who lands back
+   * from Strava's authorize screen gets their first rides pulled in the same visit,
+   * without finding Settings first.
+   */
+  async function boot(): Promise<void> {
+    await ensureSeeded();
+    await reportStravaCallback();
+    await runAutoSync();
+  }
 
   /**
    * A Strava redirect lands on `/` with its `code` *before* the hash, so no route ever sees
