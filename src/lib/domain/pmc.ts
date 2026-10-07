@@ -22,13 +22,18 @@ export interface PmcPoint {
   tsb: number;
 }
 
-const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
+const isoLocalDay = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const day = d.getDate();
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
 
-/** Bucket TSS by calendar day (UTC), so two rides on one date sum instead of overwrite. */
+/** Bucket TSS by calendar day in the user's local zone, so a ride logged as `2026-10-01T06:30` lands on the day the rider actually rode — not the UTC day `toISOString` would assign for, say, 06:30 in Indochina time (23:30 UTC the day before). */
 export function dailyTss(items: readonly PmcInput[]): Map<string, number> {
   const byDay = new Map<string, number>();
   for (const item of items) {
-    const key = isoDay(new Date(item.date));
+    const key = isoLocalDay(new Date(item.date));
     byDay.set(key, (byDay.get(key) ?? 0) + (item.tss ?? 0));
   }
   return byDay;
@@ -51,11 +56,11 @@ export function computePmc(items: readonly PmcInput[], days = 90, now = new Date
   for (let i = 0; i <= days; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    const load = byDay.get(isoDay(d)) ?? 0;
+    const load = byDay.get(isoLocalDay(d)) ?? 0;
     ctl += (load - ctl) / CTL_TAU;
     atl += (load - atl) / ATL_TAU;
     out.push({
-      date: isoDay(d),
+      date: isoLocalDay(d),
       ctl: round1(ctl),
       atl: round1(atl),
       tsb: round1(ctl - atl)

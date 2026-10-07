@@ -12,7 +12,11 @@
     onDark?: boolean;
   } = $props();
 
-  const LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const labelFor = (date: string) => {
+    // day-of-week letter in the user's local zone, so the bar under "Thu" really is Thursday's load.
+    return DAY_LETTERS[new Date(date).getDay()];
+  };
   const max = $derived(Math.max(target * 0.6, ...days.map((d) => d.tss), 1));
   const peakIdx = $derived(days.reduce((best, d, i) => (d.tss > days[best].tss ? i : best), 0));
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
@@ -51,7 +55,7 @@
             ? 'font-medium text-on-mono-dim'
             : 'font-medium text-ink-dim'}"
       >
-        {LABELS[new Date(d.date).getDay()]}
+        {labelFor(d.date)}
       </span>
     {/each}
   </div>
