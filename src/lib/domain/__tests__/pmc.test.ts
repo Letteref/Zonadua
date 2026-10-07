@@ -11,16 +11,28 @@ const iso = (offsetDays: number): string => {
 
 describe('dailyTss', () => {
   it('sums several activities on the same day', () => {
+    // local-naive wall-clock, the shape the DB stores (Strava mapper writes it that way)
     const map = dailyTss([
-      { date: '2026-10-01T06:00:00Z', tss: 40 },
-      { date: '2026-10-01T18:30:00Z', tss: 35 }
+      { date: '2026-10-01T06:00:00', tss: 40 },
+      { date: '2026-10-01T18:30:00', tss: 35 }
     ]);
     expect(map.get('2026-10-01')).toBeCloseTo(75, 6);
     expect(map.size).toBe(1);
   });
 
+  it('buckets a UTC timestamp by the local calendar day, not the UTC day', () => {
+    // 18:30 UTC is already past local midnight in zones ahead of UTC (01:30 on the 2nd
+    // in UTC+7): the ride belongs to the day the rider was on. The expected key is read
+    // back from the same instant through local accessors, so the assertion holds in
+    // whatever zone the suite runs in.
+    const d = new Date('2026-10-01T18:30:00Z');
+    const localKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const map = dailyTss([{ date: '2026-10-01T18:30:00Z', tss: 35 }]);
+    expect(map.get(localKey)).toBe(35);
+  });
+
   it('treats a missing TSS as zero load', () => {
-    const map = dailyTss([{ date: '2026-10-01T06:00:00Z' }]);
+    const map = dailyTss([{ date: '2026-10-01T06:00:00' }]);
     expect(map.get('2026-10-01')).toBe(0);
   });
 });

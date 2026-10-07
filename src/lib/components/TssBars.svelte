@@ -15,7 +15,10 @@
   const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const labelFor = (date: string) => {
     // day-of-week letter in the user's local zone, so the bar under "Thu" really is Thursday's load.
-    return DAY_LETTERS[new Date(date).getDay()];
+    // The key is a date-only string, which JS parses as UTC midnight — in a zone west of UTC
+    // that instant is still the previous local day, so the letter would slip one bar over.
+    // Appending T00:00:00 forces the local-midnight read that matches how the key was built.
+    return DAY_LETTERS[new Date(`${date}T00:00:00`).getDay()];
   };
   const max = $derived(Math.max(target * 0.6, ...days.map((d) => d.tss), 1));
   const peakIdx = $derived(days.reduce((best, d, i) => (d.tss > days[best].tss ? i : best), 0));

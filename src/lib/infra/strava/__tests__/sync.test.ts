@@ -59,9 +59,12 @@ describe('strava sync mapping', () => {
       expect(a.source).toBe('strava');
       expect(a.synthetic).toBe(false);
       expect(a.mVersion).toBeUndefined(); // metrics are (re)computed by the loader, not here
-      // Strava `start_date` is UTC; stored locally — exact value is zone-dependent, so check
-      // the shape only.
+      // Strava `start_date` is UTC; stored as local wall-clock. The exact wall value is
+      // zone-dependent, so pin the shape — plus that it parses back to the same instant
+      // (a naive string is read as local, so this must hold in every zone). This is the
+      // regression guard for the toLocaleString comma: `2026-10-01,T13:30:00` fails both.
       expect(a.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+      expect(new Date(a.date).getTime()).toBe(Date.parse('2026-10-01T06:30:00Z'));
       expect(a.distanceKm).toBe(42.5); // Strava sends metres
       expect(a.movingSec).toBe(5_400);
       expect(a.elevGainM).toBe(620);

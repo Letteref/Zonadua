@@ -97,6 +97,27 @@ export interface StravaSummary {
 const num = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * Local wall-clock `YYYY-MM-DDTHH:mm:ss` for an instant, built from the date's own
+ * accessors — deliberately not `toLocaleString`.
+ *
+ * `toLocaleString('en-CA')` was tried first and is a trap: on modern ICU it returns
+ * `2026-10-01, 13:30:00` **with a comma**, so a `.replace(' ', 'T')` produced
+ * `2026-10-01,T13:30:00` — a string `Date.parse` rejects. Every downstream consumer
+ * parses this field: the sync cursor (`Date.parse(date) / 1000`) silently fell back to
+ * 0 and each session re-pulled the whole history, and the stream-freshness check read
+ * every existing stream as stale and re-downloaded it. Locale output is not a storage
+ * format; this helper has no locale in it to vary.
+ */
+function localNaiveStamp(d: Date): string {
+  return (
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
+    `T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+  );
+}
+
 /**
  * Map one Strava summary onto an `Activity` row.
  *
@@ -130,7 +151,7 @@ export function mapSummary(summary: StravaSummary, now = Date.now()): Activity |
     // places the ride on the day the rider actually started — not the UTC day `toISOString`
     // would assign. E.g. `2026-10-01T20:00:00Z` in UTC+7 is 03:00 on 2026-10-02 locally,
     // and the ride correctly lands on 2026-10-02.
-    date: new Date(start).toLocaleString('en-CA', { hour12: false }).replace(' ', 'T'),
+    date: localNaiveStamp(new Date(start)),
     name,
     source: 'strava',
     distanceKm: (num(summary.distance) ?? 0) / 1000,

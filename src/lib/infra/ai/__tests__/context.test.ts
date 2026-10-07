@@ -8,14 +8,18 @@ import { buildCoachContext, buildWeekContext, renderContext, weekWindow } from '
  * assert that contract, not the arithmetic — the arithmetic belongs to `domain/`.
  */
 
-/** A Wednesday, so the Monday-based window has days on both sides of it. */
-const WED = new Date('2026-10-07T14:30:00.000Z');
+/**
+ * A Wednesday, so the Monday-based window has days on both sides of it.
+ * Built from local components (and stored as local-naive strings below) so the window
+ * contract is pinned in the runner's own zone rather than in Bangkok's or UTC's.
+ */
+const WED = new Date(2026, 9, 7, 14, 30);
 
 const THIS_WEEK = [
-  { date: '2026-10-05T06:00:00.000Z', distanceKm: 100, elevGainM: 1500, movingSec: 4 * 3600, tss: 200, np: 210 },
-  { date: '2026-10-07T06:00:00.000Z', distanceKm: 50, elevGainM: 300, movingSec: 2 * 3600, tss: 90, np: 190 }
+  { date: '2026-10-05T06:00:00', distanceKm: 100, elevGainM: 1500, movingSec: 4 * 3600, tss: 200, np: 210 },
+  { date: '2026-10-07T06:00:00', distanceKm: 50, elevGainM: 300, movingSec: 2 * 3600, tss: 90, np: 190 }
 ];
-const LAST_WEEK = { date: '2026-09-28T06:00:00.000Z', distanceKm: 200, elevGainM: 3000, movingSec: 8 * 3600, tss: 400, np: 220 };
+const LAST_WEEK = { date: '2026-09-28T06:00:00', distanceKm: 200, elevGainM: 3000, movingSec: 8 * 3600, tss: 400, np: 220 };
 
 describe('weekWindow', () => {
   it('starts on the Monday of the current week', () => {
@@ -27,22 +31,24 @@ describe('weekWindow', () => {
   });
 
   it('treats Sunday as the last day of its week, not the first', () => {
-    // Sun 11 Oct belongs to the week starting Mon 5 Oct — the classic off-by-one
-    const w = weekWindow(new Date('2026-10-11T23:00:00.000Z'));
+    // local Sun 11 Oct, late evening — the classic off-by-one
+    const w = weekWindow(new Date(2026, 9, 11, 23, 0));
     expect(w.from).toBe('2026-10-05');
     expect(w.to).toBe('2026-10-11');
   });
 
-  it('buckets by UTC day, like every other date key in the data layer', () => {
-    // ride dates are stored in UTC, so a window computed in local time would compare a
-    // local midnight against UTC dates and shift a ride into the neighbouring week for
-    // anyone not on UTC. This date is 5 Oct in Bangkok but already 4 Oct in UTC.
-    expect(weekWindow(new Date('2026-10-04T20:00:00.000Z')).to).toBe('2026-10-04');
-    expect(weekWindow(new Date('2026-10-04T20:00:00.000Z')).from).toBe('2026-09-28');
+  it('buckets by the rider’s local day, matching how ride rows are stored', () => {
+    // Ride rows are local-naive wall-clock (the Strava mapper writes them that way), so
+    // the window must be computed in the same local frame: early-morning local Monday is
+    // still Sunday in UTC, and a UTC-frame window would slip back to the previous Monday
+    // (2026-09-28). The local frame keeps both ends on Monday 05 Oct itself.
+    const w = weekWindow(new Date(2026, 9, 5, 3, 0)); // local Mon 05 Oct, early hours
+    expect(w.to).toBe('2026-10-05');
+    expect(w.from).toBe('2026-10-05');
   });
 
   it('starts the week on Monday itself, not the previous Monday', () => {
-    expect(weekWindow(new Date('2026-10-05T08:00:00.000Z')).from).toBe('2026-10-05');
+    expect(weekWindow(new Date(2026, 9, 5, 8, 0)).from).toBe('2026-10-05');
   });
 });
 
@@ -59,7 +65,7 @@ describe('buildWeekContext', () => {
 
   it('reports rides carrying power separately from rides without', () => {
     const week = buildWeekContext(
-      [...THIS_WEEK, { date: '2026-10-06T06:00:00.000Z', distanceKm: 10, elevGainM: 0, movingSec: 1800 }],
+      [...THIS_WEEK, { date: '2026-10-06T06:00:00', distanceKm: 10, elevGainM: 0, movingSec: 1800 }],
       WED
     );
     expect(week.rides).toBe(3);
@@ -67,7 +73,7 @@ describe('buildWeekContext', () => {
   });
 
   it('flags demo data so a review of seeded rides can say so', () => {
-    const week = buildWeekContext([...THIS_WEEK, { ...LAST_WEEK, synthetic: true, date: '2026-10-06T06:00:00.000Z' }], WED);
+    const week = buildWeekContext([...THIS_WEEK, { ...LAST_WEEK, synthetic: true, date: '2026-10-06T06:00:00' }], WED);
     expect(week.includesDemo).toBe(true);
   });
 
@@ -85,7 +91,7 @@ describe('buildWeekContext', () => {
   });
 
   it('does not invent a distance for a ride that has none', () => {
-    const week = buildWeekContext([{ date: '2026-10-06T06:00:00.000Z', distanceKm: NaN, elevGainM: NaN, movingSec: NaN }], WED);
+    const week = buildWeekContext([{ date: '2026-10-06T06:00:00', distanceKm: NaN, elevGainM: NaN, movingSec: NaN }], WED);
     expect(week.distanceKm).toBe(0);
     expect(week.rides).toBe(1);
   });
