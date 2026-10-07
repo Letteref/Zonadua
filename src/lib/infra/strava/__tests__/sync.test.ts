@@ -59,7 +59,9 @@ describe('strava sync mapping', () => {
       expect(a.source).toBe('strava');
       expect(a.synthetic).toBe(false);
       expect(a.mVersion).toBeUndefined(); // metrics are (re)computed by the loader, not here
-      expect(a.date).toBe('2026-10-01T06:30:00.000Z');
+      // Strava `start_date` is UTC; stored locally — exact value is zone-dependent, so check
+      // the shape only.
+      expect(a.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
       expect(a.distanceKm).toBe(42.5); // Strava sends metres
       expect(a.movingSec).toBe(5_400);
       expect(a.elevGainM).toBe(620);

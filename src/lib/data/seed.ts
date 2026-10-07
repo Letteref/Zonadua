@@ -17,10 +17,25 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
+const isoLocalDay = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const day = d.getDate();
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+/**
+ * Local calendar day, `offsetDays` from the seed anchor, as `YYYY-MM-DD`. Seed rides are
+ * stamped relative to a fixed anchor (Mon 29 Sep 2025) so the demo dashboard always shows
+ * the same weekly load regardless of when the app is opened. Wall-clock time is
+ * `06:30:00` local so the local-day bucketing in `pmc.ts`, `queries.svelte.ts` and
+ * `context.ts` stays consistent.
+ */
+const seedAnchor = new Date(2025, 8, 29); // Mon 29 Sep 2025, local
 const dayIso = (offsetDays: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() - offsetDays);
-  return d.toISOString().slice(0, 10);
+  const d = new Date(seedAnchor);
+  d.setDate(seedAnchor.getDate() + offsetDays);
+  return isoLocalDay(d);
 };
 
 /**
@@ -214,7 +229,7 @@ export async function ensureSeeded(): Promise<void> {
   const ftps = await db.ftp_history.count();
   if (ftps === 0) {
     // Denser than the minimum so that ftpOnDate() actually resolves two different
-    // values across the seeded 6-week block (M2: FTP is date-dependent).
+    // values across the seeded 6-week block (F1: FTP is date-dependent).
     await db.ftp_history.bulkPut([
       { id: newId(), date: dayIso(300), ftp: 258, updatedAt: Date.now() },
       { id: newId(), date: dayIso(150), ftp: 266, updatedAt: Date.now() },
@@ -290,7 +305,7 @@ export async function ensureSeeded(): Promise<void> {
     });
   }
 
-  // M2: upgrade any stored np/if/tss that predates the metrics pipeline — including the
+  // F1: upgrade any stored np/if/tss that predates the metrics pipeline — including the
   // fabricated demo rows written before NP became computable (see lib/data/recompute.ts).
   await backfillMetrics();
 

@@ -150,20 +150,40 @@ export interface WeekTotals {
   dailyTss: { date: string; tss: number }[];
 }
 
-const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
+const isoLocalDay = (d: Date): string => {
+  // Calendar day in the user's local zone, so a ride stored as `2026-10-01T06:30` lands
+  // on the day the rider actually rode on — not the UTC day that `toISOString` would give
+  // for 06:30 local in, say, Indochina time (23:30 UTC the day before).
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const day = d.getDate();
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
 
-/** Aggregates for the last 7 days including per-day TSS. */
+const localDayStart = (d: Date): Date => {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  return out;
+};
+
+/** Aggregates for the last 7 days including per-day TSS.
+ * Window is 7 calendar days ending today (inclusive), keyed by local day so a ride stored as
+ * `2026-10-01T06:30:00` in the rider's zone lands on 2026-10-01 regardless of UTC offset.
+ * TSS comes straight from the stored activity row — the domain layer (ARCHITECTURE.md §5.1)
+ * computes NP/IF/TSS from the power trace and writes it here; we never re-derive it from
+ * distance or duration, because that would silently invent load for rides Strava has not scored.
+ */
 export function computeWeek(items: Activity[]): WeekTotals {
   const now = new Date();
   const days: { date: string; tss: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    days.push({ date: isoDay(d), tss: 0 });
+    days.push({ date: isoLocalDay(d), tss: 0 });
   }
-  const cutoff = new Date(now);
-  cutoff.setDate(now.getDate() - 6);
-  cutoff.setHours(0, 0, 0, 0);
+  // Cutoff = start of the 7th day back (midnight local), so the window is exactly 7
+  // calendar days including today.
+  const cutoff = localDayStart(new Date(now.getTime() - 6 * 86_400_000));
   const byDate = new Map(days.map((d) => [d.date, d]));
   let tss = 0;
   let secs = 0;
@@ -171,8 +191,10 @@ export function computeWeek(items: Activity[]): WeekTotals {
   for (const a of items) {
     const d = new Date(a.date);
     if (d < cutoff) continue;
-    const key = isoDay(d);
+    const key = isoLocalDay(d);
     const bucket = byDate.get(key);
+    // Use the stored TSS. If a ride has no TSS yet (e.g. imported file before backfill),
+    // treat it as zero load rather than skipping the row — the day still happened.
     const dayTss = a.tss ?? 0;
     tss += dayTss;
     secs += a.movingSec;

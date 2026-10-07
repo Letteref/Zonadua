@@ -107,6 +107,11 @@ const num = (v: unknown): number | undefined =>
  *
  * `synthetic` is pinned to `false` here. The seeder is the only writer allowed to set it
  * true, and this mapper is the one place real Strava data enters the database.
+ *
+ * Strava emits `start_date` in UTC (e.g. `2026-10-01T06:30:00Z`). We persist the
+ * wall-clock value in the rider's local zone (`2026-10-01T06:30:00`) so the local-day
+ * bucketing used by `pmc.ts`, `queries.svelte.ts`, and `context.ts` places the ride on
+ * the day the rider actually rode rather than the UTC day.
  */
 export function mapSummary(summary: StravaSummary, now = Date.now()): Activity | null {
   if (!summary || typeof summary !== 'object') return null;
@@ -120,9 +125,12 @@ export function mapSummary(summary: StravaSummary, now = Date.now()): Activity |
 
   return {
     id: String(id),
-    // Strava sends UTC ISO; keep it as-is so every existing date formatter reads it the
-    // same way it reads an imported file.
-    date: new Date(start).toISOString(),
+    // Strava emits `start_date` in UTC. Persist the wall-clock value in the rider's local
+    // zone so the local-day bucketing in `pmc.ts`, `queries.svelte.ts`, and `context.ts`
+    // places the ride on the day the rider actually started — not the UTC day `toISOString`
+    // would assign. E.g. `2026-10-01T20:00:00Z` in UTC+7 is 03:00 on 2026-10-02 locally,
+    // and the ride correctly lands on 2026-10-02.
+    date: new Date(start).toLocaleString('en-CA', { hour12: false }).replace(' ', 'T'),
     name,
     source: 'strava',
     distanceKm: (num(summary.distance) ?? 0) / 1000,

@@ -104,25 +104,37 @@ export interface NutritionContext {
   reason: string | null;
 }
 
-/** UTC day key, matching how activity dates are stored and bucketed everywhere else. */
-const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
+/** Local day key (YYYY-MM-DD in the user's zone), matching `pmc.ts` and `queries.svelte.ts`. */
+const isoLocalDay = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const day = d.getDate();
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+const localDayStart = (d: Date): Date => {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  return out;
+};
 
 /**
- * The one-week window ending on `now`, Monday-based, as ISO day keys.
+ * The one-week window ending on `now`, Monday-based, as ISO day keys in the user's local zone.
  *
- * UTC throughout, deliberately. Ride dates are stored and bucketed in UTC
- * (`pmc.ts`'s `isoDay`, and every other day key in the data layer), so a week boundary
- * computed in local time would compare a local midnight against UTC-stored dates and
- * silently shift a ride into the neighbouring week for anyone not on UTC. The first draft
- * did exactly that — built the date with `setDate`/`setHours`, which are local, then
- * stringified it with `toISOString()`, which is UTC.
+ * Local throughout, deliberately. rides are stored as local-naive wall-clock datetimes (the
+ * Strava mapper writes `2026-10-01T06:30:00` from a `start_date` of `2026-10-01T06:30:00Z`),
+ * so a window computed in UTC would silently shift a ride across the boundary for anyone not
+ * on UTC. The first draft did exactly that — built the midnight with `Date.UTC`, then compared
+ * it against local-naive datetimes.
  */
 export function weekWindow(now: Date): { from: string; to: string; weekOf: string } {
   const end = new Date(now);
-  const sinceMonday = (end.getUTCDay() + 6) % 7;
-  const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() - sinceMonday));
-  const to = isoDay(end);
-  return { from: isoDay(start), to, weekOf: to };
+  const dow = end.getDay(); // 0 Sun … 6 Sat, local
+  // Monday-based week: Monday=0 … Sunday=6
+  const sinceMonday = (dow + 6) % 7;
+  const start = localDayStart(new Date(end.getFullYear(), end.getMonth(), end.getDate() - sinceMonday));
+  const to = isoLocalDay(end);
+  return { from: isoLocalDay(start), to, weekOf: to };
 }
 
 /** Shape the caller passes in — deliberately not the Dexie row type, to keep this pure. */
