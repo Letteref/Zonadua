@@ -18,7 +18,8 @@
     "test:e2e:install": "playwright install chromium",
     "test:all": "npm run test && npm run test:e2e",
     "audit:lighthouse": "npm run build && node scripts/audit-lighthouse.mjs",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "deploy:prod": "wrangler pages deploy dist --project-name zonadua --branch master"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
