@@ -575,7 +575,16 @@
       <div class="flex flex-col gap-1 h-full">
         <div class="flex items-baseline justify-between">
           <span class="text-[10.5px] font-bold uppercase tracking-wider text-on-mono-dim">Daily load · last 7 days</span>
-          <span class="text-[12px] font-bold text-tabular text-on-mono">{week.tss} TSS / wk</span>
+          <!--
+            ~ marks a week whose load is partly modelled from speed/elevation: the sum is
+            still the right planning number, but it is not all measured power.
+          -->
+          <span
+            class="text-[12px] font-bold text-tabular text-on-mono"
+            title={week.tssEstimated ? 'Includes rides scored from speed & elevation — no power data' : undefined}
+          >
+            {week.tssEstimated ? `~${week.tss}` : week.tss} TSS / wk
+          </span>
         </div>
         <div class="flex-1 min-h-0" bind:clientHeight={loadChartH}>
           <TssBars days={week.dailyTss} target={tssTarget} height={loadChartH} onDark />
@@ -637,10 +646,15 @@
           items={[
             { label: 'Rides', value: String(ridesThisWeek) },
             { label: 'Distance', value: fmtDist(week.km, 0) },
-            { label: 'Stress', value: `${week.tss}` }
+            { label: 'Stress', value: week.tssEstimated ? `~${week.tss}` : `${week.tss}` }
           ]}
         />
         <TssBars days={week.dailyTss} target={tssTarget} />
+        {#if week.tssEstimated}
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-ink-dim -mt-2">
+            ~ rides scored from speed & elevation — no power data
+          </p>
+        {/if}
       </div>
     </SectionCard>
 

@@ -10,8 +10,9 @@
   import { db, activityProvenance, isCyclingActivity, type Activity } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { decimateTrack, parseCourse } from '$lib/domain/course';
+  import { isFitFile, parseFit, fitToCourse } from '$lib/domain/fit';
   import { deflateJson, extractPower } from '$lib/data/streams';
-  import { ftpOnDate, rideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
+  import { ftpOnDate, rideMetrics, estimateRideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
   import { distanceUnit, formatDistance, formatElevation, type UnitSystem } from '$lib/domain/units';
   import { runLiveSync } from '$lib/infra/strava/runSync';
   import { AUTO_SYNC_FLAG, AUTO_SYNC_IN_FLIGHT } from '$lib/infra/strava/autoSync';
@@ -136,7 +137,11 @@
     try {
       for (const file of files) {
         try {
-          const ride = parseCourse(await file.text(), file.name);
+          // FIT is binary, so it is sniffed by magic bytes before the XML parsers see it.
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const ride = isFitFile(bytes)
+            ? fitToCourse(parseFit(bytes, file.name))
+            : parseCourse(await file.text(), file.name);
           // Decimation bounds storage, and now also thins the power trace: a 4 h ride
           // lands at roughly 3 s sampling, still well inside the 30 s NP window.
           const points = decimateTrack(ride.points, 6000);
@@ -150,6 +155,10 @@
           const trace = extractPower(points);
           const ftp = ftpOnDate(await db.ftp_history.orderBy('date').toArray(), ride.dateIso);
           const m = trace ? rideMetrics(trace.watts, ftp, trace.sampleSec, ride.movingSec) : null;
+          // No meter on the file? Score load from speed + elevation so PMC is not empty
+          // while the rider waits for power data — and mark it, so no surface can pass
+          // a modelled number off as measured (ARCHITECTURE §5.1: honest provenance).
+          const est = !m && ftp > 0 ? estimateRideMetrics(ride.distanceKm, ride.elevGainM, ride.movingSec, ftp) : null;
 
           const act: Activity = {
             id,
@@ -165,8 +174,9 @@
             np: m ? Math.round(m.np) : undefined,
             // IF and TSS need an FTP to divide by. Without one they are left absent
             // rather than written as 0, which would read as "rode at zero intensity".
-            if: ftp > 0 && m ? Math.round(m.if * 100) / 100 : undefined,
-            tss: ftp > 0 && m ? Math.round(m.tss) : undefined,
+            if: ftp > 0 && m ? Math.round(m.if * 100) / 100 : est ? est.if : undefined,
+            tss: ftp > 0 && m ? Math.round(m.tss) : est ? est.tss : undefined,
+            tssEstimated: est ? true : undefined,
             // Real energy from the trace when we have one; the crude per-km estimate
             // is only for files that genuinely carry no meter.
             kcal: m ? Math.round(m.kcal) : Math.round(ride.distanceKm * 26),
@@ -245,10 +255,10 @@
     bind:this={importInput}
     class="hidden"
     type="file"
-    accept=".gpx,.tcx"
+    accept=".gpx,.tcx,.fit"
     multiple
     onchange={onImportPick}
-    aria-label="Import GPX or TCX files"
+    aria-label="Import GPX, TCX or FIT files"
   />
 
   <!--
@@ -311,7 +321,12 @@
       </div>
       <div class="flex flex-col items-end">
         <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Stress</span>
-        <span class="text-base font-extrabold text-rose text-tabular leading-tight">{month.tss}</span>
+        <span
+          class="text-base font-extrabold text-rose text-tabular leading-tight"
+          title={month.tssEstimated ? 'Week total includes rides scored from speed & elevation — no power data' : undefined}
+        >
+          {month.tssEstimated ? `~${month.tss}` : month.tss}
+        </span>
       </div>
       <CircleButton icon="refresh-cw" label="Strava sync status & settings" onclick={() => route.navigate('settings')} />
     </div>
@@ -389,7 +404,14 @@
               </p>
             </div>
             <div class="shrink-0 text-right">
-              <p class="text-metric-md text-tabular">{a.tss ?? '—'}</p>
+              <!--
+                An estimated figure carries a tilde, the same symbol meteorology uses for
+                "approximate": the number came from the speed/elevation model, not a meter.
+                The tooltip spells it out for anyone the symbol is too subtle for.
+              -->
+              <p class="text-metric-md text-tabular" title={a.tssEstimated ? 'TSS estimated from speed & elevation — no power data' : undefined}>
+                {a.tssEstimated && a.tss != null ? `~${a.tss}` : a.tss ?? '—'}
+              </p>
               <p class="text-[11px] font-semibold text-ink-dim">IF {a.if?.toFixed(2) ?? '—'}</p>
               {#if curveSpark(a).length > 1}
                 <div class="mt-1 opacity-90" title="Mean maximal power curve for this ride">

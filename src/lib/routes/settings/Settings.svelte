@@ -134,7 +134,17 @@
   async function saveProfile(): Promise<void> {
     if (!hydrated) return;
     try {
-      const a: Athlete = { id: 'me', name: name.trim() || 'Athlete', sex: 'm', birthDate: '1991-05-14', heightCm, updatedAt: Date.now() };
+      // Keep fields the form does not edit (sex, birthDate) rather than resetting them
+      // to the seeder's defaults every time the athlete renames themselves.
+      const prev = await db.athlete.get('me');
+      const a: Athlete = {
+        id: 'me',
+        name: name.trim() || 'Athlete',
+        sex: prev?.sex ?? 'm',
+        birthDate: prev?.birthDate ?? '1991-05-14',
+        heightCm,
+        updatedAt: Date.now()
+      };
       await db.athlete.put(a);
       showToast('Profile saved');
     } catch (err) {
@@ -142,15 +152,46 @@
     }
   }
 
+  /** ISO date (local) of "now" — the key the weight log is deduplicated by. */
+  function today(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
   async function logWeight(): Promise<void> {
     const kg = Number.parseFloat(String(weightKg));
     if (!Number.isFinite(kg) || kg <= 0) return;
     try {
-      const rec: WeightLog = { id: newId(), date: new Date().toISOString().slice(0, 10), kg, updatedAt: Date.now() };
+      // One row per calendar day: logging twice today replaces the entry instead of
+      // stacking 55/62/65/68.2 into a trend that never happened.
+      const date = today();
+      const existing = await db.weight_log.where('date').equals(date).first();
+      const rec: WeightLog = existing
+        ? { ...existing, kg, updatedAt: Date.now() }
+        : { id: newId(), date, kg, updatedAt: Date.now() };
       await db.weight_log.put(rec);
-      showToast(`Weight ${kg} kg logged`);
+      showToast(`Weight ${kg} kg logged${existing ? ' — today updated' : ''}`);
     } catch (err) {
       showFailure('Could not log weight', err);
+    }
+  }
+
+  async function logHeight(): Promise<void> {
+    const cm = Number.parseFloat(String(heightCm));
+    if (!Number.isFinite(cm) || cm < 80 || cm > 260) return;
+    try {
+      const prev = await db.athlete.get('me');
+      const a: Athlete = {
+        id: 'me',
+        name: prev?.name ?? (name.trim() || 'Athlete'),
+        sex: prev?.sex ?? 'm',
+        birthDate: prev?.birthDate ?? '1991-05-14',
+        heightCm: cm,
+        updatedAt: Date.now()
+      };
+      await db.athlete.put(a);
+      showToast(`Height ${cm} cm logged`);
+    } catch (err) {
+      showFailure('Could not log height', err);
     }
   }
 
@@ -408,32 +449,31 @@
           onchange={saveProfile}
         />
       </label>
-      <div class="grid grid-cols-3 gap-3">
-        <label class="flex flex-col gap-1.5">
+      <div class="grid grid-cols-3 gap-2">
+        <label class="flex flex-col gap-1.5 min-w-0">
           <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Height (cm)</span>
           <input
-            class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+            class="h-11 w-full min-w-0 rounded-2xl bg-tile border border-hairline px-3 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
             type="number"
             min="120"
             max="230"
             bind:value={heightCm}
-            onchange={saveProfile}
           />
         </label>
-        <label class="flex flex-col gap-1.5">
+        <label class="flex flex-col gap-1.5 min-w-0">
           <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Weight (kg)</span>
           <input
-            class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+            class="h-11 w-full min-w-0 rounded-2xl bg-tile border border-hairline px-3 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
             type="number"
             min="30"
             step="0.1"
             bind:value={weightKg}
           />
         </label>
-        <label class="flex flex-col gap-1.5">
+        <label class="flex flex-col gap-1.5 min-w-0">
           <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">FTP (W)</span>
           <input
-            class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+            class="h-11 w-full min-w-0 rounded-2xl bg-tile border border-hairline px-3 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
             type="number"
             min="50"
             step="1"
@@ -441,29 +481,39 @@
           />
         </label>
       </div>
-      <div class="flex items-center justify-between pt-1">
-        <span class="text-[11px] text-ink-dim">
-          {#if lastWeight != null}
-            Last log {lastWeight} kg{weightDelta !== null ? ` (${weightDelta >= 0 ? '+' : ''}${weightDelta})` : ''} · FTP {ftpVal ?? '—'} W
-          {:else}
-            No weight history yet
-          {/if}
-        </span>
-        <div class="flex gap-2">
-          <button
-            class="h-9 px-3.5 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
-            onclick={logWeight}
-          >
-            Log weight
-          </button>
-          <button
-            class="h-9 px-3.5 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
-            onclick={logFtp}
-          >
-            Log FTP
-          </button>
-        </div>
+      <!--
+        Three actions, one per field, in one wrapping row. The buttons used to share a
+        line with the "Last log …" caption, and a third button could only have pushed
+        the caption out of the card; each action now sits under its own input at full
+        row width, wrapping cleanly on a narrow screen instead of colliding.
+      -->
+      <div class="grid grid-cols-3 gap-2">
+        <button
+          class="h-9 rounded-pill bg-tile border border-hairline text-ink text-[10px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
+          onclick={logHeight}
+        >
+          Log height
+        </button>
+        <button
+          class="h-9 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
+          onclick={logWeight}
+        >
+          Log weight
+        </button>
+        <button
+          class="h-9 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
+          onclick={logFtp}
+        >
+          Log FTP
+        </button>
       </div>
+      <p class="text-[11px] text-ink-dim pt-0.5">
+        {#if lastWeight != null}
+          Last log {lastWeight} kg{weightDelta !== null ? ` (${weightDelta >= 0 ? '+' : ''}${weightDelta})` : ''} · FTP {ftpVal ?? '—'} W
+        {:else}
+          No weight history yet — logging again today replaces today's entry.
+        {/if}
+      </p>
 
       <!-- FTP CALCULATOR (20-minute test × 0.95) -->
       <div class="rounded-2xl bg-tile border border-hairline p-3 flex flex-col gap-2">

@@ -82,6 +82,14 @@ export interface Activity {
   np?: number;
   if?: number;
   tss?: number;
+  /**
+   * True when np/if/tss (or just tss) came from the speed/elevation estimator, not a
+   * power trace. Estimated load keeps PMC/dashboard working before meter data arrives,
+   * but the UI must label it — a rider comparing yesterday's "TSS 61" against a metered
+   * ride deserves to know one of those numbers was modelled from a physics guess.
+   * Absent = measured (or not scored at all).
+   */
+  tssEstimated?: boolean;
   avgHr?: number;
   maxHr?: number;
   kcal: number;

@@ -124,7 +124,6 @@ export interface RideMetrics {
   /** FTP used for the IF computation */
   ftp: number;
 }
-
 /**
  * Full metric set for one power trace. `movingSec` defaults to the trace length so a
  * trace with dropped samples still scores against real elapsed time, not sample count.
@@ -147,6 +146,61 @@ export function rideMetrics(
     maxPower: watts.length === 0 ? 0 : Math.max(...watts.map(clampWatts)),
     ftp
   };
+}
+
+// ---------- estimated TSS (rides without a power meter) ----------
+
+/**
+ * Rider + bike mass assumed by the power estimate, kg. A fixed value is honest here:
+ * the estimate exists so load charts are not empty while a rider waits for meter data,
+ * and the UI labels every number it produces as estimated.
+ */
+export const ESTIMATE_MASS_KG = 80;
+/** Aerodynamic drag area assumed by the estimate, m² (drops on a road bike). */
+export const ESTIMATE_CDA = 0.32;
+/** Rolling resistance coefficient assumed by the estimate (asphalt, road tyres). */
+export const ESTIMATE_CRR = 0.005;
+/** Air density at sea level, 15 °C, kg/m³. */
+const RHO = 1.226;
+const G = 9.80665;
+
+export interface EstimatedRideMetrics {
+  /** estimated mean power (W) from the physics model */
+  watts: number;
+  /** estimated intensity factor against the FTP in force on the ride date */
+  if: number;
+  /** estimated TSS, same Coggan formula fed with the estimated IF */
+  tss: number;
+}
+
+/**
+ * Speed/elevation-based TSS estimate for rides with no power stream.
+ *
+ * Mean power is modelled from the three costs a ride actually pays — rolling
+ * resistance and aero drag at the ride's average speed, plus climbing work spread
+ * over the whole duration — and that power feeds the standard TSS formula. This is
+ * deliberately a coarse model: it exists so PMC/CTL do not sit at zero while a rider
+ * waits for meter data, and every surface showing it must label it "estimated".
+ * It must never overwrite a real NP/IF/TSS computed from a trace.
+ */
+export function estimateRideMetrics(
+  distanceKm: number,
+  elevGainM: number,
+  movingSec: number,
+  ftp: number
+): EstimatedRideMetrics {
+  if (!(distanceKm > 0) || !(movingSec > 0) || !(ftp > 0)) return { watts: 0, if: 0, tss: 0 };
+
+  const v = distanceKm * 1000 / movingSec; // m/s
+  const pRoll = ESTIMATE_CRR * ESTIMATE_MASS_KG * G * v;
+  const pAero = 0.5 * RHO * ESTIMATE_CDA * v ** 3;
+  const pClimb = (ESTIMATE_MASS_KG * G * Math.max(0, elevGainM)) / movingSec;
+  // Drivetrain losses, ~3%: the model covers what the wheel must overcome.
+  const watts = (pRoll + pAero + pClimb) / 0.97;
+
+  const ifValue = Math.min(watts / ftp, 1.5); // clamp: a descent-heavy file must not claim IF 3
+  const tss = trainingStressScore(movingSec / 3600, ifValue);
+  return { watts: Math.round(watts), if: Math.round(ifValue * 100) / 100, tss: Math.round(tss) };
 }
 
 // ---------- internals ----------

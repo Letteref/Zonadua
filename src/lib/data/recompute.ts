@@ -1,8 +1,9 @@
-import { METRICS_VERSION, ftpOnDate, rideMetrics } from '../domain/metrics';
+import { METRICS_VERSION, ftpOnDate, rideMetrics, estimateRideMetrics } from '../domain/metrics';
 import { CURVE_VERSION, meanMaxPower } from '../domain/power-curve';
 import { db } from './db';
 import { SYNTH_SAMPLE_SEC, SYNTH_VERSION, synthPowerTrace } from './synthetic';
 import { decodeStream, encodeStream, extractPower } from './streams';
+import { isCyclingActivity } from './db';
 
 /**
  * Derived-data backfill — keeps stored numbers honest on every launch.
@@ -107,6 +108,23 @@ export async function backfillMetrics(): Promise<BackfillResult> {
 
     if (!trace) {
       result.noPower++;
+      // No power in any form: fill the load charts from speed + elevation instead of
+      // leaving them empty, and mark the row so the UI says "estimated". A stored tss
+      // is never overwritten here — a real score, if one ever exists, always wins.
+      if (act.tss == null) {
+        const ftp = ftpOnDate(ftpHistory, act.date);
+        if (ftp > 0 && isCyclingActivity(act)) {
+          const est = estimateRideMetrics(act.distanceKm, act.elevGainM, act.movingSec, ftp);
+          if (est.tss > 0) {
+            await db.activities.update(act.id, {
+              tss: est.tss,
+              if: est.if,
+              kcal: Math.max(act.kcal, Math.round((est.watts * act.movingSec) / 1000 / 4.184)),
+              tssEstimated: true
+            });
+          }
+        }
+      }
       continue;
     }
 

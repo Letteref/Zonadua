@@ -148,6 +148,13 @@ export interface WeekTotals {
   hours: number;
   km: number;
   dailyTss: { date: string; tss: number }[];
+  /**
+   * True when any ride counted into this window's TSS was scored by the
+   * speed/elevation estimator rather than a power trace. Surfaces showing the total
+   * use it to label the figure — a mixed week of measured and modelled load is still
+   * mostly honest, but the total must not read as fully measured.
+   */
+  tssEstimated: boolean;
 }
 
 const isoLocalDay = (d: Date): string => {
@@ -188,6 +195,7 @@ export function computeWeek(items: Activity[]): WeekTotals {
   let tss = 0;
   let secs = 0;
   let km = 0;
+  let tssEstimated = false;
   for (const a of items) {
     // A Walk the athlete logged is real activity but not riding — it must not land in
     // the week's rides, kilometres or load.
@@ -200,11 +208,12 @@ export function computeWeek(items: Activity[]): WeekTotals {
     // treat it as zero load rather than skipping the row — the day still happened.
     const dayTss = a.tss ?? 0;
     tss += dayTss;
+    if (a.tssEstimated && dayTss > 0) tssEstimated = true;
     secs += a.movingSec;
     km += a.distanceKm;
     if (bucket) bucket.tss += dayTss;
   }
-  return { tss, hours: Math.round((secs / 3600) * 10) / 10, km: Math.round(km), dailyTss: days };
+  return { tss, hours: Math.round((secs / 3600) * 10) / 10, km: Math.round(km), dailyTss: days, tssEstimated };
 }
 
 export interface ComponentWear {

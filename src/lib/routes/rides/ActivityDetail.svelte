@@ -155,7 +155,11 @@
       <StatTile
         label="Training stress"
         value={activity.tss != null ? String(activity.tss) : '—'}
-        sub={activity.tss != null ? 'This ride only' : 'Needs power'}
+        sub={activity.tssEstimated
+          ? 'Estimated — no power data'
+          : activity.tss != null
+            ? 'This ride only'
+            : 'Needs power'}
       />
       <StatTile
         label="Elevation"
