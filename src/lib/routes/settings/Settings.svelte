@@ -16,6 +16,7 @@
   import { recomputeSince } from '$lib/data/recompute';
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
+  import { ftpFromTwentyMinuteTest } from '$lib/domain/ftp';
   import TrendChart from '$lib/components/TrendChart.svelte';
   import { toast } from '$lib/toast.svelte';
 
@@ -151,6 +152,22 @@
     } catch (err) {
       showFailure('Could not log weight', err);
     }
+  }
+
+  // ---------- FTP calculator (20-minute test × 0.95) ----------
+  // The estimate fills the FTP field; Log FTP stays the single door into
+  // ftp_history, so a calculated and a hand-typed value share one rescore path.
+  let testAvgW = $state<number | ''>('');
+  const ftpEstimate = $derived.by(() => {
+    const n = typeof testAvgW === 'number' ? testAvgW : Number.parseFloat(testAvgW);
+    return ftpFromTwentyMinuteTest(n);
+  });
+
+  /** Copy the estimate into the FTP input. Returns false when there is none. */
+  function applyFtpEstimate(): boolean {
+    if (ftpEstimate === null) return false;
+    ftpW = ftpEstimate;
+    return true;
   }
 
   async function logFtp(): Promise<void> {
@@ -446,6 +463,40 @@
             Log FTP
           </button>
         </div>
+      </div>
+
+      <!-- FTP CALCULATOR (20-minute test × 0.95) -->
+      <div class="rounded-2xl bg-tile border border-hairline p-3 flex flex-col gap-2">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Estimate from a 20-minute test</span>
+        <div class="flex items-end gap-2">
+          <label class="flex flex-col gap-1.5 flex-1">
+            <span class="text-[10px] font-semibold text-ink-dim">20-min avg power (W)</span>
+            <input
+              class="h-11 rounded-2xl bg-surface border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+              type="number"
+              min="50"
+              step="1"
+              placeholder="e.g. 280"
+              bind:value={testAvgW}
+            />
+          </label>
+          <div class="flex flex-col gap-1.5 items-center">
+            <span class="text-[10px] font-semibold text-ink-dim">FTP ≈</span>
+            <span class="h-11 flex items-center text-lg font-extrabold text-ink text-tabular">
+              {ftpEstimate === null ? '—' : `${ftpEstimate} W`}
+            </span>
+          </div>
+          <button
+            class="h-11 px-3.5 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40 active:scale-[0.98] transition-transform"
+            disabled={ftpEstimate === null}
+            onclick={() => void applyFtpEstimate()}
+          >
+            Use
+          </button>
+        </div>
+        <p class="text-[11px] font-medium text-ink-dim">
+          Ride 20 minutes all-out, enter the average power — the estimate is 95% of it. "Use" fills the FTP field; press Log FTP to save it.
+        </p>
       </div>
     </section>
 
