@@ -26,6 +26,7 @@ import BellIcon from '@hugeicons/core-free-icons/BellIcon';
 import Bicycle01Icon from '@hugeicons/core-free-icons/Bicycle01Icon';
 import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
 import AnalyticsUpIcon from '@hugeicons/core-free-icons/AnalyticsUpIcon';
+import BatteryLowIcon from '@hugeicons/core-free-icons/BatteryLowIcon';
 import CheckIcon from '@hugeicons/core-free-icons/CheckIcon';
 import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
 import ChevronLeftIcon from '@hugeicons/core-free-icons/ChevronLeftIcon';
@@ -84,6 +85,7 @@ export const ICONS = {
   'alert-triangle': Alert02Icon,
   'arrow-up-right': ArrowUpRight01Icon,
   'backpack': Backpack01Icon,
+  'battery-low': BatteryLowIcon,
   'bell': BellIcon,
   'bike': Bicycle01Icon,
   'calendar': Calendar03Icon,

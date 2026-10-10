@@ -345,9 +345,31 @@
               <span class="h-1.5 w-1.5 rounded-pill bg-rose"></span>
               <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-on-mono/50">Form (TSB)</span>
             </div>
-            <span class="text-[58px] font-extrabold leading-none tracking-tighter text-white text-tabular">
-              {tsbVal === null ? '—' : `${tsbVal > 0 ? '+' : ''}${tsbVal}`}
-            </span>
+            <div class="flex items-end gap-4">
+              <span class="text-[58px] font-extrabold leading-none tracking-tighter text-white text-tabular">
+                {tsbVal === null ? '—' : `${tsbVal > 0 ? '+' : ''}${tsbVal}`}
+              </span>
+              {#if hasLoad}
+                <!--
+                  The 30-day TSB trace beside the headline. A bare number reads as silent;
+                  the sparkline is the trend that number belongs to — same trick the Rides
+                  week card uses for km. Fixed 120×36 box (fill=false) so it can never take
+                  part in a measure-its-own-box feedback loop; sits on the headline's
+                  baseline via items-end.
+                -->
+                <div class="w-[120px] shrink-0 pb-1">
+                  <Sparkline
+                    points={tsbSpark}
+                    width={120}
+                    height={36}
+                    fill={false}
+                    onDark
+                    showBaseline
+                    ariaLabel="Form TSB, last 30 days"
+                  />
+                </div>
+              {/if}
+            </div>
           </div>
           <div class="flex flex-col items-end">
             <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono/40">Current form</span>
@@ -363,7 +385,7 @@
           <div class="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
             <div class="flex items-center justify-between">
               <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono/50">Fitness (CTL)</span>
-              <span class="h-0.5 w-2.5 rounded-pill bg-crimson-gradient"></span>
+              <Icon name="chart-line" size={14} strokeWidth={1.8} class="text-[#ffad2e]" />
             </div>
             <div class="mt-2">
               <span class="text-[20px] font-extrabold leading-none text-white text-tabular">{ctlVal ?? '—'}</span>
@@ -373,7 +395,7 @@
           <div class="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
             <div class="flex items-center justify-between">
               <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono/50">Fatigue (ATL)</span>
-              <Icon name="zap" size={14} strokeWidth={1.8} class="text-[#ffad2e]" />
+              <Icon name="battery-low" size={14} strokeWidth={1.8} class="text-[#ffad2e]" />
             </div>
             <div class="mt-2">
               <span class="text-[20px] font-extrabold leading-none text-white text-tabular">{atlVal ?? '—'}</span>
