@@ -25,6 +25,7 @@
   import { computePmc as computePmcDomain, weeklyTssTarget } from '$lib/domain/pmc';
   import { distanceUnit, formatDistance, formatElevation, formatPowerPerWeight, formatWeight, splitValue, type UnitSystem } from '$lib/domain/units';
   import { buildCoachInsight, polishPrompt } from '$lib/domain/coach-insight';
+  import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import { buildHeatmap, heatLevel } from '$lib/domain/heatmap';
   import { buildCtlChart } from '$lib/domain/ctl-chart';
   import { generate } from '$lib/infra/ai/provider';
@@ -280,20 +281,26 @@
 </script>
 
 <div class="mx-auto max-w-md px-5 pt-8 pb-10 flex flex-col gap-5">
-  <!-- Editorial masthead -->
-  <div class="flex flex-col gap-0.5">
-    <div class="flex items-center gap-1.5">
-      <span class="text-[11px] font-bold uppercase tracking-wider text-ink-dim">Today</span>
+  <!--
+    Editorial masthead — the same EditorialHeader every other page uses, so the bell and
+    the Settings bumpion live here too.
+
+    `greeting` mode keeps exactly the shape this masthead had: a date kicker, an uppercase
+    time-of-day headline, the live-“Today” red dot carries over, and the form insight is
+    the sub-line. The old hand-rolled div had drifted from the shared header and begun to
+    omit the whole chrome cluster — the bell and the settings icon.
+  -->
+  <div class="relative">
+    <span class="absolute top-0 left-0 flex -translate-y-1 translate-x-1 items-center gap-1.5">
+      <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-dim">Today</span>
       <span class="h-1.5 w-1.5 rounded-pill bg-crimson"></span>
-    </div>
-    <h1 class="text-[26px] leading-[32px] tracking-tight font-extrabold text-ink">Welcome back</h1>
-    <p class="mt-1 text-[15px] leading-[22px] text-ink-dim">
-      {#if hasLoad && tsbVal !== null}
-        Form is {formLabel.toLowerCase()} ({tsbVal > 0 ? '+' : ''}{tsbVal} TSB). {insight.advice.split('.')[0]}.
-      {:else}
-        Ride with power (FIT or Strava) to unlock your form and load figures.
-      {/if}
-    </p>
+    </span>
+    <EditorialHeader
+      greeting="Today"
+      sub={hasLoad && tsbVal !== null
+        ? `Form is ${formLabel.toLowerCase()} (${tsbVal > 0 ? '+' : ''}${tsbVal} TSB). ${insight.advice.split('.')[0]}.`
+        : 'Ride with power (FIT or Strava) to unlock your form and load figures.'}
+    />
   </div>
 
   {#if allActivities.ready}
