@@ -285,23 +285,18 @@
     Editorial masthead — the same EditorialHeader every other page uses, so the bell and
     the Settings bumpion live here too.
 
-    `greeting` mode keeps exactly the shape this masthead had: a date kicker, an uppercase
-    time-of-day headline, the live-“Today” red dot carries over, and the form insight is
-    the sub-line. The old hand-rolled div had drifted from the shared header and begun to
-    omit the whole chrome cluster — the bell and the settings icon.
+    `greeting` mode keeps the same shape as the old hand-built masthead once it stopped
+    omitting the chrome cluster: a date kicker, an uppercase time-of-day headline, and the
+    form insight as the sub-line. The kicker already opens with "Today", so the red dot
+    I first tried to pin above it was redundant — it doubled the kicker and read as an
+    overlap, not an accent.
   -->
-  <div class="relative">
-    <span class="absolute top-0 left-0 flex -translate-y-1 translate-x-1 items-center gap-1.5">
-      <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-dim">Today</span>
-      <span class="h-1.5 w-1.5 rounded-pill bg-crimson"></span>
-    </span>
-    <EditorialHeader
-      greeting="Today"
-      sub={hasLoad && tsbVal !== null
-        ? `Form is ${formLabel.toLowerCase()} (${tsbVal > 0 ? '+' : ''}${tsbVal} TSB). ${insight.advice.split('.')[0]}.`
-        : 'Ride with power (FIT or Strava) to unlock your form and load figures.'}
-    />
-  </div>
+  <EditorialHeader
+    greeting="Today"
+    sub={hasLoad && tsbVal !== null
+      ? `Form is ${formLabel.toLowerCase()} (${tsbVal > 0 ? '+' : ''}${tsbVal} TSB). ${insight.advice.split('.')[0]}.`
+      : 'Ride with power (FIT or Strava) to unlock your form and load figures.'}
+  />
 
   {#if allActivities.ready}
     <!-- ============ MONOLITH HERO ============ -->
