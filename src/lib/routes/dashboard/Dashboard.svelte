@@ -355,7 +355,7 @@
             </div>
           </div>
           <div class="flex flex-col items-end">
-            <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono/40">Target phase</span>
+            <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono/40">Current form</span>
             <span class="mt-1.5 inline-flex items-center gap-1.5 rounded-pill border border-white/10 bg-white/5 px-3 py-1 backdrop-blur-sm">
               <span class="h-1.5 w-1.5 rounded-pill bg-[#ffad2e]"></span>
               <span class="text-[12px] font-bold tracking-tight text-[#ff8a92]">{formLabel}</span>
