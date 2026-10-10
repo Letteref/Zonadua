@@ -22,12 +22,11 @@
   import { db, isCyclingActivity } from '$lib/data/db';
   import { decodeStream, extractPower } from '$lib/data/streams';
   import { zoneDistribution, type ZoneDistribution, type ZoneBand } from '$lib/domain/zones';
-  import { computePmc as computePmcDomain, weeklyTssTarget } from '$lib/domain/pmc';
+  import { weeklyTssTarget } from '$lib/domain/pmc';
   import { distanceUnit, formatDistance, formatElevation, formatPowerPerWeight, formatWeight, splitValue, type UnitSystem } from '$lib/domain/units';
   import { buildCoachInsight, polishPrompt } from '$lib/domain/coach-insight';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import { buildHeatmap, heatLevel } from '$lib/domain/heatmap';
-  import { buildCtlChart } from '$lib/domain/ctl-chart';
   import { generate } from '$lib/infra/ai/provider';
   import { verifyNumbers } from '$lib/infra/ai/verify';
 
@@ -59,10 +58,6 @@
   const tsbDelta = $derived(
     hasLoad && tsbSpark.length >= 8 ? Math.round(tsbSpark.at(-1)! - tsbSpark.at(-8)!) : null
   );
-
-  // ---------- CTL trend for the hero chart (12 weeks, like the reference) ----------
-  const pmc12w = $derived(computePmcDomain(acts, 84));
-  const ctlChart = $derived(buildCtlChart(pmc12w));
 
   // ---------- FTP / weight ----------
   const ftpVal = $derived(latestFtp.current?.ftp);
@@ -337,22 +332,22 @@
       <!-- hero-pane: stable test hook inside the monolith (never unrendered) -->
       <span id="hero-pane" class="hidden"></span>
 
-      <!-- ============ TODAY PANE ============ -->
+      <!-- ============ TODAY PANE ============
+        Form (TSB) is the headline now: it is the number that tells the rider what to do
+        today, while the fitness/fatigue pair that produced it sits in the tile row directly
+        beneath. The 12-week CTL curve moved out too — the standalone chart on the Load tab
+        tells that story; this card answers one question).
+      -->
       {#if heroTab === 'today'}
         <div class="relative z-10 flex items-start justify-between">
           <div class="flex flex-col">
             <div class="mb-1 flex items-center gap-1.5">
-              <span class="h-1.5 w-1.5 animate-pulse rounded-pill bg-[#ffad2e]"></span>
-              <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-on-mono/50">Fitness (CTL)</span>
+              <span class="h-1.5 w-1.5 rounded-pill bg-rose"></span>
+              <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-on-mono/50">Form (TSB)</span>
             </div>
-            <div class="flex items-baseline gap-3">
-              <span class="text-[58px] font-extrabold leading-none tracking-tighter text-white text-tabular">{ctlVal ?? '—'}</span>
-              {#if ctlChart && Math.abs(ctlChart.ctlDelta) >= 1}
-                <span class="inline-flex items-center gap-1 rounded-pill border border-white/10 bg-white/10 px-2.5 py-1 backdrop-blur-md">
-                  <span class="text-[11px] font-bold text-white/90 text-tabular">{ctlChart.ctlDelta > 0 ? '+' : ''}{ctlChart.ctlDelta} over 8w</span>
-                </span>
-              {/if}
-            </div>
+            <span class="text-[58px] font-extrabold leading-none tracking-tighter text-white text-tabular">
+              {tsbVal === null ? '—' : `${tsbVal > 0 ? '+' : ''}${tsbVal}`}
+            </span>
           </div>
           <div class="flex flex-col items-end">
             <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono/40">Current form</span>
@@ -363,58 +358,18 @@
           </div>
         </div>
 
-        <!-- CTL/ATL chart -->
-        {#if ctlChart}
-          <div class="relative z-10 flex flex-col gap-2 pt-1">
-            <div class="flex items-center justify-between pb-1 text-[11px] font-bold text-on-mono/50">
-              <div class="flex items-center gap-3.5">
-                <span class="inline-flex items-center gap-1.5 font-medium text-on-mono/90">
-                  <span class="h-0.5 w-2.5 rounded-pill bg-crimson-gradient"></span> CTL (Fitness)
-                </span>
-                <span class="inline-flex items-center gap-1.5 text-on-mono/40">
-                  <span class="h-0.5 w-2.5 rounded-pill bg-[#6f757e]"></span> ATL (Fatigue)
-                </span>
-              </div>
-              <span class="text-[10px] font-semibold uppercase tracking-wider text-on-mono/40">12 wks</span>
+        <!-- four tiles — Fitness first (it feeds TSB), Fatigue beside it, then FTP/W-kg -->
+        <div class="relative z-10 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
+          <div class="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono/50">Fitness (CTL)</span>
+              <span class="h-0.5 w-2.5 rounded-pill bg-crimson-gradient"></span>
             </div>
-            <div class="h-24">
-              <svg class="h-full w-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 {ctlChart.W} {ctlChart.H}">
-                <defs>
-                  <linearGradient id="ctlLineGrad" x1="0" x2="1" y1="0" y2="0">
-                    <stop offset="0%" stop-color="#ff0055" />
-                    <stop offset="60%" stop-color="#ff1744" />
-                    <stop offset="100%" stop-color="#ff5722" />
-                  </linearGradient>
-                  <linearGradient id="ctlAreaGrad" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stop-color="#ff0055" stop-opacity="0.35" />
-                    <stop offset="65%" stop-color="#ff1744" stop-opacity="0.08" />
-                    <stop offset="100%" stop-color="#ff5722" stop-opacity="0" />
-                  </linearGradient>
-                </defs>
-                <line stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,4" x1="0" x2={ctlChart.W} y1="15" y2="15" />
-                <line stroke="rgba(255,255,255,0.05)" stroke-dasharray="3,4" x1="0" x2={ctlChart.W} y1="45" y2="45" />
-                <line stroke="rgba(255,255,255,0.04)" stroke-dasharray="3,4" x1="0" x2={ctlChart.W} y1="70" y2="70" />
-                <path d={ctlChart.atlPath} fill="none" stroke="#636266" stroke-dasharray="4,3" stroke-linecap="round" stroke-width="1.75" />
-                <path d={ctlChart.area} fill="url(#ctlAreaGrad)" />
-                <path d={ctlChart.ctlPath} fill="none" stroke="url(#ctlLineGrad)" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.25" />
-                <circle cx={ctlChart.W} cy={ctlChart.endY} fill="#ff3b30" r="5" stroke="#0d0e11" stroke-width="2.5" />
-              </svg>
-            </div>
-            <div class="flex justify-between px-1 pt-1 text-[10px] font-medium uppercase tracking-wider text-on-mono/40">
-              <span class="text-on-mono/30">W1</span>
-              <span class="text-on-mono/40">W4</span>
-              <span class="text-on-mono/40">W8</span>
-              <span class="font-bold text-[#ffad2e]">W12</span>
+            <div class="mt-2">
+              <span class="text-[20px] font-extrabold leading-none text-white text-tabular">{ctlVal ?? '—'}</span>
+              <p class="mt-1 text-[10px] font-medium text-on-mono/40">Chronic load</p>
             </div>
           </div>
-        {:else}
-          <p class="relative z-10 py-6 text-center text-[13px] text-on-mono/40">
-            No load yet — CTL and ATL start from your rides.
-          </p>
-        {/if}
-
-        <!-- four tiles -->
-        <div class="relative z-10 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
           <div class="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
             <div class="flex items-center justify-between">
               <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono/50">Fatigue (ATL)</span>
@@ -423,16 +378,6 @@
             <div class="mt-2">
               <span class="text-[20px] font-extrabold leading-none text-white text-tabular">{atlVal ?? '—'}</span>
               <p class="mt-1 text-[10px] font-medium text-on-mono/40">7-day load</p>
-            </div>
-          </div>
-          <div class="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono/50">Form (TSB)</span>
-              <span class="h-1.5 w-1.5 rounded-pill bg-[#ffad2e]"></span>
-            </div>
-            <div class="mt-2">
-              <span class="text-[20px] font-extrabold leading-none text-white text-tabular">{tsbVal === null ? '—' : (tsbVal > 0 ? '+' : '') + tsbVal}</span>
-              <p class="mt-1 text-[10px] font-medium text-[#ffad2e]">{formLabel}</p>
             </div>
           </div>
           <div class="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
@@ -457,25 +402,6 @@
           </div>
         </div>
 
-        <!-- today's prescription -->
-        <div class="relative z-10 flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-1.5">
-              <span class="h-2 w-2 animate-pulse rounded-pill bg-[#ffad2e]"></span>
-              <span class="text-[11px] font-bold uppercase tracking-wider text-on-mono/50">Today's prescription</span>
-            </div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-[#ffad2e]">{formLabel}</span>
-          </div>
-          <a
-            href="#/rides"
-            class="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-pill border border-white/20 bg-crimson-gradient text-[13px] font-extrabold uppercase tracking-wider text-white shadow-[0_8px_24px_-4px_rgba(224,17,60,0.5)] transition-transform active:scale-[0.98]"
-          >
-            <span class="grid h-6 w-6 place-items-center rounded-pill bg-white/20">
-              <Icon name="activity" size={16} strokeWidth={2} />
-            </span>
-            <span>Log today's ride · {week.km > 0 ? `${fmtDist(week.km, 0)} this week` : 'start the week'}</span>
-          </a>
-        </div>
       {:else if heroTab === 'form'}
         <!-- ============ FORM PANE (kept) ============ -->
         <div class="relative z-10 flex h-full flex-col gap-1">

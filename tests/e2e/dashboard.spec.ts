@@ -1,13 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Dashboard render lock — the hero CTL chart, the "+N over 8w" pill, the 16-week heatmap.
+ * Dashboard render lock — the hero TSB headline, the fitness/fatigue pair, the 16-week heatmap.
  *
  * ## Why this suite exists
  *
- * The hero chart, its delta pill and the heatmap are all *derived* geometry: paths built
- * from the PMC series, an end-dot positioned from the same series, a 112-cell grid keyed
- * to calendar weeks, a colour ramp measured against the biggest day. Every one of those
+ * The hero headline, its fitness/fatigue pair and the heatmap are all *derived*
+ * figures: TSB = CTL − ATL from the PMC series, a 112-cell grid keyed to calendar weeks,
+ * a colour ramp measured against the biggest day. Every one of those
  * was extracted into pure domain modules with unit tests, which proves the maths — and
  * proves nothing about the wiring: that the component still binds `endY` to the dot, that
  * the grid still has 112 children, that the pill still renders when the delta qualifies.
@@ -140,32 +140,39 @@ async function openSeeded(page: Page): Promise<void> {
     .toBe(FIXTURE_TOTAL);
 }
 
-/** The hero chart's svg, its three paths, the end dot and the delta pill, read raw. */
+/**
+ * The hero via the pane hook: headline TSB, the fitness/fatigue pair tiles and the
+ * form pill, read raw. `#hero-pane` is the stable hook that exists in every pane.
+ */
 async function readHero(page: Page) {
   return page.evaluate(() => {
-    const ctl = document.querySelector('path[stroke="url(#ctlLineGrad)"]');
-    const svg = ctl?.closest('svg');
-    if (!svg || !ctl) return null;
-    const atl = svg.querySelector('path[stroke="#636266"]');
-    const area = svg.querySelector('path[fill="url(#ctlAreaGrad)"]');
-    const dot = svg.querySelector('circle');
-    if (!atl || !area || !dot) return null;
-    const d = (el: Element | null) => el?.getAttribute('d') ?? '';
-    const pairs = (path: string): [number, number][] =>
-      [...path.matchAll(/(-?\d+\.?\d*),(-?\d+\.?\d*)/g)].map((m) => [Number(m[1]), Number(m[2])]);
-    const ctlD = d(ctl);
+    const pane = document.querySelector('#hero-pane');
+    if (!pane) return null;
+    const texts = [...document.querySelectorAll('main span, main p, [class~="z-10"] span')]
+      .map((s) => (s.textContent ?? '').trim())
+      .filter(Boolean);
+    // the headline is the biggest number on the card: find the 58px figure via class
+    const headline = [...document.querySelectorAll('span')]
+      .find((s) => /text-\[58px\]/.test(s.getAttribute('class') ?? ''));
+    const labelAfter = (cls: string) =>
+      [...document.querySelectorAll('span')]
+        .filter((s) => (s.textContent ?? '').trim() === cls)
+        .map((s) => {
+          const tile = s.closest('div')?.parentElement;
+          const val = tile?.querySelector('span.text-\\[20px\\]');
+          return val ? (val.textContent ?? '').trim() : null;
+        });
     return {
-      viewBox: svg.getAttribute('viewBox'),
-      ctlD,
-      atlD: d(atl),
-      ctlPairs: pairs(ctlD),
-      atlPairs: pairs(d(atl)),
-      areaD: d(area),
-      dot: { cx: Number(dot.getAttribute('cx')), cy: Number(dot.getAttribute('cy')) },
-      pill:
-        [...document.querySelectorAll('span')]
-          .map((s) => (s.textContent ?? '').trim())
-          .find((t) => /^[-+]?\d+ over 8w$/.test(t)) ?? null
+      headline: headline ? (headline.textContent ?? '').trim() : null,
+      fitnessTile: labelAfter('Fitness (CTL)').at(-1) ?? null,
+      fatigueTile: labelAfter('Fatigue (ATL)').at(-1) ?? null,
+      formPill:
+        texts.find((t) => ['Recover first', 'Detraining', 'Balanced', 'Building', 'Peaked', 'No data'].includes(t)) ?? null,
+      showsCtlChart: document.querySelector('path[stroke="url(#ctlLineGrad)"]') !== null,
+      showsPrescription: texts.some((t) => /today's prescription/i.test(t)),
+      tileOrder: [...document.querySelectorAll('span')]
+        .map((s) => (s.textContent ?? '').trim())
+        .filter((t) => t === 'Fitness (CTL)' || t === 'Fatigue (ATL)')
     };
   });
 }
@@ -229,80 +236,38 @@ const weekdayOf = (key: string): number => {
   return new Date(y, m - 1, d).getDay();
 };
 
-test.describe('hero CTL chart', () => {
-  test('draws both series, the area, and the dot on the end of the line', async ({ page }) => {
+test.describe('hero form headline', () => {
+  test('leads with TSB, pairs fitness and fatigue tiles, and draws no CTL chart', async ({ page }) => {
     await openSeeded(page);
 
     const hero = await readHero(page);
-    expect(hero, 'the hero CTL chart never rendered').not.toBeNull();
+    expect(hero, 'the hero never rendered').not.toBeNull();
 
-    // the exact canvas the chart is authored against
-    expect(hero!.viewBox).toBe('0 0 320 80');
+    // The headline is TSB, not CTL — and it is signed. (With only short rides seeded, ATL
+    // can out-run CTL, so the sign itself is not pinned here — the pair identity below
+    // is what proves the headline is the right series.) A bare unsigned number means the
+    // card lost its sign rendering.
+    expect(hero!.headline).toMatch(/^[+-]?\d+$/);
 
-    // both lines carry data: with rides in the log CTL and ATL diverge, so the two path
-    // strings differ; a flat zero window would render them identically
-    expect(hero!.ctlD).not.toBe(hero!.atlD);
-    expect(hero!.ctlPairs.length).toBeGreaterThan(2);
-    expect(
-      new Set(hero!.ctlPairs.map(([, y]) => y)).size,
-      'the CTL line is flat — the fixture load never reached the chart'
-    ).toBeGreaterThan(1);
+    // the pair tiles sit directly beneath: fitness leads (left), fatigue follows (right)
+    expect(hero!.fitnessTile).toMatch(/^\d+$/);
+    expect(hero!.fatigueTile).toMatch(/^\d+$/);
+    expect(hero!.tileOrder[0]).toBe('Fitness (CTL)');
+    expect(hero!.tileOrder[1]).toBe('Fatigue (ATL)');
 
-    // every coordinate stays inside the 320×80 box (y is bounded by the 12..72 plot band)
-    for (const path of [hero!.ctlD, hero!.atlD]) {
-      expect(path).not.toMatch(/NaN|Infinity/);
-      for (const [x, y] of [...path.matchAll(/(-?\d+\.?\d*),(-?\d+\.?\d*)/g)].map((m) => [
-        Number(m[1]),
-        Number(m[2])
-      ])) {
-        expect(x).toBeGreaterThanOrEqual(0);
-        expect(x).toBeLessThanOrEqual(320);
-        expect(y).toBeGreaterThanOrEqual(12);
-        expect(y).toBeLessThanOrEqual(72);
-      }
-    }
+    // the compact redesign: no CTL curve, no prescription row — those live on the Load tab
+    expect(hero!.showsCtlChart).toBe(false);
+    expect(hero!.showsPrescription).toBe(false);
 
-    // the line spans the full width — first sample at x=0, last at x=320
-    expect(hero!.ctlPairs[0][0]).toBe(0);
-    expect(hero!.ctlPairs.at(-1)![0]).toBe(320);
+    // the form pill echoes the headline's classification — wired to the same TSB the
+    // headline shows, so the card can never praise and warn at the same time
+    expect(hero!.formPill).toBeTruthy();
+    expect(['Recover first', 'Detraining', 'Balanced', 'Building', 'Peaked']).toContain(hero!.formPill);
 
-    // the area closes along the bottom edge
-    expect(hero!.areaD.endsWith('L320,80 L0,80 Z')).toBe(true);
-
-    // The dot rides exactly where the drawn line ends. This is the regression the domain
-    // extraction fixed once already: endY derived from a different series (90-day vs the
-    // 84-day one on screen) left the dot a hair off the line's final coordinate.
-    expect(hero!.dot.cx).toBe(320);
-    expect(
-      hero!.dot.cy,
-      'the end dot is not on the last point of the drawn CTL line'
-    ).toBe(hero!.ctlPairs.at(-1)![1]);
-  });
-});
-
-test.describe('the +8w delta pill', () => {
-  test('reports the 8-week change of the series drawn beside it', async ({ page }) => {
-    await openSeeded(page);
-
-    const pill = page.getByText(/^[-+]?\d+ over 8w$/);
-    await expect(pill).toBeVisible({ timeout: 20_000 });
-
-    const text = (await pill.textContent())!.trim();
-    expect(text).toMatch(/^[-+]\d+ over 8w$/);
-
-    // Every fixture ride sits within the last 13 days, so the sample 56 days back on the
-    // 84-day series is still untouched zero — fitness only rose, and the pill must read
-    // positive. A sign flip here means the pill stopped measuring its own window.
-    expect(text.startsWith('+'), `pill reads "${text}", expected a positive delta`).toBe(true);
-
-    // …and it must agree with the series on screen: the pill and the chart read the same
-    // `buildCtlChart` result, so a delta whose magnitude wildly exceeds the chart's own
-    // scale would mean two different derivations are in play.
-    const hero = await readHero(page);
-    expect(hero).not.toBeNull();
-    const delta = Number(text.match(/^([-+]?\d+) over 8w$/)![1]);
-    expect(delta).toBeGreaterThanOrEqual(1);
-    expect(delta).toBeLessThanOrEqual(72); // the plot band is 60px tall; delta is in points
+    // the tiles agree with the headline: TSB = CTL − ATL, all rounded from the same PMC
+    // series. This is the wiring the old chart suite proved for the graph; now the pair
+    // carries it.
+    expect(Number(hero!.headline)).toBe(Number(hero!.fitnessTile) - Number(hero!.fatigueTile));
   });
 });
 
