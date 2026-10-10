@@ -29,3 +29,6 @@ blob-report/
 
 # Lighthouse audit output
 .lighthouse/
+
+# Vite dev-server log from the local preview (not part of the project)
+.devserver.log

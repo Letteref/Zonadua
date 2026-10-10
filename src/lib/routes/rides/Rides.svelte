@@ -15,6 +15,8 @@
   import { ftpOnDate, rideMetrics, estimateRideMetrics, METRICS_VERSION } from '$lib/domain/metrics';
   import { distanceUnit, formatDistance, formatElevation, type UnitSystem } from '$lib/domain/units';
   import { runLiveSync } from '$lib/infra/strava/runSync';
+  import { relativeAge } from '$lib/infra/strava/status';
+  import { weeklyTssTarget } from '$lib/domain/pmc';
   import { AUTO_SYNC_FLAG, AUTO_SYNC_IN_FLIGHT } from '$lib/infra/strava/autoSync';
   import { toast } from '$lib/toast.svelte';
 
@@ -33,6 +35,20 @@
    * where the Connect flow lives. File import stays available next to the empty state.
    */
   const connected = $derived(Boolean(syncState.current?.accessToken));
+
+  // "Synced 2 h ago" under the week card's refresh button.
+  // A clock-only $derived would freeze at the minute the component rendered, so a one-minute
+  // tick keeps the age honest without waiting for a sync event to re-render it.
+  let clockTick = $state(Date.now());
+  $effect(() => {
+    const id = setInterval(() => (clockTick = Date.now()), 60_000);
+    return () => clearInterval(id);
+  });
+  const lastSyncLabel = $derived.by(() => {
+    const last = syncState.current?.lastSyncAt;
+    if (typeof last !== 'number' || !Number.isFinite(last)) return null;
+    return relativeAge(last, clockTick);
+  });
 
   async function onSyncNow(): Promise<void> {
     if (syncing) return;
@@ -101,6 +117,20 @@
   }
 
   const month = $derived(computeWeek(allActivities.current ?? []));
+
+  // Weekly TSS target, shared with the dashboard card through the domain layer, so the two
+  // surfaces can never disagree about what "this week" is being measured against.
+  const tssTarget = $derived(
+    weeklyTssTarget((allActivities.current ?? []).filter(isCyclingActivity))
+  );
+  // Cap at 100% for the bar width, but the label keeps the real ratio — a rider at 120%
+  // of target should see 120%, not a full bar that lies about how much.
+  const weekTssPct = $derived(
+    tssTarget > 0 ? Math.min(100, Math.round((month.tss / tssTarget) * 100)) : 0
+  );
+  const weekTssRealPct = $derived(
+    tssTarget > 0 ? Math.round((month.tss / tssTarget) * 100) : 0
+  );
 
   /**
    * All-time totals, over every *riding* activity on the device — pulled, imported or both.
@@ -233,23 +263,13 @@
     The search button used to sit in the header slot, next to the import button, and it
     cost the headline more width than it could spare — "EVERY WATT COUNTS" was being
     clipped by a 44 px circle. Search is not a header action anyway: it is a way of
-    narrowing the list below, so it belongs next to the list. It now sits under the
-    "This week" hero, always visible rather than behind a toggle, which also removes the
-    second click that the old design asked for before you could type anything.
+    narrowing the list below, so it belongs next to the list.
+
+    The sync action also moved out of the header: it now lives on the "This week" hero
+    as an instant Strava re-sync, one tap, no detour through Settings. Keeping a second
+    sync button here would give one screen two controls for the same job.
   -->
-  <EditorialHeader kicker="Your rides" headline="Every watt counts" sub="Pulled from Strava —" accent="or filed by hand.">
-      {#if connected}
-        <CircleButton
-          icon="refresh-cw"
-          label="Sync with Strava now"
-          onclick={onSyncNow}
-          disabled={syncing}
-          spinning={syncing}
-        />
-      {:else}
-        <CircleButton icon="link" label="Connect Strava in Settings" onclick={() => route.navigate('settings')} />
-      {/if}
-    </EditorialHeader>
+  <EditorialHeader kicker="Your rides" headline="Every watt counts" sub="Pulled from Strava —" accent="or filed by hand." />
 
   <input
     bind:this={importInput}
@@ -262,7 +282,101 @@
   />
 
   <!--
-    All-time strip, below the week card and above the search.
+    This week hero — first thing on the page, because it answers the question the rider
+    actually asks ("how much did I do this week?").
+
+    Two fixed rows instead of one items-end row. The old single row put the sync button in
+    the figures' line: when "Synced 2 h ago" appeared beneath the button, the button column
+    grew taller than the km column and the shared baseline dragged the figures up with it
+    — the card reflowed every time the sync state changed. Row 1 now owns the label and the
+    whole sync cluster (button + last-sync line side by side), and row 2 owns the numbers,
+    so nothing in the figures' row can move when sync state appears, changes or vanishes.
+
+    The refresh button is the primary Strava action: one tap re-syncs right here, no detour
+    through Settings. Not connected → the same slot points at Settings, where the Connect
+    flow lives.
+  -->
+  <div class="flex flex-col gap-2.5 rounded-card bg-mono text-on-mono glow-mono bg-mono-gradient p-5">
+    <div class="flex items-center justify-between gap-3">
+      <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">This week</span>
+      {#if connected}
+        <!--
+          Same facts the empty-state SyncHint reports, one glance earlier: when the last
+          sync happened, or that it has never happened. Inline with the button (not under
+          it) so the cluster is one fixed-height unit that row 1 never reflows around.
+        -->
+        <div class="flex items-center gap-2.5">
+          <span
+            class="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-on-mono-dim"
+            title="Last Strava sync on this device"
+          >
+            {lastSyncLabel ? `Synced ${lastSyncLabel}` : 'Never synced'}
+          </span>
+          <CircleButton
+            icon="refresh-cw"
+            label="Sync with Strava now"
+            onclick={onSyncNow}
+            disabled={syncing}
+            spinning={syncing}
+          />
+        </div>
+      {:else}
+        <CircleButton icon="link" label="Connect Strava in Settings" onclick={() => route.navigate('settings')} />
+      {/if}
+    </div>
+    <div class="flex items-end justify-between gap-3">
+      <div class="flex flex-col">
+        <!--
+          The primary figure now owns the card: 40 px (metric-hero), the same weight the
+          dashboard hero gives its headline number. At the old 28 px the left column read
+          as a footnote beside the two stacked label+figure pairs on the right, and the
+          gap under the kicker looked like dead space rather than rhythm.
+        -->
+        <span class="block text-metric-hero text-tabular font-extrabold leading-none tracking-tight">
+          {formatDistance(month.km, unit, 0).split(' ')[0]}<span class="text-base text-on-mono-dim font-semibold ml-1.5">{distanceUnit(unit)}</span>
+        </span>
+      </div>
+      <div class="flex items-end gap-3.5">
+        <div class="flex flex-col items-end">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Time</span>
+          <span class="text-base font-extrabold text-on-mono text-tabular leading-tight">{month.hours}h</span>
+        </div>
+        <div class="flex flex-col items-end">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Stress</span>
+          <span
+            class="text-base font-extrabold text-rose text-tabular leading-tight"
+            title={month.tssEstimated ? 'Week total includes rides scored from speed & elevation — no power data' : undefined}
+          >
+            {month.tssEstimated ? `~${month.tss}` : month.tss}
+          </span>
+        </div>
+      </div>
+    </div>
+    <!--
+      Weekly TSS progress, third fixed row: the week's stress against its target. Below a
+      fifth of the target the bar reads as the honest sliver it is; from a fifth up it
+      fills in the card's accent red so "how far to target" is legible without reading a
+      number. The caption keeps both figures visible so the bar never hides what it is a
+      fraction of — it is a strip, not a card of its own, so the two rows above stay put.
+    -->
+    <div class="flex flex-col gap-1.5 pt-1 border-t border-white/10">
+      <div class="flex items-baseline justify-between text-[10px] font-bold uppercase tracking-wider">
+        <span class="text-on-mono-dim">Stress vs target</span>
+        <span class="text-tabular {weekTssRealPct >= 100 ? 'text-aman' : 'text-on-mono-dim'}">
+          {weekTssRealPct}% · {month.tssEstimated ? '~' : ''}{month.tss} / {tssTarget} TSS
+        </span>
+      </div>
+      <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          class="h-full rounded-full {weekTssRealPct >= 100 ? 'bg-aman' : 'bg-crimson'} transition-[width] duration-500"
+          style="width:{weekTssPct}%"
+        ></div>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    All-time strip, under the week card and above the search.
 
     Reportedly missing: the log had 32 rides in it and the only figures on the page were this
     week's, so a rider who had not ridden *this* week saw nothing at all. Four label + figure
@@ -292,45 +406,6 @@
       </div>
     </div>
   {/if}
-
-  <!--
-    One rhythm, three figures, one action.
-
-    The right-hand side used to be "5.8h · 313 TSS" — two different measurements joined by a
-    middot with no labels, sitting on the same line as a settings button. So the primary
-    number had a label and a large figure while its peers were an unlabelled run-on string
-    at 11px, and the three items were not on a shared baseline: the text started 19px below
-    the primary's label.
-
-    Hours and TSS are now label + figure pairs with the same rhythm as the primary, which is
-    the pattern the dashboard hero already uses. The button stays last and stays a button:
-    it is an action, and dressing it as data was part of what made the row read as one
-    undifferentiated block.
-  -->
-  <div class="flex items-end justify-between gap-3 rounded-card bg-mono text-on-mono glow-mono bg-mono-gradient p-5">
-    <div class="flex flex-col">
-      <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">This week</span>
-      <span class="block text-metric-lg text-tabular font-extrabold leading-tight">
-        {formatDistance(month.km, unit, 0).split(' ')[0]}<span class="text-sm text-on-mono-dim font-semibold ml-1.5">{distanceUnit(unit)}</span>
-      </span>
-    </div>
-    <div class="flex items-end gap-3.5">
-      <div class="flex flex-col items-end">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Time</span>
-        <span class="text-base font-extrabold text-on-mono text-tabular leading-tight">{month.hours}h</span>
-      </div>
-      <div class="flex flex-col items-end">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Stress</span>
-        <span
-          class="text-base font-extrabold text-rose text-tabular leading-tight"
-          title={month.tssEstimated ? 'Week total includes rides scored from speed & elevation — no power data' : undefined}
-        >
-          {month.tssEstimated ? `~${month.tss}` : month.tss}
-        </span>
-      </div>
-      <CircleButton icon="refresh-cw" label="Strava sync status & settings" onclick={() => route.navigate('settings')} />
-    </div>
-  </div>
 
   <!-- Search sits here, under the stats it filters and above the list it narrows. -->
   <div class="h-11 rounded-pill bg-surface border border-hairline flex items-center gap-2 px-4 elevation-card">

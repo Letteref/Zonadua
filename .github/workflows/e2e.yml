@@ -1,0 +1,80 @@
+# Playwright E2E — on every push and pull request.
+#
+# ## Why this workflow exists
+#
+# The e2e suite is the DoD receipt for M0–M4 (offline shell, import scoring, race
+# cockpit projections, the dashboard's chart/heatmap/pill render locks). It runs against
+# the *production build* (`build:e2e` + `vite preview`), not the dev server — a claim
+# about a PWA is only meaningful in the artifact riders install. Until now nothing in CI
+# has run it: the only workflow was the secret scan, so 29 stale failures sat invisible
+# for weeks. This job makes them impossible again.
+#
+# ## Runtime, and why the gate is here anyway
+#
+# ~86 tests at up to ~9.5 minutes serially (workers: 1, per playwright.config.ts, in
+# order to keep IndexedDB profiles deterministic). Serial is the honest mode for a suite
+# that shares browser profile semantics; the checkout cache and the pinned Playwright
+# version keep the *setup* cost, not the suite cost, out of the critical path.
+#
+# ## Version pinning
+#
+# Playwright is pinned to the version this repo already locks in package.json.
+# `npx playwright install --with-deps` resolves the browser build matching that
+# version, so a runner can never pick up a browser newer than the suite was written
+# against.
+
+name: e2e
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers for ${{ env.PW_VERSION }}
+        env:
+          # Kept in sync with package.json's @playwright/test. Bump both together as a
+          # reviewed change, never as whatever the runner resolves.
+          PW_VERSION: 1.63.0
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the e2e suite
+        # The webServer block in playwright.config.ts builds (`npm run build:e2e`) and
+        # serves the preview build itself, so no separate build or serve step here: a
+        # failure there surfaces inside this step's log, where the test it broke lives.
+        # `--forbid-only` is duplicated from the config's CI-guard to survive a future
+        # config refactor that drops it.
+        # Pipe status: `pipefail` keeps the suite's exit code through tee, so a red run
+        # cannot be retitled green by an output filter.
+        run: |
+          set -o pipefail
+          npx playwright test --forbid-only --reporter=list 2>&1 | tee e2e-output.log
+          test ${PIPESTATUS[0]} -eq 0
+
+      - name: Upload the failure trace
+        # Only useful when a test failed: traces are retain-on-failure in the config.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
