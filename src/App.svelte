@@ -9,7 +9,7 @@
   import RoutesPage from '$lib/routes/routes/Routes.svelte';
   import Race from '$lib/routes/race/Race.svelte';
   import Gear from '$lib/routes/gear/Gear.svelte';
-  import Coach from '$lib/routes/coach/Coach.svelte';
+  import Load from '$lib/routes/load/Load.svelte';
   import Settings from '$lib/routes/settings/Settings.svelte';
   import { ensureSeeded } from '$lib/data/seed';
   import { handleStravaCallback } from '$lib/infra/strava/connect';
@@ -65,8 +65,8 @@
     <Race />
   {:else if route.name === 'gear'}
     <Gear />
-  {:else if route.name === 'coach'}
-    <Coach />
+  {:else if route.name === 'load'}
+    <Load />
   {:else if route.name === 'settings'}
     <Settings />
   {:else}

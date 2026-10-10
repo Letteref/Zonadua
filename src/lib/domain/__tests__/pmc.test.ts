@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ATL_TAU, CTL_TAU, computePmc, dailyTss, formState, hasPmcLoad } from '../pmc';
+import {
+  ATL_TAU,
+  CTL_TAU,
+  DEFAULT_WEEKLY_TSS_TARGET,
+  computePmc,
+  dailyTss,
+  formState,
+  hasPmcLoad,
+  weeklyTssTarget
+} from '../pmc';
 
 /** Fixed clock so every assertion is reproducible. */
 const NOW = new Date('2026-10-02T12:00:00.000Z');
@@ -164,5 +173,47 @@ describe('hasPmcLoad', () => {
     // the curve beside it is still flat zero.
     const ancient = [{ date: '2019-01-01T00:00:00.000Z', tss: 300 }];
     expect(hasPmcLoad(computePmc(ancient, 90, new Date('2026-04-01T00:00:00Z')))).toBe(false);
+  });
+});
+
+describe('weeklyTssTarget', () => {
+  // Mid-window days (3, 10, 17, 24 days back) so the assertions do not depend on
+  // boundary arithmetic — the point of these tests is the averaging, not the edges.
+  const ride = (daysBack: number, tss?: number) => ({ date: iso(daysBack), tss });
+
+  it('falls back to the default when there is no history at all', () => {
+    expect(weeklyTssTarget([], NOW)).toBe(DEFAULT_WEEKLY_TSS_TARGET);
+  });
+
+  it('falls back when history exists but no week inside the window carried load', () => {
+    // A rider whose last ride was two months ago: nothing to average, so the same honest
+    // default a new rider gets — not 0, which every week would clear for free.
+    expect(weeklyTssTarget([ride(70, 300), ride(90, 200)], NOW)).toBe(DEFAULT_WEEKLY_TSS_TARGET);
+  });
+
+  it('averages the weeks that carried load, rounded to the nearest 25', () => {
+    // weeks 1–3 carry 500 / 400 / 300 → mean 400; week 4 is empty and excluded
+    const items = [ride(3, 500), ride(10, 400), ride(17, 300)];
+    expect(weeklyTssTarget(items, NOW)).toBe(400);
+  });
+
+  it('rounds to the nearest 25 rather than to the integer mean', () => {
+    // mean of 300 and 410 is 355 → nearest 25 is 350
+    const items = [ride(3, 300), ride(10, 410)];
+    expect(weeklyTssTarget(items, NOW)).toBe(350);
+  });
+
+  it('floors tiny weeks at 50 so an easy week still has a number to aim at', () => {
+    const items = [ride(3, 20)];
+    expect(weeklyTssTarget(items, NOW)).toBe(50);
+  });
+
+  it('uses the injected clock, not the wall clock', () => {
+    // Same ride: at NOW it sits in week 3; relative to a clock a year later it is out of
+    // the window entirely and the target falls back to the default.
+    const items = [ride(17, 400)];
+    expect(weeklyTssTarget(items, NOW)).toBe(400);
+    const muchLater = new Date('2027-10-02T12:00:00.000Z');
+    expect(weeklyTssTarget(items, muchLater)).toBe(DEFAULT_WEEKLY_TSS_TARGET);
   });
 });

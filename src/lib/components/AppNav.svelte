@@ -12,7 +12,7 @@
     { name: 'dashboard', label: 'Home', icon: 'gauge' },
     { name: 'rides', label: 'Rides', icon: 'activity' },
     { name: 'gear', label: 'Gear', icon: 'bike' },
-    { name: 'coach', label: 'Coach', icon: 'sparkles' }
+    { name: 'load', label: 'Load', icon: 'chart-line' }
   ];
 
   const dial: { name: RouteName; label: string; sub: string; icon: IconName }[] = [

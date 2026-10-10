@@ -22,7 +22,7 @@ export interface PmcPoint {
   tsb: number;
 }
 
-const isoLocalDay = (d: Date): string => {
+export const isoLocalDay = (d: Date): string => {
   const y = d.getFullYear();
   const m = d.getMonth();
   const day = d.getDate();
@@ -100,6 +100,50 @@ export function formState(tsb: number): 'fresh' | 'detraining' | 'balanced' | 'p
  */
 export function hasPmcLoad(series: readonly PmcPoint[]): boolean {
   return series.some((p) => p.ctl > 0);
+}
+
+/**
+ * Weekly TSS target — the planning number "this week" is measured against.
+ *
+ * The old dashboard inlined this: the mean TSS of the last four *riding* weeks, rounded to
+ * the nearest 25 and floored at 50, falling back to 450 when there is no history to average
+ * (a brand-new rider gets a sane default rather than 0, which every week would clear for free).
+ *
+ * It lives here now because a second surface — the Rides "This week" card — plots progress
+ * against the same target, and two copies of a derivation always drift. `now` is injectable
+ * for the same reason `computePmc` takes it: a boundary-crossing test cannot be written
+ * against a function that reads the clock itself.
+ *
+ * `weekTss` is filtered by the caller (e.g. `isCyclingActivity`) before it reaches here, so
+ * this stays free of the Activity type — it only needs dates and numbers.
+ */
+export const DEFAULT_WEEKLY_TSS_TARGET = 450;
+
+export function weeklyTssTarget(
+  items: readonly { date: string; tss?: number }[],
+  now: Date = new Date()
+): number {
+  if (items.length === 0) return DEFAULT_WEEKLY_TSS_TARGET;
+  let sum = 0;
+  let weeks = 0;
+  for (let w = 1; w <= 4; w++) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - w * 7);
+    const to = new Date(now);
+    to.setDate(to.getDate() - (w - 1) * 7);
+    const t = items
+      .filter((a) => {
+        const d = new Date(a.date);
+        return d >= from && d < to;
+      })
+      .reduce((acc, a) => acc + (a.tss ?? 0), 0);
+    if (t > 0) {
+      sum += t;
+      weeks++;
+    }
+  }
+  if (weeks === 0) return DEFAULT_WEEKLY_TSS_TARGET;
+  return Math.max(50, Math.round(sum / weeks / 25) * 25);
 }
 
 function round1(x: number): number {
