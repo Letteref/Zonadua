@@ -24,14 +24,36 @@ const isoLocalDay = (d: Date): string => {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
+/** Local calendar day, `daysAgo` days before **now**, as `YYYY-MM-DD`. */
+const isoDaysAgo = (daysAgo: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return isoLocalDay(d);
+};
+
 /**
  * Local calendar day, `offsetDays` from the seed anchor, as `YYYY-MM-DD`. Seed rides are
- * stamped relative to a fixed anchor (Mon 29 Sep 2025) so the demo dashboard always shows
- * the same weekly load regardless of when the app is opened. Wall-clock time is
- * `06:30:00` local so the local-day bucketing in `pmc.ts`, `queries.svelte.ts` and
- * `context.ts` stays consistent.
+ * stamped relative to an anchor pinned to **this past Friday**, 39 days back
+ * (`getDay()` — 0 Sun … 6 Sat — returns 5 for Friday, so the pin is calendar-correct
+ * whatever today is). The block's six weekly patterns then end at anchor + 39, i.e.
+ * today−0 … today−6: one ride — the block's last endurance spin — always lands inside
+ * `computeWeek`'s 7-day window, so the weekly-target card shows real progress every
+ * day of the week instead of reading 0% until the anchor rolled past. The 39-day span
+ * also keeps every ride inside the 90-day PMC window (the bug a fixed Sep-2025 anchor
+ * caused), and nothing lands in the future (a future-dated ride would be counted as
+ * load by `computeWeek`, which opens its window at today−6 with no upper bound).
+ *
+ * Whole-week rolling would keep the weekdays of the pattern fixed instead of today
+ * fixed, but that makes the "last ride inside the week window" guarantee slip 0–6
+ * days per calendar day — the weekly card spends most days showing 0%. Pinning the
+ * anchor to today−39 trades the fixed weekday for a guaranteed hit; the rides within
+ * a week keep their relative spread (long ride → intervals → commute → endurance).
+ * Wall-clock time is `06:30:00` local so the local-day bucketing in `pmc.ts`,
+ * `queries.svelte.ts` and `context.ts` stays consistent.
  */
-const seedAnchor = new Date(2025, 8, 29); // Mon 29 Sep 2025, local
+const DAY_MS = 86_400_000;
+const seedAnchor = new Date(Date.now() - 39 * DAY_MS);
+seedAnchor.setDate(seedAnchor.getDate() - ((seedAnchor.getDay() + 2) % 7)); // pin to Friday
 const dayIso = (offsetDays: number): string => {
   const d = new Date(seedAnchor);
   d.setDate(seedAnchor.getDate() + offsetDays);
@@ -213,12 +235,15 @@ export async function ensureSeeded(): Promise<void> {
 
   const weights = await db.weight_log.count();
   if (weights === 0) {
-    // Gentle downward trend 69.8 → 68.2 over 12 weeks
+    // Gentle downward trend 69.8 → 68.2 over 12 weeks. Stamped against the calendar
+    // (`now − w·7d`), not the seed anchor: “current weight” must be the newest row,
+    // and a history pinned to a past anchor ends up sorted so the “current” figure is
+    // a year-old or future-dated entry.
     const logs: WeightLog[] = [];
     for (let w = 11; w >= 0; w--) {
       logs.push({
         id: newId(),
-        date: dayIso(w * 7),
+        date: isoDaysAgo(w * 7),
         kg: Math.round((69.8 - (11 - w) * 0.145) * 10) / 10,
         updatedAt: Date.now()
       });
@@ -229,12 +254,14 @@ export async function ensureSeeded(): Promise<void> {
   const ftps = await db.ftp_history.count();
   if (ftps === 0) {
     // Denser than the minimum so that ftpOnDate() actually resolves two different
-    // values across the seeded 6-week block (F1: FTP is date-dependent).
+    // values across the seeded 6-week block (F1: FTP is date-dependent). Each entry is
+    // `N days ago` in calendar terms — `latestFtp` reads the last row, and a future-dated
+    // FTP test would hijack both the current figure and the “logged Nd ago” stamp.
     await db.ftp_history.bulkPut([
-      { id: newId(), date: dayIso(300), ftp: 258, updatedAt: Date.now() },
-      { id: newId(), date: dayIso(150), ftp: 266, updatedAt: Date.now() },
-      { id: newId(), date: dayIso(60), ftp: 272, updatedAt: Date.now() },
-      { id: newId(), date: dayIso(14), ftp: 275, updatedAt: Date.now() }
+      { id: newId(), date: isoDaysAgo(300), ftp: 258, updatedAt: Date.now() },
+      { id: newId(), date: isoDaysAgo(150), ftp: 266, updatedAt: Date.now() },
+      { id: newId(), date: isoDaysAgo(60), ftp: 272, updatedAt: Date.now() },
+      { id: newId(), date: isoDaysAgo(14), ftp: 275, updatedAt: Date.now() }
     ]);
   }
 

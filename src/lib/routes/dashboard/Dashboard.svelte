@@ -3,6 +3,7 @@
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
+  import BandMeter from '$lib/components/BandMeter.svelte';
   import {
     allActivities,
     appSettings,
@@ -349,26 +350,8 @@
               <span class="text-[58px] font-extrabold leading-none tracking-tighter text-white text-tabular">
                 {tsbVal === null ? '—' : `${tsbVal > 0 ? '+' : ''}${tsbVal}`}
               </span>
-              {#if hasLoad}
-                <!--
-                  The 30-day TSB trace beside the headline. A bare number reads as silent;
-                  the sparkline is the trend that number belongs to — same trick the Rides
-                  week card uses for km. Fixed 120×36 box (fill=false) so it can never take
-                  part in a measure-its-own-box feedback loop; sits on the headline's
-                  baseline via items-end.
-                -->
-                <div class="w-[120px] shrink-0 pb-1">
-                  <Sparkline
-                    points={tsbSpark}
-                    width={120}
-                    height={36}
-                    fill={false}
-                    onDark
-                    showBaseline
-                    ariaLabel="Form TSB, last 30 days"
-                  />
-                </div>
-              {/if}
+              <!-- slot beside the headline stays empty: the meter strip below is the
+                   one graphic on this card (B2) — one graphic, one job. -->
             </div>
           </div>
           <div class="flex flex-col items-end">
@@ -376,9 +359,16 @@
             <span class="mt-1.5 inline-flex items-center gap-1.5 rounded-pill border border-white/10 bg-white/5 px-3 py-1 backdrop-blur-sm">
               <span class="h-1.5 w-1.5 rounded-pill bg-[#ffad2e]"></span>
               <span class="text-[12px] font-bold tracking-tight text-[#ff8a92]">{formLabel}</span>
-            </span>
+            </span>            </div>
           </div>
-        </div>
+
+        {#if tsbVal !== null}
+          <!-- Band meter strip (B2): today's TSB placed across the five formState bands.
+               Sits under the headline row, above the tile grid. -->
+          <div class="relative z-10 mt-3 border-t border-white/10 pt-3">
+            <BandMeter tsb={tsbVal} ariaLabel="Form position across recovery to peak bands" />
+          </div>
+        {/if}
 
         <!-- four tiles — Fitness first (it feeds TSB), Fatigue beside it, then FTP/W-kg -->
         <div class="relative z-10 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
@@ -639,17 +629,17 @@
     <section class="relative overflow-hidden rounded-3xl bg-mono text-on-mono glow-mono bg-mono-gradient p-5 flex flex-col gap-4">
       <div class="absolute -right-16 -top-16 h-60 w-60 rounded-pill bg-crimson/20 blur-3xl pointer-events-none"></div>
       <div class="absolute -left-12 -bottom-10 h-44 w-44 rounded-pill bg-crimson/10 blur-2xl pointer-events-none"></div>
-      <div class="relative z-10 flex items-start justify-between">
-        <div class="flex flex-col">
+      <div class="relative z-10 flex items-start justify-between gap-3">
+        <div class="min-w-0 flex flex-col">
           <div class="mb-1 flex items-center gap-1.5">
             <span class="h-1.5 w-1.5 animate-pulse rounded-pill bg-[#ffad2e]"></span>
             <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-on-mono/50">Training consistency</span>
           </div>
-          <h3 class="text-[22px] font-extrabold tracking-tight text-white">16-Week Heatmap &amp; TSS</h3>
+          <h3 class="text-[22px] font-extrabold tracking-tight [text-wrap:balance] text-white">16-Week Heatmap &amp; TSS</h3>
         </div>
-        <div class="flex flex-col items-end">
-          <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono/40">Rolling average</span>
-          <span class="mt-1.5 inline-flex items-center gap-1.5 rounded-pill border border-white/10 bg-white/5 px-3 py-1 backdrop-blur-sm">
+        <div class="flex shrink-0 flex-col items-end text-right">
+          <span class="whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono/40">Rolling average</span>
+          <span class="mt-1.5 inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill border border-white/10 bg-white/5 px-3 py-1 backdrop-blur-sm">
             <span class="h-1.5 w-1.5 rounded-pill bg-[#ffad2e]"></span>
             <span class="text-[12px] font-bold tracking-tight text-[#ffad2e]">{heatmap.avgTss} avg TSS</span>
           </span>
