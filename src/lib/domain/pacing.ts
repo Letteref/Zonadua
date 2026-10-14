@@ -40,6 +40,89 @@ export function resolveTargetWatts(s: PacingStrategy): number {
   return Math.max(0, (s.ifTarget ?? 0) * ftp);
 }
 
+export interface SpeedFit {
+  /** intensity whose plan lands closest to the target average speed */
+  ifTarget: number;
+  /** the plan actually solved at `ifTarget` — feeds "≈ x.x km/h" in the UI */
+  avgKph: number;
+  /** true when the target sits inside what this rider + setup can produce */
+  reachable: boolean;
+  /** honest sentence when it does not; null when the target is met */
+  note: string | null;
+}
+
+/**
+ * Solve for the intensity factor that makes a plan average `targetKph`.
+ *
+ * An average-speed target is a *derived* target: it has no direct knob in the solver,
+ * which speaks watts. But average speed rises monotonically with intensity, so a
+ * bisection finds the IF whose plan lands on the number the rider named — without a
+ * search library and without the UI inventing an answer.
+ *
+ * The builder is passed in rather than built here so the caller keeps ownership of
+ * physics, stops, wind and start time: the fit must walk *the same inputs* the screen
+ * will finally solve with, or the fitted IF describes a ride nobody is planning.
+ *
+ * Unreachable targets are reported, never clamped silently — "200 km/h" must say so,
+ * because a speed the setup cannot produce is a wrong answer dressed as a plan.
+ */
+export function fitIfForAvgSpeed(
+  build: (ifTarget: number) => RidePlan,
+  targetKph: number
+): SpeedFit {
+  const at = (ift: number): number => {
+    const p = build(ift);
+    return p.ok ? (p.avgKph ?? 0) : 0;
+  };
+
+  const lo = 0.3;
+  const hi = 1.4;
+  const slowest = at(lo);
+  const fastest = at(hi);
+
+  if (fastest <= 0) {
+    return {
+      ifTarget: 0.7,
+      avgKph: 0,
+      reachable: false,
+      note: 'No power model to pace by — set an FTP, then the speed target can be solved.'
+    };
+  }
+  if (fastest < targetKph) {
+    return {
+      ifTarget: hi,
+      avgKph: fastest,
+      reachable: false,
+      note: `This setup tops out near ${fastest.toFixed(1)} km/h — the target is beyond what it can produce.`
+    };
+  }
+  if (slowest > targetKph) {
+    return {
+      ifTarget: lo,
+      avgKph: slowest,
+      reachable: false,
+      note: `Even the easiest pace here averages ${slowest.toFixed(1)} km/h — the target is slower than that.`
+    };
+  }
+
+  let a = lo;
+  let b = hi;
+  for (let i = 0; i < 22; i++) {
+    const mid = (a + b) / 2;
+    if (at(mid) < targetKph) a = mid;
+    else b = mid;
+  }
+  const ifTarget = Math.round(((a + b) / 2) * 100) / 100;
+  const avgKph = at(ifTarget);
+  const gap = Math.abs(avgKph - targetKph);
+  return {
+    ifTarget,
+    avgKph,
+    reachable: gap < 0.5,
+    note: gap < 0.5 ? null : `Solves to ${avgKph.toFixed(1)} km/h — the nearest this profile gets.`
+  };
+}
+
 export interface StopPolicy {
   /** number of refuelling/food stops */
   count: number;

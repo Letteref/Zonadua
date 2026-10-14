@@ -33,6 +33,19 @@
   const wearOf = (components: BikeComponent[], odoKm: number): ComponentWear[] =>
     components.map((c) => computeWear(c, odoKm)).sort((a, b) => b.pct - a.pct);
 
+  /**
+   * One components card for the whole stable. `compBikeId` is the rider's explicit pick
+   * and stays put while they browse; null follows the active bike, so the default answer
+   * to "whose components am I looking at" is always the machine they ride.
+   */
+  let compBikeId = $state<string | null>(null);
+  const shownBikeId = $derived(
+    compBikeId && bikes.some((b) => b.bike.id === compBikeId)
+      ? compBikeId
+      : (primaryId ?? bikes[0]?.bike.id ?? null)
+  );
+  const shownBike = $derived(bikes.find((b) => b.bike.id === shownBikeId) ?? null);
+
   const typeLabel: Record<string, string> = { road: 'Road', gravel: 'Gravel', mtb: 'MTB' };
   const unit = $derived<UnitSystem>(appSettings.current?.unit ?? 'metric');
   /** odometer values are stored in km; convert only for display */
@@ -67,40 +80,64 @@
   const BIKE_TYPES: Bike['type'][] = ['road', 'gravel', 'mtb'];
 
   let bikeSheetOpen = $state(false);
+  /** the bike being edited in the sheet — null means the sheet is adding */
+  let editingBikeId = $state<string | null>(null);
   let bName = $state('');
   let bType = $state<Bike['type']>('road');
   let bWeight = $state(BIKE_DEFAULTS.road.weightKg);
+  let bOdo = $state(0);
+  let bNotes = $state('');
 
   function openAddBike(): void {
+    editingBikeId = null;
     bName = '';
     bType = 'road';
     bWeight = BIKE_DEFAULTS.road.weightKg;
+    bOdo = 0;
+    bNotes = '';
     bikeSheetOpen = true;
   }
 
-  /** Picking a type re-suggests that type's weight; the rider can still overwrite it. */
+  /** Editing keeps every stored value the form does not show — id, active flag. */
+  function openEditBike(bike: Bike): void {
+    editingBikeId = bike.id;
+    bName = bike.name;
+    bType = bike.type;
+    bWeight = bike.weightKg;
+    bOdo = bike.odometerKm;
+    bNotes = bike.notes ?? '';
+    bikeSheetOpen = true;
+  }
+
+  /** Picking a type re-suggests that type's weight on add; editing keeps the rider's. */
   function pickBikeType(t: Bike['type']): void {
     bType = t;
-    bWeight = BIKE_DEFAULTS[t].weightKg;
+    if (!editingBikeId) bWeight = BIKE_DEFAULTS[t].weightKg;
   }
 
   async function saveBike(): Promise<void> {
     const weightKg = Number(bWeight);
     if (!bName.trim() || !Number.isFinite(weightKg) || weightKg <= 0) return;
+    const isEdit = editingBikeId != null;
+    const prior = isEdit ? bikes.find((b) => b.bike.id === editingBikeId)?.bike : undefined;
     const rec: Bike = {
-      id: newId(),
+      id: editingBikeId ?? newId(),
       name: bName.trim(),
       type: bType,
       weightKg,
+      // type owns the physics coefficients: editing a road bike into an MTB has to move
+      // its crr/cda too, or the route solver keeps modelling the old machine
       crr: BIKE_DEFAULTS[bType].crr,
       cda: BIKE_DEFAULTS[bType].cda,
-      odometerKm: 0,
+      odometerKm: Math.max(0, Number(bOdo) || 0),
       // the first bike is also the active one: otherwise Routes and Race have no machine to
       // model, and the rider would have to add a bike and then activate it as a second step
-      active: ordered.length === 0,
+      active: prior ? prior.active : ordered.length === 0,
+      notes: bNotes.trim() || undefined,
       updatedAt: Date.now()
     };
     try {
+      // plain object only: Dexie/IndexedDB cannot structured-clone $state proxies
       await db.bikes.put(rec);
     } catch (err) {
       // the sheet stays open, same as the component form: a closed sheet after a failed write
@@ -110,7 +147,7 @@
       return;
     }
     bikeSheetOpen = false;
-    toast.ok(`${rec.name} added`);
+    toast.ok(isEdit ? `${rec.name} saved` : `${rec.name} added`);
   }
 
   function openAdd(bikeId: string): void {
@@ -262,11 +299,21 @@
             {typeLabel[primary.bike.type] ?? primary.bike.type} · {primary.bike.weightKg} kg
           </p>
         </div>
-        <span
-          class="shrink-0 text-[9px] font-extrabold uppercase tracking-wider text-rose border border-[rgba(255,77,94,0.45)] bg-[rgba(232,16,46,0.2)] rounded-pill px-2.5 py-1"
-        >
-          Active
-        </span>
+        <div class="flex items-center gap-2 shrink-0">
+          <button
+            class="grid h-8 w-8 place-items-center rounded-pill border border-white/15 bg-white/5 text-on-mono hover:bg-white/10 transition-colors"
+            title="Edit bike"
+            aria-label="Edit {primary.bike.name}"
+            onclick={() => openEditBike(primary.bike)}
+          >
+            <Icon name="pencil" size={15} strokeWidth={1.8} />
+          </button>
+          <span
+            class="text-[9px] font-extrabold uppercase tracking-wider text-rose border border-[rgba(255,77,94,0.45)] bg-[rgba(232,16,46,0.2)] rounded-pill px-2.5 py-1"
+          >
+            Active
+          </span>
+        </div>
       </div>
       <div class="flex items-end justify-between gap-3 border-t border-[#2b2d33] pt-4">
         <div>
@@ -308,7 +355,7 @@
     </div>
   </div>
 
-  {#each ordered as { bike, components } (bike.id)}
+  {#each ordered as { bike } (bike.id)}
     {#if bike.id !== primaryId}
       <!-- SECONDARY BIKE — clean card -->
       <section class="rounded-card bg-surface border border-hairline elevation-card p-4 flex flex-col gap-3">
@@ -317,7 +364,17 @@
             <h2 class="text-base font-extrabold tracking-tight truncate">{bike.name}</h2>
             <p class="text-xs text-ink-dim mt-0.5">{typeLabel[bike.type] ?? bike.type} · {bike.weightKg} kg</p>
           </div>
-          <StatusChip label="Standby" status="neutral" />
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-ink transition-colors"
+              title="Edit bike"
+              aria-label="Edit {bike.name}"
+              onclick={() => openEditBike(bike)}
+            >
+              <Icon name="pencil" size={15} strokeWidth={1.8} />
+            </button>
+            <StatusChip label="Standby" status="neutral" />
+          </div>
         </div>
         <div class="flex items-end justify-between gap-3">
           <p class="text-metric-md text-tabular font-extrabold">
@@ -336,23 +393,49 @@
         </button>
       </section>
     {/if}
+  {/each}
 
-    <!-- COMPONENTS + WEAR -->
+  {#if bikes.length > 0}
+    <!-- COMPONENTS + WEAR — one card for the whole stable; the chips choose the bike -->
     <section class="flex flex-col gap-2.5">
       <div class="flex items-center justify-between">
-        <span class="kicker">Components · {bike.name}</span>
-        <button
-          class="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-crimson-deep bg-surface border border-hairline rounded-pill px-2.5 py-1 hover:border-hairline-strong transition-colors"
-          onclick={() => openAdd(bike.id)}
-        >
-          <Icon name="plus" size={13} strokeWidth={2.4} />
-          Add
-        </button>
+        <span class="kicker">Components</span>
+        {#if shownBikeId}
+          <button
+            class="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-crimson-deep bg-surface border border-hairline rounded-pill px-2.5 py-1 hover:border-hairline-strong transition-colors"
+            onclick={() => openAdd(shownBikeId)}
+          >
+            <Icon name="plus" size={13} strokeWidth={2.4} />
+            Add
+          </button>
+        {/if}
       </div>
 
-      {#if components.length > 0}
+      <!-- bike chooser: scrollable chips, the active bike dotted -->
+      <div class="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+        {#each ordered as { bike } (bike.id)}
+          <button
+            class="shrink-0 h-8 px-3 rounded-pill text-[10px] font-extrabold uppercase tracking-wider border transition-colors flex items-center gap-1.5 {shownBikeId === bike.id
+              ? 'bg-ink text-on-mono border-ink'
+              : 'bg-tile text-ink-dim border-hairline hover:text-ink'}"
+            onclick={() => (compBikeId = bike.id)}
+            aria-pressed={shownBikeId === bike.id}
+          >
+            {#if bike.active}<span class="h-1.5 w-1.5 rounded-pill bg-crimson"></span>{/if}
+            {bike.name}
+          </button>
+        {/each}
+      </div>
+
+      {#if shownBike}
+        <span class="text-[11px] text-ink-dim text-tabular px-0.5">
+          {shownBike.bike.name} · {fmtDist(shownBike.bike.odometerKm)} {distLabel} odometer
+        </span>
+      {/if}
+
+      {#if shownBike && shownBike.components.length > 0}
         <div class="rounded-card bg-surface border border-hairline elevation-card divide-y divide-hairline">
-          {#each wearOf(components, bike.odometerKm) as w (w.comp.id)}
+          {#each wearOf(shownBike.components, shownBike.bike.odometerKm) as w (w.comp.id)}
             <div class="p-4 flex flex-col gap-2.5">
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
@@ -411,7 +494,7 @@
                       class="grid h-7 w-7 place-items-center rounded-lg bg-tile border border-hairline text-ink-dim hover:text-crimson-deep hover:border-hairline-strong transition-colors"
                       title="Service done — reset wear at current odometer"
                       aria-label="Service {w.comp.name}"
-                      onclick={() => service(w.comp, bike.odometerKm)}
+                      onclick={() => service(w.comp, shownBike.bike.odometerKm)}
                     >
                       <Icon name="rotate-ccw" size={14} strokeWidth={1.8} />
                     </button>
@@ -439,18 +522,20 @@
         </div>
       {:else}
         <div class="rounded-card border border-dashed border-hairline-strong p-5 text-center flex flex-col items-center gap-3">
-          <p class="text-sm text-ink-dim">No components tracked on this bike yet.</p>
-          <button
-            class="h-9 px-4 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 active:scale-[0.98] transition-transform"
-            onclick={() => openAdd(bike.id)}
-          >
-            <Icon name="plus" size={14} strokeWidth={2.4} />
-            Add first component
-          </button>
+          <p class="text-sm text-ink-dim">No components tracked {shownBike ? `on ${shownBike.bike.name}` : 'yet'}.</p>
+          {#if shownBikeId}
+            <button
+              class="h-9 px-4 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 active:scale-[0.98] transition-transform"
+              onclick={() => openAdd(shownBikeId)}
+            >
+              <Icon name="plus" size={14} strokeWidth={2.4} />
+              Add first component
+            </button>
+          {/if}
         </div>
       {/if}
     </section>
-  {/each}
+  {/if}
 
   <p class="text-center text-xs text-ink-dim">
     Wear model: WASPADA ≥ 90%, KRITIS ≥ 100% · ⟳ logs a service at the current odometer — all changes persist locally.
@@ -554,10 +639,10 @@
     class="fixed inset-x-0 bottom-0 z-[70] mx-auto max-w-md rounded-t-[28px] bg-surface border-t border-hairline elevation-raised p-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] flex flex-col gap-4"
     role="dialog"
     aria-modal="true"
-    aria-label="Add bike"
+    aria-label={editingBikeId ? 'Edit bike' : 'Add bike'}
   >
     <div class="flex items-center justify-between">
-      <h2 class="text-base font-extrabold tracking-tight">Add bike</h2>
+      <h2 class="text-base font-extrabold tracking-tight">{editingBikeId ? 'Edit bike' : 'Add bike'}</h2>
       <button
         class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-ink transition-colors"
         onclick={() => (bikeSheetOpen = false)}
@@ -604,6 +689,28 @@
       />
     </label>
 
+    <div class="grid grid-cols-2 gap-3">
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Odometer (km)</span>
+        <input
+          class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+          type="number"
+          min="0"
+          step="1"
+          bind:value={bOdo}
+        />
+      </label>
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Notes</span>
+        <input
+          class="h-11 rounded-2xl bg-tile border border-hairline px-3.5 text-sm font-bold text-ink outline-none focus:border-signal transition-colors"
+          type="text"
+          bind:value={bNotes}
+          placeholder="optional"
+        />
+      </label>
+    </div>
+
     <p class="text-[11px] text-ink-dim leading-relaxed">
       Rolling resistance and drag are set from the type — the route solver uses them right away.
     </p>
@@ -614,7 +721,7 @@
       onclick={saveBike}
     >
       <Icon name="check" size={16} strokeWidth={2.4} />
-      Add bike
+      {editingBikeId ? 'Save changes' : 'Add bike'}
     </button>
   </div>
 {/if}

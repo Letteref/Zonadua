@@ -262,6 +262,15 @@ export interface Settings {
   weatherOn: boolean;
   /** last successful JSON backup (epoch ms) — drives the bell reminder (PRD §10) */
   lastBackupAt?: number;
+  /**
+   * Onboarding preferences (step 4). Both are rider-stated intent, not measurements, so they
+   * are absent on any device that never ran the flow. They need no Dexie index, so adding
+   * them here does not require a schema version bump.
+   */
+  /** experience archetype key — 'foundation' | 'structured' | 'performance' */
+  archetype?: string;
+  /** the weekly distance the rider said they aim to ride, in km — the planning baseline */
+  weeklyTargetKm?: number;
   updatedAt: number;
 }
 

@@ -4,16 +4,17 @@
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import CircleButton from '$lib/components/CircleButton.svelte';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
-    import { activeBike, appSettings, latestFtp, weightSeries } from '$lib/data/queries.svelte';
+    import { activeBike, appSettings, latestFtp, weightSeries, fetchRouteProfile, allRoutes } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
+  import { untrack } from 'svelte';
   import { db, type Race } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
-  import { haversineM, parseCourse } from '$lib/domain/course';
+  import { parseAndStoreRoute } from '$lib/data/route-import';
   import type { ProfilePoint } from '$lib/domain/physics';
-  import { buildPlan, clockOf, durationOf, planSeries } from '$lib/domain/pacing';
+  import { buildPlan, clockOf, durationOf, planSeries, fitIfForAvgSpeed } from '$lib/domain/pacing';
   import { formatDistance, formatElevation, formatWeight, type UnitSystem } from '$lib/domain/units';
   import { toast } from '$lib/toast.svelte';
-  import { peakHeadwind, bearingBetween, correctForWind, type WindSample } from '$lib/domain/wind';
+  import { peakHeadwind, correctForWind, type WindSample } from '$lib/domain/wind';
   import { fetchWindForecast } from '$lib/infra/weather/openmeteo';
 
   /** the global pill (UI-SPEC §46); this route only picks the words */
@@ -21,7 +22,13 @@
     tone === 'ok' ? toast.ok(msg) : toast.error(msg);
 
   // ---------- route state (real GPX replaces the M0 preview) ----------
-  let routeName = $state('Bukit Barisan 200');
+  /**
+   * The loaded route's name — empty until a GPX is imported or a library row is opened.
+   * It used to start as "Bukit Barisan 200", a name from an early mock, which the header
+   * displayed as a headline while the estimator was still on its sample profile: the
+   * screen claimed a route that existed nowhere on the device.
+   */
+  let routeName = $state('');
   let loadedRouteId = $state<string | null>(null);
   /** real elevation profile in km/alt — the physics input, never chart-normalised */
   let rawProfile = $state<ProfilePoint[] | null>(null);
@@ -56,7 +63,11 @@
     { name: 'Steady', if: 0.72 },
     { name: 'Attack', if: 0.81 }
   ] as const;
-  let selectedIdx = $state(1);
+  /** manual intensity — the presets *and* the slider below write here */
+  let targetIf = $state(0.72);
+  /** power (IF) or an average speed the solver inverts to an IF */
+  let targetType = $state<'power' | 'speed'>('power');
+  let targetSpeedKph = $state(30);
 
   // editable setup — every one of these moves the physics
   let cargoKg = $state(3);
@@ -64,6 +75,17 @@
   let stopMin = $state(15);
   let headwindKph = $state(0);
   let startMin = $state(START_MIN);
+
+  /** The editable face of `startMin`: the solver reads minutes-past-midnight, the rider sets a clock. */
+  const startClock = $derived(
+    `${String(Math.floor(startMin / 60) % 24).padStart(2, '0')}:${String(startMin % 60).padStart(2, '0')}`
+  );
+
+  function setStartClock(v: string): void {
+    const [h, m] = v.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return;
+    startMin = (Math.max(0, Math.min(23, h)) * 60 + Math.max(0, Math.min(59, m))) % 1440;
+  }
 
   /**
    * Wind forecast (ROADMAP M5 DoD line 4).
@@ -101,7 +123,7 @@
    * the risk being that pass 2 quietly solves a *different* plan than pass 1 and the drift
    * it reports is then measuring the wrong thing.
    */
-  function solveWith(headwind: number) {
+  function solveWithIf(ifTarget: number, headwind: number) {
     return buildPlan({
       profile,
       physics: {
@@ -113,11 +135,40 @@
         temperatureC: 20,
         headwindKph: headwind
       },
-      pacing: { mode: 'if', ifTarget: modes[selectedIdx].if, ftp },
+      pacing: { mode: 'if', ifTarget, ftp },
       stops: { count: stopCount, minutesEach: stopMin },
       startMin,
       checkpoints: CHECKPOINTS
     });
+  }
+
+  function solveWith(headwind: number) {
+    return solveWithIf(pacingIf, headwind);
+  }
+
+  /**
+   * Speed target → intensity. The bisection walks the *manual* headwind so its inputs
+   * never depend on its own output; the wind-corrected pass below then re-solves the
+   * fitted IF through `solveWith`, so one number feeds every readout on the screen.
+   */
+  const speedFit = $derived.by(() => {
+    if (targetType !== 'speed') return null;
+    return fitIfForAvgSpeed((ift) => solveWithIf(ift, headwindKph), targetSpeedKph);
+  });
+
+  /** The intensity every readout on this screen is built from. */
+  const pacingIf = $derived(targetType === 'speed' ? (speedFit?.ifTarget ?? targetIf) : targetIf);
+
+  /**
+   * The bar is the slider: a drag maps x → IF on the bar's own 0.55–0.95 scale, the same
+   * numbers printed at its ends. The manual range below writes the identical `targetIf`,
+   * so the two controls can never disagree about what the target is.
+   */
+  function setIfFromBar(e: PointerEvent): void {
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const frac = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+    targetIf = Math.round((0.55 + Math.max(0, Math.min(1, frac)) * 0.4) * 100) / 100;
   }
 
   /**
@@ -169,8 +220,8 @@
     }
   }
 
-  const npTarget = $derived(Math.round(modes[selectedIdx].if * ftp));
-  const barPct = $derived(Math.max(2, Math.min(100, ((modes[selectedIdx].if - 0.55) / 0.4) * 100)));
+  const npTarget = $derived(Math.round(pacingIf * ftp));
+  const barPct = $derived(Math.max(2, Math.min(100, ((pacingIf - 0.55) / 0.4) * 100)));
 
   /** Named control points; the ETA of each one is solved, never assumed. */
   const CHECKPOINTS = [
@@ -235,69 +286,93 @@
   async function importRouteFile(file: File): Promise<void> {
     toast.busy('Parsing route…');
     try {
-      // the tested domain parser owns distance, gain and the point list
-      const ride = parseCourse(await file.text(), file.name);
-      if (ride.distanceKm < 0.1) throw new Error('Route too short');
-
-      // build the km/alt profile the physics actually consumes
-      const xy: Array<[number, number]> = [];
-      let distM = 0;
-      let prevLat = NaN;
-      let prevLng = NaN;
-      let prevAlt = NaN;
-      for (const p of ride.points) {
-        if (p.lat != null && p.lng != null) {
-          const havePrev = Number.isFinite(prevLat) && Number.isFinite(prevLng);
-          // bearing first, from the *previous* fix. It has to be taken before prevLat is
-          // overwritten — reading it afterwards compares each point with itself, which
-          // `bearingBetween` correctly reports as no direction at all, and the estimator
-          // then silently stays on manual with no way for the rider to tell why.
-          if (!windBearing && havePrev) {
-            const b = bearingBetween(prevLat, prevLng, p.lat, p.lng);
-            if (b != null) windBearing = b;
-          }
-          if (havePrev) distM += haversineM(prevLat, prevLng, p.lat, p.lng);
-          prevLat = p.lat;
-          prevLng = p.lng;
-          // keep the first real fix so the weather forecast has an honest location; the
-          // compressed profile deliberately carries only km/alt, so this is the only point
-          // at which the route's coordinates still exist
-          if (!routeCoords) routeCoords = { lat: p.lat, lng: p.lng };
-        }
-        if (p.alt != null) prevAlt = p.alt;
-        xy.push([distM / 1000, prevAlt]);
-      }
-
-      const stride = Math.ceil(xy.length / 600); // bound the stored point count
-      const sampled = xy.filter((_, i) => i % stride === 0 || i === xy.length - 1);
-
-      if (typeof CompressionStream === 'undefined') throw new Error('Compression unsupported');
-      const stream = new Blob([JSON.stringify(xy)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-      const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
-
-      const id = newId();
-      await db.routes.put({
-        id,
-        name: ride.name,
-        distanceKm: ride.distanceKm,
-        elevGainM: ride.elevGainM,
-        pointsCompressed: compressed,
-        pointCount: xy.length,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-
-      loadedRouteId = id;
-      routeName = ride.name;
-      rawProfile = sampled.map(([km, alt]) => ({ distKm: km, altM: alt }));
+      // one import pipeline, shared with the Route library (lib/data/route-import.ts)
+      const r = await parseAndStoreRoute(file);
+      loadedRouteId = r.id;
+      routeName = r.name;
+      rawProfile = r.sampled;
+      // the file carries its own location and direction: the previous route's coordinates
+      // and bearing describe the previous hill, and a forecast fetched for them would be
+      // weather for a place this file never went. Wind goes back to manual.
+      routeCoords = r.coords;
+      windBearing = r.bearingDeg;
+      windForecast = null;
+      windNote = null;
+      // keep the URL honest: the screen now shows this row, so #/routes/:id points at it.
+      // The preview effect below sees loadedRouteId already set and does not re-decode.
+      route.navigateTo('routes', r.id);
       showToast(
-        `Loaded ${routeName} — ${formatDistance(ride.distanceKm, unit)} · ${formatElevation(ride.elevGainM, unit)} of climbing`
+        `Loaded ${r.name} — ${formatDistance(r.distanceKm, unit)} · ${formatElevation(r.elevGainM, unit)} of climbing`
       );
     } catch (err) {
       console.error('[zonadua] route import failed:', err);
       showToast('Import failed — use a GPX file with trackpoints', 'error');
     }
   }
+
+  // ---------- library dropdown beside "Choose GPX file" (empty state) ----------
+  /** Saved routes, newest first — the dropdown's options. */
+  const savedRoutes = $derived(
+    [...(allRoutes.current ?? [])].sort((a, b) => b.createdAt - a.createdAt)
+  );
+  /** Controlled select value; cleared after each pick so a failed load can be retried. */
+  let savedPick = $state('');
+
+  /**
+   * Picking from the dropdown is the same journey as tapping a Route library row:
+   * navigate to `#/routes/:id` and let the preview effect load it. One loader, two
+   * doors — a second load path here would drift from the one the library trusts.
+   */
+  function onPickSaved(e: Event): void {
+    const id = (e.currentTarget as HTMLSelectElement).value;
+    savedPick = '';
+    if (id) route.navigateTo('routes', id);
+  }
+
+  // ---------- library preview: opening #/routes/:id from the Route library ----------
+  /**
+   * A row in the Route library links to `#/routes/:id`; this is what makes that link mean
+   * something. The stored profile is decoded and run through the same estimator the import
+   * path feeds — the rider sees the real projection, not a placeholder.
+   *
+   * The stored track is `[km, alt]` pairs only (import drops lat/lng when it compresses),
+   * so a preview restores terrain but not coordinates: wind resets to manual rather than
+   * inheriting the bearing of whatever route was loaded before. A forecast for a hill this
+   * file cannot locate would be worse than no forecast.
+   *
+   * `loadedRouteId` is read untracked: the import path writes it while this same id sits in
+   * the URL, and letting that write re-trigger the effect would re-decode the *previous*
+   * row and clobber the import that just happened.
+   */
+  $effect(() => {
+    const id = route.name === 'routes' ? route.detailParam : null;
+    if (!id || id === untrack(() => loadedRouteId)) return;
+    void (async () => {
+      try {
+        const [row, pts] = await Promise.all([db.routes.get(id), fetchRouteProfile(id)]);
+        if (loadedRouteId === id) return; // an import won the race while decoding
+        if (!row || pts.length < 2) {
+          showToast('That saved route could not be opened', 'error');
+          route.navigate('routes');
+          return;
+        }
+        // bound the rendered point count the same way import does
+        const stride = Math.ceil(pts.length / 600);
+        const sampled = pts.filter((_, i) => i % stride === 0 || i === pts.length - 1);
+        loadedRouteId = id;
+        routeName = row.name;
+        rawProfile = sampled;
+        windForecast = null;
+        windBearing = null;
+        windNote = null;
+        routeCoords = null;
+        showToast(`Previewing ${row.name} — ${formatDistance(row.distanceKm, unit)}`);
+      } catch (err) {
+        console.error('[zonadua] route preview failed:', err);
+        showToast('That saved route could not be opened', 'error');
+      }
+    })();
+  });
 
   // ---------- export GPX (from the stored profile) ----------
   function exportGpx(): void {
@@ -329,17 +404,17 @@
       const routeId = loadedRouteId ?? routeRows[0]?.id ?? 'stub-route';
       const existing = await db.races.where('status').anyOf(['planned', 'live']).toArray();
       const base: Race = existing[0]
-        ? { ...existing[0], name: routeName, status: 'planned', updatedAt: Date.now() }
+        ? { ...existing[0], name: routeName || 'Sample route', status: 'planned', updatedAt: Date.now() }
         : {
             id: newId(),
             routeId,
-            name: routeName,
+            name: routeName || 'Sample route',
             startTime: new Date(new Date().setHours(0, 0, 0, 0) + startMin * 60000).toISOString(),
             cutoffFinishMin: 13 * 60,
             checkpoints: [{ km: 120, cutoffMin: 570, label: 'CP2 Payakumbuh' }],
             // carry the solved plan, not just the inputs — M4 projects from this
             planJson: JSON.stringify({
-              ifTarget: modes[selectedIdx].if,
+              ifTarget: pacingIf,
               cargoKg,
               stopCount,
               stopMin,
@@ -367,7 +442,7 @@
 <div class="mx-auto max-w-md px-5 pt-8 pb-10 flex flex-col gap-5">
   <EditorialHeader
     kicker={hasRoute ? 'Route specification' : 'Route estimator'}
-    headline={routeName}
+    headline={routeName || 'Plan a ride'}
     sub={hasRoute ? 'Loaded from GPX —' : 'No route loaded yet —'}
     accent={hasRoute ? `${formatDistance(routeKm, unit)} · ${formatElevation(routeElevM, unit)} of climbing.` : 'sample route below.'}
   >
@@ -411,16 +486,35 @@
           The estimator reads the route profile and projects your finish from FTP {ftp} W, your active bike and stop pattern — fully offline.
         </p>
       </div>
-      <button
-        class="h-11 px-5 rounded-pill bg-crimson-fill text-white text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-2 glow-signal active:scale-[0.98] transition-transform"
-        onclick={(e) => {
-          e.stopPropagation();
-          fileInput?.click();
-        }}
-      >
-        <Icon name="file-up" size={16} strokeWidth={2} />
-        Choose GPX file
-      </button>
+      <!-- one centred row: import fresh, or pick what the library already holds -->
+      <div class="flex items-center justify-center gap-2">
+        <button
+          class="h-11 px-5 rounded-pill bg-crimson-fill text-white text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-2 glow-signal active:scale-[0.98] transition-transform"
+          onclick={(e) => {
+            e.stopPropagation();
+            fileInput?.click();
+          }}
+        >
+          <Icon name="file-up" size={16} strokeWidth={2} />
+          Choose GPX file
+        </button>
+        {#if savedRoutes.length > 0}
+          <!-- stopPropagation, same as the button: the card itself is a click-to-import
+               target, and opening a file dialog behind a dropdown would be a trap -->
+          <select
+            class="h-11 min-w-0 max-w-[46%] rounded-pill bg-tile border border-hairline-strong px-3 text-[11px] font-extrabold uppercase tracking-wider text-ink outline-none focus:border-signal cursor-pointer"
+            aria-label="Preview a saved route from the library"
+            value={savedPick}
+            onclick={(e) => e.stopPropagation()}
+            onchange={onPickSaved}
+          >
+            <option value="" disabled>Library ({savedRoutes.length})</option>
+            {#each savedRoutes as r (r.id)}
+              <option value={r.id}>{r.name} · {r.distanceKm.toFixed(1)} km</option>
+            {/each}
+          </select>
+        {/if}
+      </div>
       <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">or drag &amp; drop it anywhere on this card</span>
     </div>
   {/if}
@@ -540,25 +634,110 @@
       <div class="flex items-center justify-between">
         <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-dim">Target intensity strategy</span>
       </div>
-      <div class="grid grid-cols-3 gap-1 p-1 rounded-pill bg-canvas border border-hairline">
-        {#each modes as m, i (m.name)}
-          <button
-            class="py-2 px-1 text-center rounded-pill transition-colors {selectedIdx === i
-              ? 'bg-raised text-ink border border-signal/50 uppercase tracking-wider font-extrabold'
-              : 'text-ink-dim hover:text-ink uppercase tracking-wider font-bold border border-transparent'} text-[10px] font-extrabold"
-            onclick={() => (selectedIdx = i)}
-          >
-            {m.name}
-            <span class="block text-[9px] {selectedIdx === i ? 'text-crimson-deep' : 'text-ink-dim'} font-normal normal-case">IF {m.if.toFixed(2)}</span>
-          </button>
-        {/each}
+      <!-- two ways to name one target: watts by intensity, or the average speed you want -->
+      <div class="grid grid-cols-2 gap-1 p-1 rounded-pill bg-canvas border border-hairline">
+        <button
+          class="py-2 rounded-pill transition-colors text-[10px] font-extrabold uppercase tracking-wider {targetType === 'power'
+            ? 'bg-raised text-ink border border-signal/50'
+            : 'text-ink-dim hover:text-ink border border-transparent'}"
+          onclick={() => (targetType = 'power')}
+        >
+          Power
+        </button>
+        <button
+          class="py-2 rounded-pill transition-colors text-[10px] font-extrabold uppercase tracking-wider {targetType === 'speed'
+            ? 'bg-raised text-ink border border-signal/50'
+            : 'text-ink-dim hover:text-ink border border-transparent'}"
+          onclick={() => (targetType = 'speed')}
+        >
+          Avg speed
+        </button>
       </div>
+
+      {#if targetType === 'power'}
+        <div class="grid grid-cols-3 gap-1 p-1 rounded-pill bg-canvas border border-hairline">
+          {#each modes as m (m.name)}
+            <button
+              class="py-2 px-1 text-center rounded-pill transition-colors {Math.abs(targetIf - m.if) < 0.005
+                ? 'bg-raised text-ink border border-signal/50 uppercase tracking-wider font-extrabold'
+                : 'text-ink-dim hover:text-ink uppercase tracking-wider font-bold border border-transparent'} text-[10px] font-extrabold"
+              onclick={() => (targetIf = m.if)}
+            >
+              {m.name}
+              <span class="block text-[9px] {Math.abs(targetIf - m.if) < 0.005 ? 'text-crimson-deep' : 'text-ink-dim'} font-normal normal-case">IF {m.if.toFixed(2)}</span>
+            </button>
+          {/each}
+        </div>
+        <!-- the presets are three points on a continuum; this is the continuum -->
+        <label class="flex flex-col gap-1">
+          <span class="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-ink-dim">
+            <span>Manual IF</span>
+            <span class="text-ink text-tabular">IF {targetIf.toFixed(2)} · {Math.round(targetIf * ftp)} W</span>
+          </span>
+          <input
+            type="range"
+            min="0.55"
+            max="0.95"
+            step="0.01"
+            value={targetIf}
+            oninput={(e) => (targetIf = Number((e.currentTarget as HTMLInputElement).value))}
+            class="w-full accent-crimson"
+            aria-label="Intensity factor"
+          />
+        </label>
+      {:else}
+        <label class="flex flex-col gap-1">
+          <span class="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-ink-dim">
+            <span>Target avg speed</span>
+            <span class="text-ink text-tabular">{targetSpeedKph.toFixed(1)} km/h</span>
+          </span>
+          <input
+            type="range"
+            min="15"
+            max="45"
+            step="0.5"
+            value={targetSpeedKph}
+            oninput={(e) => (targetSpeedKph = Number((e.currentTarget as HTMLInputElement).value))}
+            class="w-full accent-crimson"
+            aria-label="Target average speed"
+          />
+        </label>
+        {#if speedFit?.note}
+          <p class="text-[11px] font-bold text-warn">{speedFit.note}</p>
+        {:else}
+          <p class="text-[11px] text-ink-dim">
+            Solves to <span class="font-bold text-ink">IF {pacingIf.toFixed(2)} · {npTarget} W</span> on this profile.
+          </p>
+        {/if}
+      {/if}
+
       <div class="flex flex-col gap-1.5 pt-1">
         <div class="flex items-center justify-between">
           <span class="text-[13px] text-ink font-semibold">Normalized Power Target</span>
           <span class="text-[30px] leading-none text-crimson text-tabular font-extrabold">{npTarget} <span class="text-base font-normal text-ink-dim">W</span></span>
         </div>
-        <div class="relative w-full h-3 bg-canvas rounded-pill overflow-hidden flex items-center border border-hairline">
+        <!-- the bar itself is draggable in power mode: press and drag to set IF -->
+        <div
+          class="relative w-full h-3 bg-canvas rounded-pill overflow-hidden flex items-center border border-hairline touch-none {targetType === 'power'
+            ? 'cursor-pointer'
+            : ''}"
+          {...(targetType === 'power'
+            ? {
+                role: 'slider',
+                'aria-label': 'Power target bar',
+                'aria-valuemin': 0.55,
+                'aria-valuemax': 0.95,
+                'aria-valuenow': Math.round(targetIf * 100) / 100,
+                onpointerdown: (e: PointerEvent) => {
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  setIfFromBar(e);
+                },
+                onpointermove: (e: PointerEvent) => {
+                  if (e.buttons > 0) setIfFromBar(e);
+                }
+              }
+            : {})}
+        >
           <div class="h-full bg-crimson rounded-pill glow-crimson transition-all" style="width: {barPct}%;"></div>
           <div class="absolute -translate-x-1/2 w-4 h-4 rounded-pill bg-ink border-2 border-signal transition-all" style="left: {barPct}%;"></div>
         </div>
@@ -651,6 +830,18 @@
             />
           </label>
         </div>
+        <label class="flex flex-col gap-1">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-ink-dim">Start time</span>
+          <!-- The one number on this card that was a constant: every ETA, checkpoint clock
+               and saved race start reads `startMin`, so this dial moves the whole plan. -->
+          <input
+            type="time"
+            value={startClock}
+            onchange={(e) => setStartClock((e.currentTarget as HTMLInputElement).value)}
+            class="h-9 rounded-xl bg-tile border border-hairline px-2.5 text-[13px] font-bold text-ink text-tabular outline-none focus:border-signal"
+            aria-label="Start time"
+          />
+        </label>
         {#if plan.hardest}
           <p class="text-[11px] font-medium text-ink-dim">
             Hardest at <span class="font-bold text-ink">km {plan.hardest.km.toFixed(1)}</span>

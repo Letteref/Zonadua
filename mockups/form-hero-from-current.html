@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zonadua — Form hero: evolusi dari form yang sekarang</title>
+<style>
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33; --amber:#ffad2e; --green:#6fbb74;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:48px 16px 88px; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em;
+  }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 30px; line-height:1.6; }
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px; padding:24px 22px 12px; margin-bottom:20px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 12px 32px -16px rgba(23,24,28,.16); overflow:hidden; }
+  .mock h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.55; margin-bottom:16px; }
+  .stage { background:var(--canvas); border-radius:18px; padding:22px 12px 24px; margin-bottom:12px; }
+  .tags { display:flex; gap:8px; flex-wrap:wrap; padding:4px 0 14px; }
+  .tags span { font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:999px; background:var(--tile);
+    border:1px solid var(--hairline); color:var(--ink-dim); }
+  .tags span.plus { color:var(--deep); border-color:rgba(168,12,33,.35); background:rgba(232,16,46,.06); }
+  .tags span.minus { color:var(--ink); border-color:var(--hairline); }
+  .how { font-size:11.5px; color:var(--ink-dim); line-height:1.65; border-top:1px dashed var(--hairline); padding-top:13px; margin-bottom:8px; }
+  .how b { color:var(--ink); }
+  .pick { text-align:center; background:var(--surface); border:1px dashed rgba(168,12,33,.4); border-radius:20px; padding:20px 22px; }
+  .pick h3 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+  .pick p { font-size:12.5px; color:var(--ink-dim); line-height:1.65; }
+  .pick b { color:var(--deep); }
+  footer { text-align:center; color:var(--ink-dim); font-size:11.5px; margin-top:24px; line-height:1.6; }
+  footer b { color:var(--deep); }
+
+  /* ============ kartu mono ============ */
+  .mono { border-radius:26px; background:var(--mono); color:#fff; border:1px solid rgba(255,255,255,.10); padding:14px 16px 16px;
+          box-shadow:0 10px 30px rgba(20,21,25,.25), 0 6px 28px -10px rgba(232,16,46,.18); }
+  .chrome { display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid rgba(255,255,255,.10); padding-bottom:10px; margin-bottom:14px; }
+  .lights { display:flex; gap:6px; }
+  .lights i { width:10px; height:10px; border-radius:999px; display:block; }
+  .lights i:nth-child(1){ background:var(--crimson); }
+  .lights i:nth-child(2){ background:#eab308; opacity:.85; }
+  .lights i:nth-child(3){ background:#22c55e; opacity:.85; }
+  .tabs { display:flex; gap:2px; }
+  .tab { font-size:10.5px; font-weight:700; padding:4px 10px; border-radius:999px; color:rgba(255,255,255,.55); }
+  .tab.on { background:rgba(255,255,255,.12); color:var(--on-mono); }
+  .live { display:flex; align-items:center; gap:5px; }
+  .live i { width:6px; height:6px; border-radius:999px; background:var(--crimson); }
+  .live b { font-size:10px; font-weight:800; letter-spacing:.14em; color:rgba(255,255,255,.5); }
+
+  /* baris isi — identik untuk semua varian kecuali zona tengah */
+  .row { position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:14px; min-height:64px; }
+  .left { display:flex; flex-direction:column; }
+  .elbl { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .elbl i { width:6px; height:6px; border-radius:999px; background:var(--rose); }
+  .elbl span { font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .big { font-size:58px; font-weight:800; line-height:1; letter-spacing:-0.04em; color:#fff; font-variant-numeric:tabular-nums; }
+  .right { display:flex; flex-direction:column; align-items:flex-end; }
+  .rlabel { font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:rgba(255,255,255,.4); margin-bottom:6px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); padding:5px 12px; border-radius:999px; }
+  .pill i { width:5px; height:5px; border-radius:999px; background:var(--amber); display:block; }
+  .pill b { font-size:12px; font-weight:700; color:#ff8a92; }
+
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; border-top:1px solid var(--hairline-dark); margin-top:14px; padding-top:14px; }
+  .tile { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:12px; }
+  .tile .th { display:flex; align-items:center; justify-content:space-between; }
+  .tile .lbl { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .tile .ic { width:14px; height:14px; border-radius:4px; background:rgba(255,173,46,.25); }
+  .tile .val { font-size:20px; font-weight:800; color:#fff; margin-top:7px; font-variant-numeric:tabular-nums; line-height:1; }
+  .tile .sub { font-size:10px; margin-top:4px; color:var(--on-mono-dim); }
+
+  /* slot 120×36 milik sparkline — dipakai ulang, bukan zona baru */
+  .slotline { display:flex; align-items:flex-end; gap:16px; }
+  .slot { width:120px; height:36px; position:relative; }
+  .slot svg { display:block; overflow:visible; }
+  .hist { fill:none; stroke:#fff; stroke-width:1.5; opacity:.9; }
+  .fc { fill:none; stroke:var(--rose); stroke-width:1.5; stroke-dasharray:2 3; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Form hero — evolusi dari form sekarang</h1>
+  <p class="lede">Semua varian <em>berangkat dari struktur kartu yang sekarang</em>: chrome dengan tabs, label Form (TSB) + dot, angka 58px, pill kanan, empat tile. Yang berubah hanya berapa elemen yang <em>dikurangi</em> dan/atau satu slot yang <em>dipakai-ulang</em> — tidak ada zona baru, tidak ada widget penguat, tidak ada dekorasi tambahan. Data: CTL 20 · ATL 15 · TSB +5 · Balanced.</p>
+
+  <!-- ============ 0. STATUS QUO (kontrol) ============ -->
+  <div class="mock">
+    <h2><span class="num">0</span>Status quo — pembanding</h2>
+    <p class="desc">Kartu seperti yang terpasang hari ini: label ganda (Form (TSB) + Current form), sparkline di slot 120×36, pill kanan, empat tile. Ini pembanding agar tiap varian terlihat jelas apa yang berubah.</p>
+    <div class="stage">
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="tabs"><span class="tab on">Today</span><span class="tab">Form</span><span class="tab">Load</span></div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="row">
+          <div class="left">
+            <div class="elbl"><i></i><span>Form (TSB)</span></div>
+            <div class="slotline">
+              <span class="big">+5</span>
+              <div class="slot">
+                <svg viewBox="0 0 120 36" width="120" height="36" aria-hidden="true">
+                  <line x1="0" y1="35" x2="120" y2="35" stroke="#2b2d33" stroke-dasharray="2 3"/>
+                  <path class="hist" d="M0,22 L14,19 L28,24 L42,17 L56,21 L70,14 L84,18 L98,12 L112,15"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="right">
+            <span class="rlabel">Current form</span>
+            <span class="pill"><i></i><b>Balanced</b></span>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><div class="th"><span class="lbl">Fitness (CTL)</span><span class="ic"></span></div><p class="val">20</p><p class="sub">Chronic load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">Fatigue (ATL)</span><span class="ic"></span></div><p class="val">15</p><p class="sub">7-day load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">FTP</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">240 W</p><p class="sub">Logged 12d ago</p></div>
+          <div class="tile"><div class="th"><span class="lbl">W / kg</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">3.65</p><p class="sub">68.5 kg</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 1. KURANGI ============ -->
+  <div class="mock">
+    <h2><span class="num">1</span>Kurangi — buang label kedua, angka &amp; pill duduk di satu garis dasar</h2>
+    <p class="desc">Satu perubahan struktural, <em>pengurangan</em>: label "Current form" dihapus karena identitasnya sudah dibawa warna teks pill. Pill pindah ke tengah vertikal baris (berlihat pada dasar angka). Elemen net gains: <b>−1</b> label. Karakter kartu tidak berubah.</p>
+    <div class="stage">
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="tabs"><span class="tab on">Today</span><span class="tab">Form</span><span class="tab">Load</span></div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="row">
+          <div class="left">
+            <div class="elbl"><i></i><span>Form (TSB)</span></div>
+            <div class="slotline">
+              <span class="big">+5</span>
+              <div class="slot">
+                <svg viewBox="0 0 120 36" width="120" height="36" aria-hidden="true">
+                  <line x1="0" y1="35" x2="120" y2="35" stroke="#2b2d33" stroke-dasharray="2 3"/>
+                  <path class="hist" d="M0,22 L14,19 L28,24 L42,17 L56,21 L70,14 L84,18 L98,12 L112,15"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div style="justify-content:center" class="right">
+            <span class="pill"><i></i><b>Balanced</b></span>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><div class="th"><span class="lbl">Fitness (CTL)</span><span class="ic"></span></div><p class="val">20</p><p class="sub">Chronic load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">Fatigue (ATL)</span><span class="ic"></span></div><p class="val">15</p><p class="sub">7-day load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">FTP</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">240 W</p><p class="sub">Logged 12d ago</p></div>
+          <div class="tile"><div class="th"><span class="lbl">W / kg</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">3.65</p><p class="sub">68.5 kg</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="plus">−1 label; sisa pembagian tugas tetap</span>
+      <span class="plus">nol elemen baru, kontras tak berubah</span>
+      <span class="minus">− pill kini sendirian; bahkan bisa terlihat sedikit "gantung"</span>
+    </div>
+  </div>
+
+  <!-- ============ 2. SEMANTIK ============ -->
+  <div class="mock">
+    <h2><span class="num">2</span>Semantik —warna band pada angka &amp; sparkline</h2>
+    <p class="desc">Data tanpa perubahan posisi: <em>angka +5 dan garis sparkline kini menggunakan warna band</em> (rose untuk detrain, putih/balanced amber, hijau aman, amber productif, rose peaking — sesuai band). Pill tetap; label "Current form" (kembaran) boleh dihapus kini — informasi cukup lewat warna.</p>
+    <div class="stage">
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="tabs"><span class="tab on">Today</span><span class="tab">Form</span><span class="tab">Load</span></div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="row">
+          <div class="left">
+            <div class="elbl"><i></i><span>Form (TSB)</span></div>
+            <div class="slotline">
+              <span class="big" style="color:#ff8a92;">+5</span>
+              <div class="slot">
+                <svg viewBox="0 0 120 36" width="120" height="36" aria-hidden="true">
+                  <line x1="0" y1="35" x2="120" y2="35" stroke="#2b2d33" stroke-dasharray="2 3"/>
+                  <path d="M0,22 L14,19 L28,24 L42,17 L56,21 L70,14 L84,18 L98,12 L112,15" fill="none" stroke="#ff8a92" stroke-width="1.5" opacity=".9"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div style="justify-content:center" class="right">
+            <span class="pill"><i></i><b>Balanced</b></span>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><div class="th"><span class="lbl">Fitness (CTL)</span><span class="ic"></span></div><p class="val">20</p><p class="sub">Chronic load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">Fatigue (ATL)</span><span class="ic"></span></div><p class="val">15</p><p class="sub">7-day load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">FTP</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">240 W</p><p class="sub">Logged 12d ago</p></div>
+          <div class="tile"><div class="th"><span class="lbl">W / kg</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">3.65</p><p class="sub">68.5 kg</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="plus">nol perubahan posisi: hanya status yang jadi warna</span>
+      <span class="plus">baca state lewat warna di dua tempat</span>
+      <span class="minus">− redundansi warna: pill juga menyampitkan state yang sama</span>
+    </div>
+    <p class="how"><b>Penantian</b> · dengan pelan-pelan per-label yang "berulang dihapus", warna band pada skor dan garis menjadi satu-satunya encode state. Jika pengguna perlu kedua angka + pil, label kembaran cukup dihapus tanpa mengganggu — setiap varian dapat dibunbi di atas basis yang sudah di-proxy pilihan lain.</p>
+  </div>
+
+  <!-- ============ 3. PROPJECTION SLOT ============ -->
+  <div class="mock">
+    <h2><span class="num">3</span>Slot dipakai ulang — sparkline diganti proyeksi 7 hari</h2>
+    <p class="desc">Slot 120×36 yang sekarang milik sparkline tetap di posisi yang sama, tetapi isinya diganti: <b>riwayat 24 hari + proyeksi 7 hari dashed</b>. Informasi baru masuk tanpa zona baru, tanpa menambah elemen apa pun di luar slot. Label "Current form" tetap, atau dihapus seperti varian 1.</p>
+    <div class="stage">
+      <div class="mono">
+        <div class="chrome">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="tabs"><span class="tab on">Today</span><span class="tab">Form</span><span class="tab">Load</span></div>
+          <div class="live"><i></i><b>LIVE</b></div>
+        </div>
+        <div class="row">
+          <div class="left">
+            <div class="elbl"><i></i><span>Form (TSB)</span></div>
+            <div class="slotline">
+              <span class="big">+5</span>
+              <div class="slot">
+                <svg viewBox="0 0 120 36" width="120" height="36" aria-hidden="true">
+                  <line x1="0" y1="35" x2="120" y2="35" stroke="#2b2d33" stroke-dasharray="2 3"/>
+                  <path class="hist" d="M0,22 L14,19 L28,24 L42,17 L56,21 L70,14 L84,18 L98,12"/>
+                  <path class="fc" d="M98,12 C104,10 109,8 114,6"/>
+                  <circle cx="98" cy="12" r="3" fill="#fff"/>
+                  <circle cx="114" cy="6" r="3.5" fill="var(--rose)"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div style="justify-content:center" class="right">
+            <span class="pill"><i></i><b>Balanced</b></span>
+          </div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><div class="th"><span class="lbl">Fitness (CTL)</span><span class="ic"></span></div><p class="val">20</p><p class="sub">Chronic load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">Fatigue (ATL)</span><span class="ic"></span></div><p class="val">15</p><p class="sub">7-day load</p></div>
+          <div class="tile"><div class="th"><span class="lbl">FTP</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">240 W</p><p class="sub">Logged 12d ago</p></div>
+          <div class="tile"><div class="th"><span class="lbl">W / kg</span><span class="ic" style="background:rgba(255,255,255,.12)"></span></div><p class="val">3.65</p><p class="sub">68.5 kg</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="plus">informasi FYI muncul tanpa zona baru</span>
+      <span class="plus">slot, tinggi, dan posisi kartu tidak berubah</span>
+      <span class="minus">− butuh label "jika off" yang tidak muat di slot → nilai proyeksi 7d harus pindah ke tile atau tooltip</span>
+    </div>
+  </div>
+
+  <div class="pick">
+    <h3>Rekomendasi</h3>
+    <p>Mulai dari <b>varian 1 (kurangi)</b>: kartu jadi lebih tenang tanpa menambah apa pun, dan mudah dikembalikan kalau berubah pikiran. Varian <b>3</b> membawa informasi paling banyak tanpa menyentuh struktur — pilih bila rider perlu tahu arah. Kombinasi 1 + 2 dan 1 + 3 juga sah, asal <b>satu slot</b> dan <b>satu konsep warna</b>, tanpa tambahan widget apa pun.</p>
+  </div>
+
+  <footer>Zonadua · mockup statis — bukan build final.<br/>Balas <b>"jalankan 1"</b>, <b>"jalankan 2"</b>, <b>"jalankan 3"</b>, atau kombinasi (misal <b>"1+3"</b>).</footer>
+</div>
+</body>
+</html>

@@ -10,6 +10,7 @@
   } from '$lib/data/queries.svelte';
   import { db, type Settings as SettingsRec, type WeightLog, type FtpHistory, type Athlete } from '$lib/data/db';
   import { markWiped, newId } from '$lib/data/seed';
+  import { resetOnboarding } from '$lib/data/onboarding.svelte';
   import { BACKUP_CREDENTIALS_NOTE, buildBackupPayload, redactCredentials } from '$lib/data/backup';
   import { disconnectStrava, startStravaConnect } from '$lib/infra/strava/connect';
   import { runLiveSync } from '$lib/infra/strava/runSync';
@@ -417,6 +418,19 @@
       showFailure('Wipe failed', err);
       wipeStep = 0;
     }
+  }
+
+  // ---------- re-run onboarding ----------
+  /**
+   * Clear the completion flag and reload, so the next load replays first run: the welcome
+   * landing, then the setup flow. The reload matters: the shell is gated once at boot in
+   * App.svelte, and resetting the flag without reloading would leave the app already
+   * mounted past the gate until the next visit.
+   */
+  function rerunSetup(): void {
+    resetOnboarding();
+    location.hash = '#/';
+    location.reload();
   }
 
   // ---------- derived ----------
@@ -905,6 +919,20 @@
       </div>
       <input bind:this={restoreInput} class="hidden" type="file" accept=".json" onchange={onRestorePick} aria-label="Restore backup" />
       <p class="text-[10px] leading-relaxed text-ink-dim">{BACKUP_CREDENTIALS_NOTE}</p>
+
+      <!--
+        Re-run setup: clears the completion flag so the next load shows the five-step flow
+        again. The rider's data is untouched — the flow just re-asks and overwrites whatever
+        they change. Kept here, beside the destructive actions, because it is the one button
+        that deliberately brings a screen back.
+      -->
+      <button
+        class="h-11 w-full rounded-2xl bg-tile border border-hairline text-ink text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:border-hairline-strong transition-colors"
+        onclick={rerunSetup}
+      >
+        <Icon name="rotate-ccw" size={15} strokeWidth={1.8} />
+        Run setup again
+      </button>
 
       {#if wipeStep === 0}
         <button

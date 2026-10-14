@@ -22,6 +22,15 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
+    // First-run precondition, applied before each test's scripts run: every spec exercises
+    // the app *past* setup, and no spec tests the first-run shell itself. Without the flag,
+    // a fresh profile renders the welcome landing and the setup flow — both full-viewport
+    // fixed shells — so `#app` has no laid-out box ("visible" waits time out) and every
+    // hash navigation is swallowed by the gate. This arranges "this device has completed
+    // setup", the same way the ride fixtures arrange rows: a precondition, not an
+    // assertion. `resetOnboarding` in Settings clears all three keys, so a future spec that
+    // *does* test first run can still reach it.
+    storageState: 'tests/e2e/storage-state.json',
     // The cockpit renders clock times through `toLocaleTimeString` and `new Date()`. Pinning
     // the zone makes "05:30 roll-out" mean the same instant on every machine, so a test
     // cannot pass in Jakarta and fail in UTC.

@@ -4,12 +4,12 @@
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
-  import { allBikes, fetchRouteProfile, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
+  import { allBikes, allRoutes, fetchRouteProfile, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
   import { db, type Race, type RaceCheckpoint, type RaceLog } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { liveQuery } from 'dexie';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
-import { buildPlan, clockOf, planSeries, slowestWindows, type PlanSeriesPoint } from '$lib/domain/pacing';
+import { buildPlan, clockOf, fitIfForAvgSpeed, planSeries, slowestWindows, type PlanSeriesPoint } from '$lib/domain/pacing';
 import {
   gateBufferAt,
   kmAtClock as kmAtClockAt,
@@ -36,12 +36,74 @@ import { appSettings } from '$lib/data/queries.svelte';
   let startMin = $state(5 * 60 + 30);
   let cutoffMin = $state(13 * 60);
   let ifTarget = $state(0.7);
+  /** power by IF, or an average speed the solver inverts to an IF */
+  let targetType = $state<'power' | 'speed'>('power');
+  let targetSpeedKph = $state(30);
   let cargoKg = $state(3);
   let stopsMin = $state(30);
   let selectedBikeId = $state<string | null>(null);
-  let checkpoints = $state<RaceCheckpoint[]>([{ km: 120, cutoffMin: 570, label: 'CP2 Payakumbuh' }]);
+  let checkpoints = $state<RaceCheckpoint[]>([]);
+
+  /** ---------- manual checkpoints: km, label and roll-by are all rider-set ---------- */
+  /** the checkpoint open in the inline editor (index), or null */
+  let editingIdx = $state<number | null>(null);
+  let draftKm = $state(0);
+  let draftLabel = $state('');
+  /** draft roll-by as a time-of-day clock — converted against `startMin` on commit */
+  let draftClock = $state('00:00');
+
+  function startEditCp(i: number): void {
+    const cp = checkpoints[i];
+    if (!cp) return;
+    editingIdx = i;
+    draftKm = cp.km;
+    draftLabel = cp.label ?? '';
+    draftClock = fmtClock(startMin + (cp.cutoffMin ?? 0));
+  }
+
+  function commitCp(): void {
+    const i = editingIdx;
+    if (i == null) return;
+    const [h, m] = draftClock.split(':').map(Number);
+    const absMin = (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+    const km = Number.isFinite(draftKm) ? Math.max(0, draftKm) : (checkpoints[i]?.km ?? 0);
+    // cutoffs are stored as minutes AFTER start; the editor speaks time-of-day because
+    // that is the number a rider knows on the day
+    checkpoints = checkpoints.map((c, j) =>
+      j === i ? { ...c, km, label: draftLabel.trim(), cutoffMin: Math.max(0, absMin - startMin) } : c
+    );
+    editingIdx = null;
+  }
+
+  /**
+   * Add a checkpoint the rider then places themselves. The default row is a draft, not a
+   * plan: it opens in the editor immediately, because "CP3 Bukittinggi at 175 km, roll by
+   * 17:45" was exactly the hardcoded guess this feature exists to replace.
+   */
+  function addCp(): void {
+    const last = checkpoints.at(-1);
+    checkpoints = [
+      ...checkpoints,
+      { km: last ? last.km + 25 : 50, cutoffMin: last ? (last.cutoffMin ?? 0) + 120 : 240, label: '' }
+    ];
+    startEditCp(checkpoints.length - 1);
+  }
   /** stored GPX route backing this race — null until a race/route row is resolved */
   let routeId = $state<string | null>(null);
+
+  /** route library popup — picking a route must not drag the rider to the estimator */
+  let routePickerOpen = $state(false);
+  const libRoutes = $derived(
+    [...(allRoutes.current ?? [])].sort((a, b) => b.createdAt - a.createdAt)
+  );
+
+  function pickRoute(id: string, routeName: string): void {
+    routeId = id;
+    routePickerOpen = false;
+    // the profile effect above re-reads routeId and swaps the chart; the race name stays
+    // the rider's own — they may have renamed this race and a route pick is not a rename
+    toast.ok(`Route set — ${routeName}`);
+  }
 
   const bikes = $derived(allBikes.current ?? []);
   $effect(() => {
@@ -71,11 +133,35 @@ import { appSettings } from '$lib/data/queries.svelte';
 
   // ---------- derived (setup) ----------
   const ftp = $derived(latestFtp.current?.ftp ?? 0);
-  const targetWatts = $derived(Math.round(ifTarget * ftp));
+
+  /**
+   * Speed target → intensity, walked against the *same* physics/stops/start the real
+   * plan uses. Falls back to the rider's IF when there is no profile to fit against yet —
+   * a speed nobody can check against terrain is a guess, and this page does not guess.
+   */
+  const speedFit = $derived.by(() => {
+    if (targetType !== 'speed' || profile.length < 2) return null;
+    return fitIfForAvgSpeed(
+      (ift) =>
+        buildPlan({
+          profile,
+          physics: racePhysics,
+          pacing: { mode: 'if', ifTarget: ift, ftp },
+          stops: { count: stopsMin > 0 ? Math.max(1, Math.round(stopsMin / 15)) : 0, minutesEach: 15 },
+          startMin,
+          vMaxKph: 55
+        }),
+      targetSpeedKph
+    );
+  });
+
+  /** The intensity the whole screen plans with: the rider's IF, or the speed-fitted one. */
+  const effectiveIf = $derived(targetType === 'speed' ? (speedFit?.ifTarget ?? ifTarget) : ifTarget);
+  const targetWatts = $derived(Math.round(effectiveIf * ftp));
   const fmtClock = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(Math.round(min) % 60).padStart(2, '0')}`;
   const cutoffClock = $derived(fmtClock(startMin + cutoffMin));
-  const ifDesc = $derived(ifTarget < 0.65 ? 'Recovery / Zone 1' : ifTarget < 0.76 ? 'Steady Endurance' : ifTarget < 0.85 ? 'Tempo Pacing' : 'Sweetspot / Threshold');
-  const ifTone = $derived(ifTarget < 0.65 ? 'text-ink-dim' : ifTarget < 0.76 ? 'text-aman' : ifTarget < 0.85 ? 'text-crimson-deep' : 'text-kritis');
+  const ifDesc = $derived(effectiveIf < 0.65 ? 'Recovery / Zone 1' : effectiveIf < 0.76 ? 'Steady Endurance' : effectiveIf < 0.85 ? 'Tempo Pacing' : 'Sweetspot / Threshold');
+  const ifTone = $derived(effectiveIf < 0.65 ? 'text-ink-dim' : effectiveIf < 0.76 ? 'text-aman' : effectiveIf < 0.85 ? 'text-crimson-deep' : 'text-kritis');
 
   // Every number on this page comes out of `racePlan` below — the solver walking the real
   // GPX profile at the rider's chosen intensity. There are deliberately no average-speed or
@@ -132,7 +218,7 @@ import { appSettings } from '$lib/data/queries.svelte';
       ? buildPlan({
         profile,
         physics: racePhysics,
-        pacing: { mode: 'if', ifTarget, ftp },
+        pacing: { mode: 'if', ifTarget: effectiveIf, ftp },
         stops: { count: stopsMin > 0 ? Math.max(1, Math.round(stopsMin / 15)) : 0, minutesEach: 15 },
         startMin,
         // vMax capped for racing: a descent is taken at control speed, not at the free-ride cap
@@ -144,6 +230,19 @@ import { appSettings } from '$lib/data/queries.svelte';
 
   /** Chart rows: the same solver output the crosshair reads its buffer from. */
   const chartRows = $derived<PlanSeriesPoint[]>(racePlan ? planSeries(racePlan) : []);
+
+  /**
+   * The line under the slider, and it never lies: the fit's own verdict, or why there is
+   * no fit yet. Without this, a speed chip sitting over silently-fallback IF watts would
+   * claim a target the terrain was never consulted about. Declared after `profile` so the
+   * check reads the reference as the deferred one it is.
+   */
+  const speedNote = $derived(
+    targetType !== 'speed'
+      ? null
+      : speedFit?.note ??
+        (profile.length < 2 ? 'No route profile yet — a speed target needs terrain to solve against.' : null)
+  );
 
   /**
    * Race fueling, computed from this rider's mass and the plan's own energy.
@@ -319,7 +418,9 @@ import { appSettings } from '$lib/data/queries.svelte';
   async function saveAndStart() {
     try {
       const routeStub = await db.routes.toArray();
-      const routeIdRef = routeStub[0]?.id ?? 'stub-route';
+      // the route the rider just chose in the picker wins; the "first stored route"
+      // fallback only applies when no route has ever been picked (legacy behaviour)
+      const routeIdRef = routeId ?? routeStub[0]?.id ?? 'stub-route';
       routeId = routeIdRef;
       // plain objects only: Dexie/IndexedDB cannot structured-clone $state proxies
       const plainCheckpoints: RaceCheckpoint[] = JSON.parse(JSON.stringify(checkpoints));
@@ -333,7 +434,7 @@ import { appSettings } from '$lib/data/queries.svelte';
        * Null when there is no plan yet, which `raceOutcome` reads as "not measured".
        */
       const planJson = JSON.stringify({
-        ifTarget,
+        ifTarget: effectiveIf,
         cargoKg,
         stopsMin,
         bikeId: selectedBikeId,
@@ -611,12 +712,12 @@ import { appSettings } from '$lib/data/queries.svelte';
             <p class="text-xs text-ink-dim text-tabular mt-0.5">{raceKm > 0 ? `${raceKm.toFixed(1)} km` : 'no profile'} · <span class="text-aman">{planClimbM == null ? '—' : `${Math.round(planClimbM).toLocaleString('id-ID')} m`} ↑</span></p>
           </div>
         </div>
-        <a
-          href="#/routes"
+        <button
           class="text-crimson-deep text-[11px] font-bold tracking-wider uppercase flex items-center gap-0.5 shrink-0 px-2 py-1.5 rounded-lg bg-surface border border-hairline-strong hover:bg-hairline transition-all"
+          onclick={() => (routePickerOpen = true)}
         >
           Change <Icon name="chevron-right" size={14} strokeWidth={1.5} />
-        </a>
+        </button>
       </div>
     </section>
 
@@ -660,22 +761,58 @@ import { appSettings } from '$lib/data/queries.svelte';
       </section>
     </div>
 
-    <!-- Target IF slider -->
+    <!-- Target intensity: power by IF, or an average speed the solver inverts -->
     <section class="bg-surface border border-hairline p-4 rounded-card elevation-card flex flex-col gap-3">
       <div class="flex justify-between items-center">
-        <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Target intensity (IF)</span>
-        <span class="text-[11px] font-extrabold text-crimson-deep bg-raised border border-signal/40 px-2.5 py-0.5 rounded-pill text-tabular">IF {ifTarget.toFixed(2)}</span>
+        <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Target intensity</span>
+        <span class="text-[11px] font-extrabold text-crimson-deep bg-raised border border-signal/40 px-2.5 py-0.5 rounded-pill text-tabular">
+          {targetType === 'power' ? `IF ${effectiveIf.toFixed(2)}` : `${targetSpeedKph.toFixed(1)} km/h`}
+        </span>
       </div>
-      <input
-        class="w-full h-2 bg-tile border border-hairline rounded-pill appearance-none cursor-pointer accent-crimson"
-        type="range"
-        min="0.55"
-        max="0.95"
-        step="0.01"
-        bind:value={ifTarget}
-      />
+      <div class="grid grid-cols-2 gap-1 p-1 rounded-pill bg-tile border border-hairline">
+        <button
+          class="py-1.5 rounded-pill transition-colors text-[10px] font-extrabold uppercase tracking-wider {targetType === 'power'
+            ? 'bg-raised text-ink border border-signal/50'
+            : 'text-ink-dim border border-transparent'}"
+          onclick={() => (targetType = 'power')}
+        >
+          Power
+        </button>
+        <button
+          class="py-1.5 rounded-pill transition-colors text-[10px] font-extrabold uppercase tracking-wider {targetType === 'speed'
+            ? 'bg-raised text-ink border border-signal/50'
+            : 'text-ink-dim border border-transparent'}"
+          onclick={() => (targetType = 'speed')}
+        >
+          Avg speed
+        </button>
+      </div>
+      {#if targetType === 'power'}
+        <input
+          class="w-full h-2 bg-tile border border-hairline rounded-pill appearance-none cursor-pointer accent-crimson"
+          type="range"
+          min="0.55"
+          max="0.95"
+          step="0.01"
+          bind:value={ifTarget}
+          aria-label="Intensity factor"
+        />
+      {:else}
+        <input
+          class="w-full h-2 bg-tile border border-hairline rounded-pill appearance-none cursor-pointer accent-crimson"
+          type="range"
+          min="15"
+          max="45"
+          step="0.5"
+          value={targetSpeedKph}
+          oninput={(e) => (targetSpeedKph = Number((e.currentTarget as HTMLInputElement).value))}
+          aria-label="Target average speed"
+        />
+      {/if}
       <div class="flex justify-between items-center text-xs">
-        <span class="font-semibold {ifTone}">{ifDesc}</span>
+        <span class="font-semibold {speedNote ? 'text-warn' : ifTone}">
+          {speedNote ?? ifDesc}
+        </span>
         <span class="text-ink font-bold text-tabular">{targetWatts || '—'} W target</span>
       </div>
     </section>
@@ -736,7 +873,7 @@ import { appSettings } from '$lib/data/queries.svelte';
       </div>
     </section>
 
-    <!-- Intermediate checkpoints -->
+    <!-- Intermediate checkpoints — km, label and roll-by are all rider-editable -->
     <section class="bg-surface border border-hairline p-4 rounded-card elevation-card flex flex-col gap-3">
       <div class="flex justify-between items-center">
         <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Intermediate checkpoints</span>
@@ -744,34 +881,94 @@ import { appSettings } from '$lib/data/queries.svelte';
       </div>
       <div class="flex flex-col gap-2">
         {#each checkpoints as cp, i (i)}
-          <div class="bg-raised border border-hairline p-3 rounded-2xl flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-aman/15 text-aman border border-aman/30 grid place-items-center shrink-0">
-                <Icon name="check" size={17} strokeWidth={1.5} />
+          {#if editingIdx === i}
+            <div class="bg-raised border border-signal/40 p-3 rounded-2xl flex flex-col gap-2">
+              <div class="grid grid-cols-3 gap-2">
+                <label class="flex flex-col gap-1">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">KM</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    bind:value={draftKm}
+                    class="h-9 rounded-xl bg-surface border border-hairline px-2 text-[13px] font-bold text-ink text-tabular outline-none focus:border-signal"
+                    aria-label="Checkpoint kilometer"
+                  />
+                </label>
+                <label class="col-span-2 flex flex-col gap-1">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Label</span>
+                  <input
+                    type="text"
+                    bind:value={draftLabel}
+                    placeholder="Optional"
+                    class="h-9 rounded-xl bg-surface border border-hairline px-2 text-[13px] font-bold text-ink outline-none focus:border-signal"
+                    aria-label="Checkpoint label"
+                  />
+                </label>
               </div>
-              <div class="flex flex-col">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-xs font-bold text-ink text-tabular">KM {cp.km}</span>
-                  {#if cp.label}<span class="text-[10px] font-bold text-aman bg-aman/10 px-1.5 py-0.5 rounded border border-aman/20 uppercase">{cp.label}</span>{/if}
-                </div>
-                {#if cp.cutoffMin != null}
-                  <span class="text-[11px] text-ink-dim mt-0.5 text-tabular">Roll-by before {fmtClock((cp.cutoffMin ?? 0) + startMin)}</span>
-                {/if}
+              <div class="grid grid-cols-2 gap-2">
+                <label class="flex flex-col gap-1">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Roll-by</span>
+                  <input
+                    type="time"
+                    value={draftClock}
+                    onchange={(e) => (draftClock = (e.currentTarget as HTMLInputElement).value)}
+                    class="h-9 rounded-xl bg-surface border border-hairline px-2 text-[13px] font-bold text-ink text-tabular outline-none focus:border-signal"
+                    aria-label="Roll-by time"
+                  />
+                </label>
+                <button
+                  class="h-9 self-end rounded-xl bg-ink text-on-mono text-[11px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
+                  onclick={commitCp}
+                >
+                  Done
+                </button>
               </div>
             </div>
-            <button
-              class="w-8 h-8 rounded-full bg-surface border border-hairline text-ink-dim hover:text-kritis grid place-items-center transition-colors"
-              onclick={() => (checkpoints = checkpoints.filter((_, j) => j !== i))}
-              aria-label="Remove checkpoint"
-            >
-              <Icon name="trash-2" size={17} strokeWidth={1.5} />
-            </button>
-          </div>
+          {:else}
+            <div class="bg-raised border border-hairline p-3 rounded-2xl flex items-center justify-between">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-aman/15 text-aman border border-aman/30 grid place-items-center shrink-0">
+                  <Icon name="check" size={17} strokeWidth={1.5} />
+                </div>
+                <div class="flex flex-col min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs font-bold text-ink text-tabular">KM {cp.km}</span>
+                    {#if cp.label}<span class="max-w-[14ch] truncate text-[10px] font-bold text-aman bg-aman/10 px-1.5 py-0.5 rounded border border-aman/20 uppercase">{cp.label}</span>{/if}
+                  </div>
+                  {#if cp.cutoffMin != null}
+                    <span class="text-[11px] text-ink-dim mt-0.5 text-tabular">Roll-by before {fmtClock((cp.cutoffMin ?? 0) + startMin)}</span>
+                  {/if}
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-1.5">
+                <button
+                  class="w-8 h-8 rounded-full bg-surface border border-hairline text-ink-dim hover:text-ink grid place-items-center transition-colors"
+                  title="Edit checkpoint"
+                  aria-label="Edit checkpoint at {cp.km} km"
+                  onclick={() => startEditCp(i)}
+                >
+                  <Icon name="pencil" size={15} strokeWidth={1.5} />
+                </button>
+                <button
+                  class="w-8 h-8 rounded-full bg-surface border border-hairline text-ink-dim hover:text-kritis grid place-items-center transition-colors"
+                  title="Remove checkpoint"
+                  aria-label="Remove checkpoint at {cp.km} km"
+                  onclick={() => {
+                    checkpoints = checkpoints.filter((_, j) => j !== i);
+                    editingIdx = null;
+                  }}
+                >
+                  <Icon name="trash-2" size={17} strokeWidth={1.5} />
+                </button>
+              </div>
+            </div>
+          {/if}
         {/each}
       </div>
       <button
         class="w-full py-2.5 bg-raised/60 hover:bg-raised border border-dashed border-hairline-strong rounded-2xl text-ink-dim hover:text-crimson-deep hover:border-signal/50 flex items-center justify-center gap-1.5 transition-all"
-        onclick={() => (checkpoints = [...checkpoints, { km: 175, cutoffMin: 705, label: 'CP3 Bukittinggi' }])}
+        onclick={addCp}
       >
         <Icon name="plus" size={17} strokeWidth={1.5} />
         <span class="text-[11px] font-bold uppercase tracking-wider">Add checkpoint cut-off</span>
@@ -1101,7 +1298,7 @@ import { appSettings } from '$lib/data/queries.svelte';
         </p>
       {:else}
         <p class="text-[11px] font-medium text-ink-dim">
-          No route profile loaded — import a GPX on the Routes page, or save that route as a race plan,
+          No route profile loaded — press Change to pick one from your route library, or import a GPX in the library,
           to see the course here.
         </p>
       {/if}
@@ -1239,3 +1436,72 @@ import { appSettings } from '$lib/data/queries.svelte';
     </p>
   {/if}
 </div>
+
+{#if routePickerOpen}
+  <!-- backdrop -->
+  <button
+    class="fixed inset-0 z-[60] bg-ink/40 backdrop-blur-[2px]"
+    aria-label="Close route list"
+    onclick={() => (routePickerOpen = false)}
+  ></button>
+
+  <!-- route list from the library: pick without leaving the race setup -->
+  <div
+    class="fixed inset-x-0 bottom-0 z-[70] mx-auto max-w-md rounded-t-[28px] bg-surface border-t border-hairline elevation-raised p-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] flex flex-col gap-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Choose route"
+  >
+    <div class="flex items-center justify-between">
+      <div class="min-w-0">
+        <h2 class="text-base font-extrabold tracking-tight">Choose route</h2>
+        <p class="text-[11px] text-ink-dim">Straight from your route library.</p>
+      </div>
+      <button
+        class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-ink transition-colors"
+        onclick={() => (routePickerOpen = false)}
+        aria-label="Close"
+      >
+        <Icon name="x" size={16} strokeWidth={1.8} />
+      </button>
+    </div>
+
+    {#if libRoutes.length > 0}
+      <div class="flex flex-col gap-2 max-h-[46vh] overflow-y-auto">
+        {#each libRoutes as r (r.id)}
+          <button
+            class="w-full flex items-center gap-3 p-3 rounded-2xl text-left border transition-colors {routeId === r.id
+              ? 'bg-crimson/[0.04] border-signal/50'
+              : 'bg-raised border-hairline hover:border-hairline-strong'}"
+            onclick={() => pickRoute(r.id, r.name)}
+          >
+            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-tile border border-hairline text-signal">
+              <Icon name="route" size={18} strokeWidth={1.6} />
+            </span>
+            <span class="flex min-w-0 flex-1 flex-col leading-tight">
+              <span class="truncate text-sm font-bold text-ink">{r.name}</span>
+              <span class="text-[11px] text-ink-dim text-tabular">
+                {r.distanceKm.toFixed(1)} km · {Math.round(r.elevGainM)} m ↑
+              </span>
+            </span>
+            {#if routeId === r.id}
+              <Icon name="check" size={16} strokeWidth={2} class="text-crimson-deep shrink-0" />
+            {/if}
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <div class="rounded-2xl border border-dashed border-hairline-strong p-5 text-center flex flex-col items-center gap-3">
+        <p class="text-sm text-ink-dim">No saved routes yet.</p>
+        <a
+          href="#/library"
+          onclick={() => (routePickerOpen = false)}
+          class="h-10 px-4 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 active:scale-[0.98] transition-transform"
+        >
+          <Icon name="plus" size={14} strokeWidth={2.4} />
+          Import in library
+        </a>
+      </div>
+    {/if}
+  </div>
+{/if}

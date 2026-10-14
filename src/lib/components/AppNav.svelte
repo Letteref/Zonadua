@@ -16,14 +16,15 @@
   ];
 
   const dial: { name: RouteName; label: string; sub: string; icon: IconName }[] = [
-    { name: 'routes', label: 'Routes', sub: 'Route library & GPX plans', icon: 'map' },
+    { name: 'routes', label: 'Routes', sub: 'GPX planner & estimator', icon: 'map' },
+    { name: 'library', label: 'Library', sub: 'Saved routes & previews', icon: 'route' },
     { name: 'race', label: 'Race', sub: 'Live tracker & pacing', icon: 'timer' }
   ];
 
   let fabOpen = $state(false);
   let fabRoot: HTMLDivElement | null = $state(null);
 
-  const fabActive = $derived(route.name === 'routes' || route.name === 'race');
+  const fabActive = $derived(route.name === 'routes' || route.name === 'library' || route.name === 'race');
   const plusHot = $derived(fabActive || fabOpen);
 
   // ---- sliding highlight: satu pill putih yang bergeser antar tab ----
@@ -113,7 +114,7 @@
           >
             <div class="flex items-center justify-between px-2.5 pb-1 pt-1.5">
               <span class="text-[9px] font-extrabold uppercase tracking-[0.14em] text-ink-dim">Plan</span>
-              <span class="text-[9px] font-semibold text-ink-dim/70">2 destinations</span>
+              <span class="text-[9px] font-semibold text-ink-dim/70">{dial.length} destinations</span>
             </div>
             {#each dial as d (d.name)}
               {@const active = route.name === d.name}

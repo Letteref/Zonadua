@@ -1100,9 +1100,10 @@ test.describe('first launch without demo data — the Gear page has a way in', (
 
     await sheet.getByPlaceholder('e.g. Domane SL6').fill('Weekend bike');
     // the type buttons carry the type's suggested weight; overwrite it to prove the stored
-    // value is the rider's and not the suggestion
+    // value is the rider's and not the suggestion. Named, because the sheet now also
+    // carries an odometer field and both are number inputs
     await sheet.getByRole('button', { name: 'Gravel' }).click();
-    await sheet.getByRole('spinbutton').fill('10.6');
+    await sheet.getByRole('spinbutton', { name: 'Weight (kg)' }).fill('10.6');
     await sheet.getByRole('button', { name: /^add bike$/i }).click();
 
     // really stored: it lands as the primary machine, from an empty odometer

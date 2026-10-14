@@ -74,6 +74,11 @@
   // ---------- weekly TSS target (domain derivation — shared with the Rides week card) ----------
   const tssTarget = $derived(weeklyTssTarget(cycling));
 
+  // The distance the rider chose in onboarding (step 4). Shown as context on the weekly card
+  // only — it is a distance, not a stress figure, and inventing a TSS from it would mean
+  // assuming intensity and duration. Absent on any device that never ran the flow.
+  const targetKm = $derived(appSettings.current?.weeklyTargetKm ?? null);
+
   // ---------- weekly target ----------
   const weekPct = $derived(tssTarget > 0 ? Math.min(100, Math.round((week.tss / tssTarget) * 100)) : 0);
 
@@ -511,6 +516,11 @@
           </span>
           <span class="font-semibold text-ink">{week.dailyTss.filter((d) => d.tss > 0).length} ride day{week.dailyTss.filter((d) => d.tss > 0).length === 1 ? '' : 's'} this week</span>
         </div>
+        {#if targetKm}
+          <p class="text-[11px] text-ink-dim pt-1 border-t border-hairline">
+            Your target: {targetKm} {distLabel} a week
+          </p>
+        {/if}
       </div>
     </SectionCard>
 

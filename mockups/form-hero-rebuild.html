@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zonadua — Form hero, dibangun baru dari fundamental</title>
+<style>
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519; --mono2:#1b1c22;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33; --amber:#ffad2e; --green:#6fbb74;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:48px 16px 88px; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em;
+  }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 34px; line-height:1.6; }
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px; padding:26px 22px 16px; margin-bottom:22px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 12px 32px -16px rgba(23,24,28,.16); overflow:hidden; }
+  .mock h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.55; margin-bottom:16px; }
+  .stage { background:var(--canvas); border-radius:18px; padding:26px 14px 28px; margin-bottom:14px; }
+  .mono { border-radius:26px; background:var(--mono); color:#fff; border:1px solid rgba(255,255,255,.10); padding:22px 20px 18px;
+          box-shadow:0 10px 30px rgba(20,21,25,.25), 0 6px 28px -10px rgba(232,16,46,.18); }
+  .tags { display:flex; gap:8px; flex-wrap:wrap; padding:4px 0 16px; }
+  .tags span { font-size:10.5px; font-weight:700; padding:5px 10px; border-radius:999px; background:var(--tile);
+    border:1px solid var(--hairline); color:var(--ink-dim); }
+  .tags span.plus { color:var(--deep); border-color:rgba(168,12,33,.35); background:rgba(232,16,46,.06); }
+  .tags span.minus { color:var(--ink); border-color:var(--hairline); }
+  .how { font-size:11.5px; color:var(--ink-dim); line-height:1.65; border-top:1px dashed var(--hairline); padding-top:14px; margin-bottom:10px; }
+  .how b { color:var(--ink); }
+  .pick { text-align:center; background:var(--surface); border:1px dashed rgba(168,12,33,.4); border-radius:20px; padding:20px 22px; }
+  .pick h3 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+  .pick p { font-size:12.5px; color:var(--ink-dim); line-height:1.65; }
+  .pick b { color:var(--deep); }
+  footer { text-align:center; color:var(--ink-dim); font-size:11.5px; margin-top:26px; line-height:1.6; }
+  footer b { color:var(--deep); }
+
+  /* ===== skala tipografi: satu mesin hierarki =====
+     3 step saja: eyebrow 10px / display 44px / runway 13px. Nol dekorasi. */
+  .eyebrow { font-size:10px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .disp { font-size:44px; font-weight:800; line-height:1.02; letter-spacing:-0.035em; }
+  .disp .state { color:#ff8a92; }
+  .disp .val { color:rgba(247,248,250,.45); font-variant-numeric:tabular-nums; font-weight:700; }
+  .runway { display:flex; gap:22px; margin-top:16px; padding-top:14px; border-top:1px solid var(--hairline-dark);
+            font-size:13px; color:var(--on-mono-dim); font-variant-numeric:tabular-nums; }
+  .runway b { color:var(--on-mono); font-weight:700; font-size:15px; margin-left:6px; }
+
+  /* ===== N: satu elemen grafis, satu tugas ===== */
+  .axis { margin-top:20px; position:relative; height:40px; }
+  .axis .line { position:absolute; top:0; left:0; right:0; height:2px; border-radius:2px; background:rgba(255,255,255,.14); }
+  .axis .sole { position:absolute; top:0; height:2px; width:58%; border-radius:2px; background:rgba(255,255,255,.45); }
+  .axis .d { position:absolute; top:-5px; width:12px; height:12px; border-radius:999px; background:#fff; border:3px solid var(--rose);
+             box-shadow:0 2px 8px rgba(0,0,0,.45); transform:translateX(-50%); }
+  .axis .lab { position:absolute; top:10px; font-size:9px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .axis .lab.strong { color:var(--on-mono); }
+  .axis .lab.l { left:0; } .axis .lab.r { right:0; } .axis .lab.c { left:58%; transform:translateX(-50%); color:var(--amber); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Form — dibangun baru dari awal</h1>
+  <p class="lede">Semua ronde sebelumnya dihapus. Desain ini dibuat berurutan dari pilihan fundamental: tema <em>Deep Dark</em>, tipografi <em>Swiss rational hierarchy</em>, satu label, satu jawaban utama, satu elemen grafis berkualitas. Data apl demo: TSB +5, Fitness 20, Fatigue 15, proyeksi +14. Semua type sudah tetap karena berasal dari angka deret PMC.</p>
+
+  <!-- ========== F1. EDITORIAL ========== -->
+  <div class="mock">
+    <h2><span class="num">F1</span>Editorial</h2>
+    <p class="desc">Tema: Deep Dark. Tipografi: Swiss type hierarchy. Karakter lain: nol komponen dekoratif. Dua langkah besar: state di warna, angka di kepastian, runway metrics di bawah.</p>
+    <div class="stage">
+      <div class="mono">
+        <p class="eyebrow">Form hari ini</p>
+        <p class="disp" style="margin-top:10px;"><span class="state">Balanced</span>&nbsp;<span class="val">+5</span></p>
+        <div class="runway">
+          <span>Fitness<b>20</b></span>
+          <span>Fatigue<b>15</b></span>
+          <span>Jika off 7d<b style="color:#ff8a92;">+14</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="plus">3 kelompok teks, 1 hierarki, 0 dekorasi</span>
+      <span class="plus">semua tipe memberi fakta, bukan hiasan</span>
+      <span class="plus">ukuran jadi bakal saat membaca, bukan warna</span>
+    </div>
+    <p class="how"><b>Aturan minimal</b> · Kontras 44px ↔ 15px adalah satu-satunya alat hierarki; tidak ada dot, pil, chip, maupun tile. Keputusan label: hanya satu ("FORM HARI INI"), karena teks kembar "FORM (TSB)" dan "CURRENT FORM" menyampaikan fakta yang sama.</p>
+  </div>
+
+  <!-- ========== F2. INSTRUMENT SLAB ========== -->
+  <div class="mock">
+    <h2><span class="num">F2</span>Instrument slab</h2>
+    <p class="desc">Semua dasar sama dengan F1, ditambah <b>satu</b> elemen grafis tunggal: axis hairline + titik rose pada posisi TSB. Tugas elemen ini satu: menunjukkan posisi dalam spektrum. Komponen lain tidak diikutkan.</p>
+    <div class="stage">
+      <div class="mono">
+        <p class="eyebrow">Form hari ini</p>
+        <p class="disp" style="margin-top:10px;"><span class="state">Balanced</span>&nbsp;<span class="val">+5</span></p>
+        <div class="axis" aria-hidden="true">
+          <span class="line"></span>
+          <span class="sole"></span>
+          <span class="d" style="left:58%;"></span>
+          <span class="lab l">pemulihan</span>
+          <span class="lab c strong">seimbang</span>
+          <span class="lab r">puncak</span>
+        </div>
+        <div class="runway">
+          <span>Fitness<b>20</b></span>
+          <span>Fatigue<b>15</b></span>
+          <span>Jika off 7d<b style="color:#ff8a92;">+14</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="plus">satu elemen grafis, satu tugas, nol dekorasi</span>
+      <span class="plus">tilisan band diturunkan langsung dari formState()</span>
+      <span class="minus">− riwayat/proyeksi tidak bisa digabung dalam kartu ini</span>
+    </div>
+    <p class="how"><b>Kapan dibutuhkan F2</b> · Kalau pembaca perlu tahu posisi dalam skala tanpa memaknai angka TSB, satu grafis F2 menjawab. Kalau tidak, F1 sudah cukup: graph apapun yang tidak menyesuaikan keputusan harian → tidak dipasang.</p>
+  </div>
+
+  <div class="pick">
+    <h3>Rekomendasi</h3>
+    <p><b>F1 (editorial)</b> patokan terkuat: paling tenang, murni atau tipografi, kelengkapan kartu terbaik. <b>F2</b> cocok sekadar kalau posisi spektrum tetap jadi pertanyaan penting bagi rider — bukan karena iri terhadap kartu lain. Dua-duanya berirama share fondasi yang sama — perpindahan antar-keduanya hanya satu komponen, bukan rebuild.</p>
+  </div>
+
+  <footer>Zonadua · mockup statis — bukan build final.<br/>Balas <b>"jalankan F1"</b> atau <b>"jalankan F2"</b> untuk eksekusi ke Dashboard.svelte.</footer>
+</div>
+</body>
+</html>

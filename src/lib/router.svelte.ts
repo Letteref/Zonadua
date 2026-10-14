@@ -1,13 +1,32 @@
 /**
  * Minimal hash router (Svelte 5 runes).
- * Routes: #/ (dashboard), #/rides, #/routes, #/race, #/gear, #/load, #/settings
- * Detail routes carry one extra segment: #/rides/<activityId>
+ * Routes: #/ (dashboard), #/rides, #/routes, #/library, #/race, #/gear, #/load, #/settings
+ * Detail routes carry one extra segment: #/rides/<activityId>, #/routes/<routeId>
  * Hash routing = zero server config on Cloudflare Pages.
  */
 
-export type RouteName = 'dashboard' | 'rides' | 'routes' | 'race' | 'gear' | 'load' | 'settings';
+export type RouteName =
+  | 'dashboard'
+  | 'rides'
+  | 'routes'
+  | 'library'
+  | 'race'
+  | 'gear'
+  | 'load'
+  | 'settings'
+  | 'onboarding';
 
-const VALID: readonly RouteName[] = ['dashboard', 'rides', 'routes', 'race', 'gear', 'load', 'settings'];
+const VALID: readonly RouteName[] = [
+  'dashboard',
+  'rides',
+  'routes',
+  'library',
+  'race',
+  'gear',
+  'load',
+  'settings',
+  'onboarding'
+];
 
 interface Parsed {
   name: RouteName;
