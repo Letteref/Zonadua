@@ -3,6 +3,7 @@
   import { route } from '$lib/router.svelte';
   import AppNav from '$lib/components/AppNav.svelte';
   import Toast from '$lib/components/Toast.svelte';
+  import InstallBanner from '$lib/components/InstallBanner.svelte';
   import Dashboard from '$lib/routes/dashboard/Dashboard.svelte';
   import Rides from '$lib/routes/rides/Rides.svelte';
   import ActivityDetail from '$lib/routes/rides/ActivityDetail.svelte';
@@ -19,6 +20,7 @@
   import { handleStravaCallback } from '$lib/infra/strava/connect';
   import { runAutoSync } from '$lib/infra/strava/autoSync';
   import { toast } from '$lib/toast.svelte';
+  import { initPwaInstall } from '$lib/pwa-install.svelte';
 
   // Bottom clearance: nav capsule (64px) + floating gap (16px) + safe area (DESIGN.md)
   const navClearance = 'calc(88px + env(safe-area-inset-bottom, 0px))';
@@ -49,6 +51,7 @@
    * refresh and nothing to pull, and running it would only race the setup writes.
    */
   async function boot(): Promise<void> {
+    initPwaInstall(); // first: `beforeinstallprompt` is one-shot and must not be missed
     await ensureSeeded();
     await reportStravaCallback();
     if (!gate.needs) await runAutoSync();
@@ -114,6 +117,18 @@
   </div>
 
   <AppNav />
+
+  <!--
+    The install banner lives inside the main shell, not beside Toast: a rider still in
+    the welcome landing or setup has nothing installed yet — and nothing to be pitched
+    mid-setup. From the shell on, the store decides (real prompt + not dismissed).
+    Settings is excluded: it carries the Install app section itself, so floating the
+    banner there would stack two prompts over the same row — and the fixed card would
+    physically cover the very button it duplicates.
+  -->
+  {#if route.name !== 'settings'}
+    <InstallBanner />
+  {/if}
 {/if}
 
 <!-- mounted once, above the nav: any route can report a failed write without owning a pill -->

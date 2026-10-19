@@ -35,3 +35,6 @@ blob-report/
 
 # Vite one-off log from a local landing-page build
 vite-landing.log
+
+# Chat verification screenshots (agent artifacts)
+/screenshots/

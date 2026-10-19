@@ -28,6 +28,7 @@
   } from '$lib/domain/eftp';
   import TrendChart from '$lib/components/TrendChart.svelte';
   import { toast } from '$lib/toast.svelte';
+  import { pwaInstall } from '$lib/pwa-install.svelte';
 
   /** one global pill; this route only decides the words (UI-SPEC §46) */
   const showToast = (msg: string): void => toast.ok(msg);
@@ -50,6 +51,19 @@
     } catch (err) {
       showFailure('Could not disconnect Strava', err);
     }
+  }
+
+  /**
+   * The install section's second door (the floating banner is the first). The button
+   * only renders while a real `beforeinstallprompt` is captured — the store's
+   * `canPrompt` — so there is no click path that pops nothing; the branch without a
+   * prompt renders instructions instead of a button.
+   */
+  async function onInstallApp(): Promise<void> {
+    const outcome = await pwaInstall.promptInstall();
+    if (outcome === 'accepted') showToast('Zonadua installed — open it from your home screen');
+    else if (outcome === 'dismissed') pwaInstall.dismiss();
+    else showFailure('This browser did not offer an install prompt', new Error('no live beforeinstallprompt'));
   }
 
   let syncing = $state(false);
@@ -1146,6 +1160,36 @@
               Cancel
             </button>
           </div>
+        </div>
+      {/if}
+    </section>
+
+    <!-- INSTALL APP: the deliberate second door beside the floating banner (PWA install) -->
+    <section class="rounded-card bg-surface border border-hairline p-4 elevation-card flex flex-col gap-3">
+      <span class="text-[11px] font-bold uppercase tracking-[0.12em] text-ink-dim">Install app</span>
+      {#if pwaInstall.isStandalone}
+        <div class="flex items-center gap-2">
+          <Icon name="check-circle" size={16} strokeWidth={1.8} class="text-aman shrink-0" />
+          <p class="text-[12px] font-bold text-ink">Running as the installed app</p>
+        </div>
+        <p class="text-[10px] leading-relaxed text-ink-dim">Launched from your home screen — offline caching is already yours.</p>
+      {:else if pwaInstall.canPrompt}
+        <button
+          class="h-10 w-full rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+          onclick={onInstallApp}
+        >
+          <Icon name="download" size={14} strokeWidth={1.8} />
+          Install Zonadua
+        </button>
+        <p class="text-[10px] leading-relaxed text-ink-dim">Adds Zonadua to your home screen and opens it in its own window — works offline.</p>
+      {:else}
+        <div class="flex items-start gap-2">
+          <Icon name="download" size={15} strokeWidth={1.8} class="text-ink-dim shrink-0 mt-0.5" />
+          <p class="text-[11px] leading-relaxed text-ink-dim">
+            This browser offers no one-tap install here. In Safari, tap
+            <span class="font-bold text-ink">Share → Add to Home Screen</span>; in Chrome or Edge, open the menu and choose
+            <span class="font-bold text-ink">Install app</span>.
+          </p>
         </div>
       {/if}
     </section>
