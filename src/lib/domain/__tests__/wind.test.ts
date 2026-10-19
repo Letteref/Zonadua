@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { correctForWind, headwindKph, peakHeadwind, compass } from '../wind';
-import { parseHourlyWind, forecastUrl } from '../../infra/weather/openmeteo';
+import { parseHourlyWind, forecastUrl, parseRideForecast, rideForecastUrl } from '../../infra/weather/openmeteo';
 
 /**
  * The sign of a headwind is the whole product of this module. A wind that arrives as a
@@ -168,6 +168,85 @@ describe('Open-Meteo parsing', () => {
     expect(url).toContain('wind_speed_unit=kmh');
     expect(url).toContain('timezone=UTC');
     // no key: weather must not become a subscription
+    expect(url).not.toMatch(/key=/i);
+  });
+});
+
+/**
+ * The ride forecast behind the departure picker. Same completeness doctrine as the
+ * wind-only parser above, plus one thing of its own: route-local hours, because a
+ * picker that offers "06:00" must mean 06:00 on the hill, not in UTC.
+ */
+describe('ride forecast (departure picker)', () => {
+  const BODY = {
+    utc_offset_seconds: 7 * 3600,
+    hourly: {
+      time: ['2026-10-18T05:00', '2026-10-18T06:00'],
+      temperature_2m: [21.5, 22],
+      precipitation_probability: [10, 80],
+      precipitation: [0, 1.4],
+      wind_speed_10m: [8, 12],
+      wind_direction_10m: [90, 360]
+    }
+  };
+
+  it('maps a complete body into hourly RideForecastHours', () => {
+    const f = parseRideForecast(BODY);
+    expect(f?.utcOffsetSeconds).toBe(7 * 3600);
+    expect(f?.hours).toEqual([
+      {
+        time: '2026-10-18T05:00',
+        tempC: 21.5,
+        precipProbPct: 10,
+        precipMm: 0,
+        wind: { speedKph: 8, fromDeg: 90 }
+      },
+      {
+        time: '2026-10-18T06:00',
+        tempC: 22,
+        precipProbPct: 80,
+        precipMm: 1.4,
+        wind: { speedKph: 12, fromDeg: 0 } // 360 normalised to north
+      }
+    ]);
+  });
+
+  it('rejects a wind-only body — that shape belongs to the wind card, not the picker', () => {
+    expect(
+      parseRideForecast({
+        hourly: {
+          time: ['2026-10-18T05:00'],
+          wind_speed_10m: [10],
+          wind_direction_10m: [90]
+        },
+        utc_offset_seconds: 0
+      })
+    ).toBeNull();
+  });
+
+  it('rejects a hole anywhere — a null rain hour must not read as dry', () => {
+    const ragged = {
+      ...BODY,
+      hourly: { ...BODY.hourly, precipitation_probability: [10, null] }
+    };
+    expect(parseRideForecast(ragged)).toBeNull();
+  });
+
+  it('rejects mismatched lengths, a missing offset and junk', () => {
+    const short = { ...BODY, hourly: { ...BODY.hourly, temperature_2m: [21.5] } };
+    expect(parseRideForecast(short)).toBeNull();
+    expect(parseRideForecast({ hourly: BODY.hourly })).toBeNull();
+    expect(parseRideForecast(null)).toBeNull();
+    expect(parseRideForecast({})).toBeNull();
+  });
+
+  it('asks for the full variable set in the route\'s own timezone, keylessly', () => {
+    const url = rideForecastUrl({ latitude: -2.95, longitude: 104.75, startDate: '2026-10-18', endDate: '2026-10-19' });
+    expect(url).toContain('temperature_2m');
+    expect(url).toContain('precipitation_probability');
+    expect(url).toContain('precipitation');
+    expect(url).toContain('wind_speed_10m');
+    expect(url).toContain('timezone=auto');
     expect(url).not.toMatch(/key=/i);
   });
 });

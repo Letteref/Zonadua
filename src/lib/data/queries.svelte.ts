@@ -1,5 +1,6 @@
 import { liveQuery, type Observable } from 'dexie';
-import { db, isCyclingActivity, type Activity, type BikeComponent, type WeightLog } from './db';
+import { db, isCyclingActivity, type Activity, type Bike, type BikeComponent, type WeightLog } from './db';
+import { derivedOdometerKm, sumRideKmByBike } from './odometer';
 import { DEFAULT_POWER_ZONES, bandsFromStops, stopsFromBands } from '../domain/zones';
 import { inflateJson } from './streams';
 import type { ProfilePoint } from '../domain/physics';
@@ -53,17 +54,47 @@ export const activeBike = wrap(
 /** All bikes (for setup selectors). */
 export const allBikes = wrap(liveQuery(async () => db.bikes.toArray()));
 
-/** All bikes joined with their components (Gear page). */
-export const allBikesWithComponents = wrap(
-  liveQuery(async () => {
-    const bikes = await db.bikes.toArray();
-    const comps = await db.components.toArray();
-    return bikes.map((bike) => ({
+/**
+ * All bikes joined with their components (Gear page) and their **derived odometer**.
+ *
+ * The stored term is only the baseline; the figure the rider reads adds every ride
+ * attributed to the bike (data/odometer.ts). Recomputed by liveQuery, so importing,
+ * syncing, deleting or restoring a ride moves the odometer and every wear bar with it —
+ * no writer keeps a counter in step. `rideKm` is the summed term on its own: the add/edit
+ * form needs it to turn the total the rider types back into a baseline.
+ */
+/** One bike joined with its components and its derived odometer (a Gear page row). */
+export interface BikeGearRow {
+  bike: Bike;
+  components: BikeComponent[];
+  rideKm: number;
+  odometerKm: number;
+}
+
+/**
+ * The join behind `allBikesWithComponents`, as a plain async function so the
+ * derived-odometer contract can be verified against a mocked `db` without driving a
+ * Dexie liveQuery (component-wear.test.ts needs neither `fake-indexeddb` nor a
+ * subscription that can never emit in the test environment). The liveQuery below only
+ * re-runs this producer when the tables change — the logic is the same either way.
+ */
+export async function loadBikesWithComponents(): Promise<BikeGearRow[]> {
+  const bikes = await db.bikes.toArray();
+  const comps = await db.components.toArray();
+  const acts = await db.activities.toArray();
+  const sums = sumRideKmByBike(acts);
+  return bikes.map((bike) => {
+    const rideKm = sums.get(bike.id) ?? 0;
+    return {
       bike,
-      components: comps.filter((c) => c.bikeId === bike.id)
-    }));
-  })
-);
+      components: comps.filter((c) => c.bikeId === bike.id),
+      rideKm,
+      odometerKm: derivedOdometerKm(bike.baselineKm, rideKm)
+    };
+  });
+}
+
+export const allBikesWithComponents = wrap(liveQuery(loadBikesWithComponents));
 
 /** Weight log series, oldest first. */
 export const weightSeries = wrap(liveQuery(async () => db.weight_log.orderBy('date').toArray()));
@@ -118,6 +149,32 @@ export async function fetchRouteProfile(routeId: string | undefined): Promise<Pr
     return parsed.map(([distKm, altM]) => ({ distKm: Number(distKm), altM: Number(altM) }));
   } catch (e) {
     console.error('[zonadua] route profile decode failed:', e);
+    return [];
+  }
+}
+
+/**
+ * A stored route's GPS track, decimated for the live race map: `{km, lat, lng}` per fix.
+ * Empty (never null) when the row predates the track column or carries no coordinates —
+ * the caller hides the map instead of drawing a straight line through two guessed towns.
+ */
+export async function fetchRouteTrack(routeId: string | undefined): Promise<Array<{ km: number; lat: number; lng: number }>> {
+  if (!routeId || routeId === 'stub-route') return [];
+  try {
+    const row = await db.routes.get(routeId);
+    if (!row?.trackCompressed) return [];
+    const parsed = (await inflateJson(row.trackCompressed)) as Array<{ km?: unknown; lat?: unknown; lng?: unknown }>;
+    if (!Array.isArray(parsed) || parsed.length < 2) return [];
+    return parsed.flatMap((p) => {
+      const km = Number(p.km);
+      const lat = Number(p.lat);
+      const lng = Number(p.lng);
+      return Number.isFinite(km) && Number.isFinite(lat) && Number.isFinite(lng)
+        ? [{ km, lat, lng }]
+        : [];
+    });
+  } catch (e) {
+    console.error('[zonadua] route track decode failed:', e);
     return [];
   }
 }
@@ -224,9 +281,12 @@ export interface ComponentWear {
   leftKm: number;
 }
 
-/** Wear model per UI-SPEC: KRITIS at >=100% of interval, WASPADA at >=90%. */
+/** Wear model per UI-SPEC: KRITIS at >=100% of interval, WASPADA at >=90%.
+ *  The clock starts at the last service (or the install point when never serviced) —
+ *  `installedAtOdoKm` stays as provenance and never moves. */
 export function computeWear(comp: BikeComponent, odoKm: number): ComponentWear {
-  const usedKm = Math.max(0, odoKm - comp.installedAtOdoKm);
+  const clockStart = comp.lastServiceAtOdoKm ?? comp.installedAtOdoKm;
+  const usedKm = Math.max(0, odoKm - clockStart);
   const pct = Math.min(1.5, usedKm / comp.intervalKm);
   const status = pct >= 1 ? 'kritis' : pct >= 0.9 ? 'waspada' : 'aman';
   return { comp, usedKm, pct, status, leftKm: Math.round(comp.intervalKm - usedKm) };

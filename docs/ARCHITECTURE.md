@@ -128,7 +128,9 @@ Dexie: zonadua
 ├── weight_log:     id, date, kg
 ├── ftp_history:    id, date, ftp
 ├── zones:          id, type('hr'|'power'), version, zones[]
-├── bikes:          id, name, type, weightKg, crr, cda, odometerKm, photo?, notes
+├── bikes:          id, name, type, weightKg, crr, cda, baselineKm?, photo?, notes
+│                   // odometer TIDAK disimpan: turunan = baselineKm + SUM(distanceKm aktivitas
+│                   // milik sepeda ini) — lihat src/lib/data/odometer.ts (skema v3)
 ├── components:     id, bikeId, name, kind, installedAtOdoKm, intervalKm, notes
 ├── activities:     id, date, name, source('strava'|'gpx'|'tcx'|'fit'|'manual'),
 │                   bikeId?, distanceKm, movingSec, elapsedSec, elevGainM,

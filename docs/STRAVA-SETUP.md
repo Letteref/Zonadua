@@ -35,8 +35,13 @@ deps, unit-tested branch by branch) with `runSync.ts` as the production seam. On
 press runs one session: it fetches `/athlete/activities` with the stored cursor, maps through
 `mapSummary` (provenance `strava`, no invented zeros), stores the rows, pulls streams for
 activities whose stored stream is stale or missing, converts Strava's second-based `time`
-series to the app's millisecond convention, stamps `cursor` + `lastSyncAt` **only after work
-completed**, then runs `pruneExpiredApiStreams()` for the 7-day API cache policy. `parseRateLimit`
+series to the app's millisecond convention, attributes each new ride to a bike (the active one
+when the stable is non-empty) — F3-AC2 for the API pipeline. Since schema v3 the odometer is
+derived (`baselineKm + Σ distanceKm` of that bike's activities), so attributing the row *is*
+the credit; attribution is carried across re-pulls so a cursor reset cannot lose or double-place
+a ride, and walks/runs never touch an odometer — stamps `cursor` +
+`lastSyncAt` **only after work completed**, then runs `pruneExpiredApiStreams()` for the 7-day
+API cache policy. `parseRateLimit`
 + `shouldThrottle` gate every response: at 80% of either window the session stops and reports
 when it resumes, and a `401` triggers exactly one refresh through the Function (keeping the
 stored `refresh_token`, which Strava omits on refresh) before one retry.

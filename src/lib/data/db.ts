@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
+import { migrateOdometerToBaseline } from './odometer';
 
 /**
  * Zonadua local-first database (ARCHITECTURE.md §4, schema v1).
@@ -51,7 +52,15 @@ export interface Bike {
   weightKg: number;
   crr: number;
   cda: number;
-  odometerKm: number;
+  /**
+   * The distance that is *not* in the activity table: the reading when tracking began,
+   * typed in the Gear form. The odometer shown to the rider is `baselineKm + Σ distanceKm`
+   * of the activities attributed to this bike — derived, never a counter to keep in sync
+   * (see data/odometer.ts for the math and why the old `odometerKm` increment is gone).
+   * The schema-v3 migration fills this from the old counter without moving the displayed
+   * total; backup restore of a pre-v3 file runs the same conversion.
+   */
+  baselineKm: number;
   active: boolean;
   notes?: string;
   updatedAt: number;
@@ -62,7 +71,18 @@ export interface BikeComponent {
   bikeId: string;
   name: string;
   kind: string; // chain | brake-pads | tires | cassette | ...
+  /**
+   * Provenance: the odometer reading when this part physically went on. The Service
+   * button never writes here — a chain that goes on at 4 412 km and gets relubed every
+   * 300 km must still say "installed at 4 412" a year later.
+   */
   installedAtOdoKm: number;
+  /**
+   * The service clock: the odometer reading at the most recent Service press. Absent =
+   * never serviced since install, so wear counts from `installedAtOdoKm`. Rows written
+   * before this field existed simply lack it and behave exactly as they did.
+   */
+  lastServiceAtOdoKm?: number;
   intervalKm: number;
   notes?: string;
   updatedAt: number;
@@ -115,6 +135,19 @@ export interface Activity {
    * quietly undo the cache policy Strava's terms ask for.
    */
   streamsFetchedAt?: number;
+  /**
+   * LEGACY (pre-v3): epoch ms when this ride's kilometres were added to the old
+   * increment counter.
+   *
+   * The odometer is derived now (`baselineKm + Σ distanceKm`), so new rides never need
+   * this stamp — attribution alone counts them, and attribution is idempotent under the
+   * sync's row overwrite. It survives for one job: a row carrying it was *already* baked
+   * into the migrated baseline, so neither the migration nor a later sync may attribute
+   * it to a bike — doing so would count it twice, once inside the baseline and once
+   * inside the sum. The v3 migration attributes stamped rows it can place (active bike)
+   * and adjusts the baseline by the same amount, preserving the displayed total.
+   */
+  odometerCreditedAt?: number;
   /** version of lib/domain/metrics that produced np/if/tss (see METRICS_VERSION) */
   mVersion?: number;
   updatedAt: number;
@@ -181,6 +214,12 @@ export interface Route {
   elevGainM: number;
   /** deflated JSON of points [{lat, lng, alt, dist}] */
   pointsCompressed: Uint8Array;
+  /**
+   * deflated JSON of `{km, lat, lng}` for every GPS fix — the live race map's track.
+   * Absent on rows written before this field existed (and on schema-less profile-only
+   * imports); the map hides itself rather than drawing a fabrication.
+   */
+  trackCompressed?: Uint8Array;
   pointCount: number;
   createdAt: number;
   updatedAt: number;
@@ -271,6 +310,13 @@ export interface Settings {
   archetype?: string;
   /** the weekly distance the rider said they aim to ride, in km — the planning baseline */
   weeklyTargetKm?: number;
+  /**
+   * The eFTP suggestion the rider declined — the *evidence* it stood on (source activity
+   * + proposed FTP), so the same offer stays hidden until a different best effort
+   * produces a different number. Not an index; like the fields above it needs no schema
+   * version bump (see the comment on `archetype`).
+   */
+  eftpDismiss?: { activityId: string; ftp: number };
   updatedAt: number;
 }
 
@@ -316,4 +362,28 @@ db.version(1).stores({
 /** v2: mean-maximal power curve per activity (M2, ARCHITECTURE.md §5.1). */
 db.version(2).stores({
   power_curves: 'id, activityId'
+});
+
+/**
+ * v3: the bike odometer becomes derived (data/odometer.ts).
+ *
+ * `bikes.odometerKm` was a counter every writer had to increment — import, sync, and the
+ * rider's own edits each held a piece of the truth, and deleting a ride left the counter
+ * lying. The stored term is now only the *baseline* (distance from before tracking), and
+ * the displayed odometer adds every ride attributed to the bike, so delete and re-sync
+ * are correct without any writer knowing.
+ *
+ * The upgrade converts in place, through the pure `migrateOdometerToBaseline`: rides the
+ * old counter had already counted (the sync stamped them `odometerCreditedAt`) are
+ * attributed to the active bike, then each bike's counter becomes `baseline = counter −
+ * Σ its rides` — so the figure the rider reads does not move by a single kilometre. No
+ * index changes, hence the empty stores() — this version exists for the data conversion.
+ */
+db.version(3).stores({}).upgrade(async (tx) => {
+  const bikes = await tx.table<Bike, 'id'>('bikes').toArray();
+  if (bikes.length === 0) return;
+  const activities = await tx.table<Activity, 'id'>('activities').toArray();
+  const migrated = migrateOdometerToBaseline(bikes, activities, isCyclingActivity);
+  for (const a of migrated.activities) await tx.table<Activity, 'id'>('activities').put(a);
+  for (const b of migrated.bikes) await tx.table<Bike, 'id'>('bikes').put(b);
 });

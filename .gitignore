@@ -32,3 +32,6 @@ blob-report/
 
 # Vite dev-server log from the local preview (not part of the project)
 .devserver.log
+
+# Vite one-off log from a local landing-page build
+vite-landing.log

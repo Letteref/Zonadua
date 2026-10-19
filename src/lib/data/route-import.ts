@@ -21,6 +21,13 @@ export interface ImportedRoute {
   elevGainM: number;
   /** full-resolution `[km, alt]` pairs — what the physics consumes this session */
   points: Array<[number, number]>;
+  /**
+   * Full-resolution `{km, lat, lng}` for points that have a GPS fix, parallel to
+   * `points` by km. Written to storage so the live race can place the rider on a map;
+   * a profile `[km, alt]` alone cannot, so before this existed the race map had no
+   * honest track to draw.
+   */
+  trackPoints: Array<{ km: number; lat: number; lng: number }>;
   /** chart-ready sample, ≤ ~600 points, same bound the estimator has always used */
   sampled: ProfilePoint[];
   /**
@@ -60,6 +67,7 @@ export async function parseAndStoreRoute(file: File): Promise<ImportedRoute> {
   let prevAlt = NaN;
   let coords: { lat: number; lng: number } | null = null;
   let bearingDeg: number | null = null;
+  const trackPoints: Array<{ km: number; lat: number; lng: number }> = [];
   for (const p of ride.points) {
     if (p.lat != null && p.lng != null) {
       const havePrev = Number.isFinite(prevLat) && Number.isFinite(prevLng);
@@ -70,10 +78,11 @@ export async function parseAndStoreRoute(file: File): Promise<ImportedRoute> {
       if (havePrev) distM += haversineM(prevLat, prevLng, p.lat, p.lng);
       prevLat = p.lat;
       prevLng = p.lng;
-      // keep the first real fix so the weather forecast has an honest location; the
-      // compressed profile deliberately carries only km/alt, so this is the only point
-      // at which the route's coordinates still exist
+      // keep the first real fix so the weather forecast has an honest location
       if (!coords) coords = { lat: p.lat, lng: p.lng };
+      // every real fix is kept now, not just the first: the live race map draws the
+      // whole track and places the rider on it by km
+      trackPoints.push({ km: distM / 1000, lat: p.lat, lng: p.lng });
     }
     if (p.alt != null) prevAlt = p.alt;
     xy.push([distM / 1000, prevAlt]);
@@ -85,8 +94,12 @@ export async function parseAndStoreRoute(file: File): Promise<ImportedRoute> {
     .map(([km, alt]) => ({ distKm: km, altM: alt }));
 
   if (typeof CompressionStream === 'undefined') throw new Error('Compression unsupported');
+  // two payloads: the km/alt profile the physics consumes, and the GPS track the live
+  // race map draws. Same deflate-raw, one row — the map layer holds only what has a fix.
   const stream = new Blob([JSON.stringify(xy)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
   const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+  const trackStream = new Blob([JSON.stringify(trackPoints)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const trackCompressed = new Uint8Array(await new Response(trackStream).arrayBuffer());
 
   const id = newId();
   await db.routes.put({
@@ -95,10 +108,11 @@ export async function parseAndStoreRoute(file: File): Promise<ImportedRoute> {
     distanceKm: ride.distanceKm,
     elevGainM: ride.elevGainM,
     pointsCompressed: compressed,
+    trackCompressed,
     pointCount: xy.length,
     createdAt: Date.now(),
     updatedAt: Date.now()
   });
 
-  return { id, name: ride.name, distanceKm: ride.distanceKm, elevGainM: ride.elevGainM, points: xy, sampled, coords, bearingDeg };
+  return { id, name: ride.name, distanceKm: ride.distanceKm, elevGainM: ride.elevGainM, points: xy, sampled, trackPoints, coords, bearingDeg };
 }

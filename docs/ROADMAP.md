@@ -171,7 +171,8 @@ Semua celah yang tercatat di [UI-SPEC.md](UI-SPEC.md) §9.5 sudah ditutup: activ
 - [x] Berat badan & FTP terlog dan terlihat di grafik kecil — E2E: log 71,4 kg + FTP 304 W,
       diverifikasi masuk `weight_log`/`ftp_history` **dan** digambar di kartu Body trend.
 - [x] Sepeda + komponen tersimpan; odometer ter-update saat aktivitas dengan sepeda dipilih —
-      E2E mengimpor GPX 40 km lalu membaca `odometerKm` Castorcli aktif; bertambah > 38 km.
+      E2E mengimpor GPX 40 km lalu membaca odometer (= `baselineKm` + Σ `distanceKm`) Castorcli
+      aktif; bertambah > 38 km.
 - [x] Export JSON → hapus semua data → import JSON → state kembali identik — **dua bug nyata
       ditemukan oleh tes ini** (lihat catatan di bawah). Suite: `tests/e2e/platform.spec.ts`.
 

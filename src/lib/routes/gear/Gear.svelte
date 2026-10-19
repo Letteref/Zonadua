@@ -6,6 +6,7 @@
   import CircleButton from '$lib/components/CircleButton.svelte';
   import SyncHint from '$lib/components/SyncHint.svelte';
   import { allBikesWithComponents, appSettings, computeWear, type ComponentWear } from '$lib/data/queries.svelte';
+  import { baselineForTotal } from '$lib/data/odometer';
   import { convertDistance, distanceUnit, type UnitSystem } from '$lib/domain/units';
   import { db, type BikeComponent, type Bike } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
@@ -21,10 +22,10 @@
   const summary = $derived.by(() => {
     let odo = 0;
     let due = 0;
-    for (const { bike, components } of bikes) {
-      odo += bike.odometerKm;
+    for (const { components, odometerKm } of bikes) {
+      odo += odometerKm;
       for (const c of components) {
-        if (computeWear(c, bike.odometerKm).status !== 'aman') due++;
+        if (computeWear(c, odometerKm).status !== 'aman') due++;
       }
     }
     return { odo, due };
@@ -99,12 +100,14 @@
   }
 
   /** Editing keeps every stored value the form does not show — id, active flag. */
-  function openEditBike(bike: Bike): void {
+  function openEditBike(bike: Bike, odometerKm: number): void {
     editingBikeId = bike.id;
     bName = bike.name;
     bType = bike.type;
     bWeight = bike.weightKg;
-    bOdo = bike.odometerKm;
+    // The form shows the *total* the rider reads on the machine; the baseline underneath
+    // is recomputed on save (derived odometer, data/odometer.ts).
+    bOdo = odometerKm;
     bNotes = bike.notes ?? '';
     bikeSheetOpen = true;
   }
@@ -120,6 +123,10 @@
     if (!bName.trim() || !Number.isFinite(weightKg) || weightKg <= 0) return;
     const isEdit = editingBikeId != null;
     const prior = isEdit ? bikes.find((b) => b.bike.id === editingBikeId)?.bike : undefined;
+    // The rider types the total they want shown; only the term the rides do not cover is
+    // stored, so the next imported or synced ride adds to their number instead of to a
+    // stale counter. A new bike has no rides yet, hence the `?? 0`.
+    const rideKm = bikes.find((b) => b.bike.id === editingBikeId)?.rideKm ?? 0;
     const rec: Bike = {
       id: editingBikeId ?? newId(),
       name: bName.trim(),
@@ -129,7 +136,7 @@
       // its crr/cda too, or the route solver keeps modelling the old machine
       crr: BIKE_DEFAULTS[bType].crr,
       cda: BIKE_DEFAULTS[bType].cda,
-      odometerKm: Math.max(0, Number(bOdo) || 0),
+      baselineKm: baselineForTotal(Math.max(0, Number(bOdo) || 0), rideKm),
       // the first bike is also the active one: otherwise Routes and Race have no machine to
       // model, and the rider would have to add a bike and then activate it as a second step
       active: prior ? prior.active : ordered.length === 0,
@@ -156,7 +163,7 @@
     sheetBikeId = bikeId;
     cName = '';
     cKind = 'chain';
-    cInstalled = bike?.bike.odometerKm ?? 0;
+    cInstalled = bike?.odometerKm ?? 0;
     cInterval = 4000;
     sheetOpen = true;
   }
@@ -173,12 +180,17 @@
 
   async function saveComponent(): Promise<void> {
     if (!sheetBikeId || !cName.trim() || cInterval <= 0) return;
+    const installed = Math.max(0, Math.round(cInstalled));
+    // moving the install point means the part was replaced: its service clock restarts
+    // with it. A name/interval/notes edit leaves the clock where the last Service left it.
+    const installMoved = editing != null && editing.installedAtOdoKm !== installed;
     const rec: BikeComponent = {
       id: editing?.id ?? newId(),
       bikeId: sheetBikeId,
       name: cName.trim(),
       kind: cKind,
-      installedAtOdoKm: Math.max(0, Math.round(cInstalled)),
+      installedAtOdoKm: installed,
+      ...(installMoved || editing == null ? {} : { lastServiceAtOdoKm: editing.lastServiceAtOdoKm }),
       intervalKm: Math.round(cInterval),
       notes: editing?.notes,
       updatedAt: Date.now()
@@ -197,10 +209,10 @@
     toast.ok(`${rec.name} saved`);
   }
 
-  // ---------- service: wear clock resets at the current odometer ----------
+  // ---------- service: wear clock resets, install provenance stays ----------
   async function service(comp: BikeComponent, odoKm: number): Promise<void> {
     try {
-      await db.components.update(comp.id, { installedAtOdoKm: odoKm, updatedAt: Date.now() });
+      await db.components.update(comp.id, { lastServiceAtOdoKm: odoKm, updatedAt: Date.now() });
       toast.ok(`${comp.name} serviced`);
     } catch (err) {
       console.error('[zonadua] service failed:', err);
@@ -227,6 +239,47 @@
       toast.error(`Could not delete ${comp.name}`);
     }
     confirmId = null;
+  }
+
+  // ---------- delete bike: two-step confirm, same shape as the component delete ----------
+  let confirmBikeId = $state<string | null>(null);
+  /**
+   * Remove a bike outright: its components, its ride attribution, and the active flag
+   * it may be holding.
+   *
+   * All of it happens in one transaction because the rider thinks of it as one act —
+   * a bike deleted with its chain still hanging on the wall would be an orphan nothing
+   * on this page can show, and a ride tagged to a machine that no longer exists keeps
+   * claiming provenance it cannot have. The rides themselves are never touched beyond
+   * dropping the attribution: distance and TSS are history, the bike is just the label.
+   */
+  async function removeBike(bike: Bike): Promise<void> {
+    if (confirmBikeId !== bike.id) {
+      confirmBikeId = bike.id;
+      return;
+    }
+    confirmBikeId = null;
+    // the next machine in the rider's own order inherits the flag — Routes and Race
+    // model the active bike, so losing it without a successor leaves both screens
+    // with nothing to solve
+    const successorId = ordered.find((b) => b.bike.id !== bike.id)?.bike.id ?? null;
+    try {
+      await db.transaction('rw', [db.bikes, db.components, db.activities], async () => {
+        await db.components.where('bikeId').equals(bike.id).delete();
+        // undefined deletes the field in a Dexie modify — the row survives, the label does not
+        await db.activities.where('bikeId').equals(bike.id).modify({ bikeId: undefined });
+        await db.bikes.delete(bike.id);
+        if (bike.active && successorId) {
+          await db.bikes.update(successorId, { active: true, updatedAt: Date.now() });
+        }
+      });
+      toast.ok(`${bike.name} deleted`);
+    } catch (err) {
+      console.error('[zonadua] removeBike failed:', err);
+      // the transaction rolled back: bike, components and attribution are all still in
+      // place, and a delete that silently did nothing is worse than a red pill
+      toast.error(`Could not delete ${bike.name}`);
+    }
   }
 
   // ---------- set active bike (exactly one active) ----------
@@ -300,14 +353,24 @@
           </p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button
-            class="grid h-8 w-8 place-items-center rounded-pill border border-white/15 bg-white/5 text-on-mono hover:bg-white/10 transition-colors"
-            title="Edit bike"
-            aria-label="Edit {primary.bike.name}"
-            onclick={() => openEditBike(primary.bike)}
-          >
-            <Icon name="pencil" size={15} strokeWidth={1.8} />
-          </button>
+          {#if confirmBikeId !== primary.bike.id}
+            <button
+              class="grid h-8 w-8 place-items-center rounded-pill border border-white/15 bg-white/5 text-on-mono hover:bg-white/10 transition-colors"
+              title="Edit bike"
+              aria-label="Edit {primary.bike.name}"
+              onclick={() => openEditBike(primary.bike, primary.odometerKm)}
+            >
+              <Icon name="pencil" size={15} strokeWidth={1.8} />
+            </button>
+            <button
+              class="grid h-8 w-8 place-items-center rounded-pill border border-white/15 bg-white/5 text-on-mono hover:bg-[rgba(232,16,46,0.2)] hover:text-rose transition-colors"
+              title="Delete bike"
+              aria-label="Delete {primary.bike.name}"
+              onclick={() => removeBike(primary.bike)}
+            >
+              <Icon name="trash-2" size={15} strokeWidth={1.8} />
+            </button>
+          {/if}
           <span
             class="text-[9px] font-extrabold uppercase tracking-wider text-rose border border-[rgba(255,77,94,0.45)] bg-[rgba(232,16,46,0.2)] rounded-pill px-2.5 py-1"
           >
@@ -315,17 +378,44 @@
           </span>
         </div>
       </div>
-      <div class="flex items-end justify-between gap-3 border-t border-[#2b2d33] pt-4">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Odometer</p>
-          <p class="text-[34px] leading-none font-extrabold text-tabular tracking-tight mt-1">
-            {fmtDist(primary.bike.odometerKm)}<span class="text-base font-bold text-on-mono-dim ml-1.5">{distLabel}</span>
-          </p>
+      {#if confirmBikeId === primary.bike.id}
+        <!-- the odometer row becomes the confirm bar: same two-step shape as the component delete -->
+        <div class="flex items-center justify-between gap-2 border-t border-[#2b2d33] pt-4">
+          <span class="text-[10.5px] font-bold text-rose">
+            Delete “{primary.bike.name}”{primary.components.length > 0
+              ? ` and its ${primary.components.length} component${primary.components.length === 1 ? '' : 's'}`
+              : ''}?
+          </span>
+          <div class="flex items-center gap-1.5">
+            <button
+              class="h-7 px-2.5 rounded-lg bg-kritis text-white grid place-items-center text-[10px] font-extrabold uppercase tracking-wider"
+              aria-label="Confirm delete {primary.bike.name}"
+              onclick={() => removeBike(primary.bike)}
+            >
+              <Icon name="check" size={13} strokeWidth={2.4} />
+            </button>
+            <button
+              class="h-7 px-2.5 rounded-lg border border-white/15 bg-white/5 grid place-items-center text-on-mono"
+              aria-label="Cancel delete {primary.bike.name}"
+              onclick={() => (confirmBikeId = null)}
+            >
+              <Icon name="x" size={13} strokeWidth={2} />
+            </button>
+          </div>
         </div>
-        {#if primary.bike.notes}
-          <p class="text-[10.5px] text-on-mono-dim text-right max-w-[46%] leading-relaxed">{primary.bike.notes}</p>
-        {/if}
-      </div>
+      {:else}
+        <div class="flex items-end justify-between gap-3 border-t border-[#2b2d33] pt-4">
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-on-mono-dim">Odometer</p>
+            <p class="text-[34px] leading-none font-extrabold text-tabular tracking-tight mt-1">
+              {fmtDist(primary.odometerKm)}<span class="text-base font-bold text-on-mono-dim ml-1.5">{distLabel}</span>
+            </p>
+          </div>
+          {#if primary.bike.notes}
+            <p class="text-[10.5px] text-on-mono-dim text-right max-w-[46%] leading-relaxed">{primary.bike.notes}</p>
+          {/if}
+        </div>
+      {/if}
     </section>
   {/if}
 
@@ -355,7 +445,7 @@
     </div>
   </div>
 
-  {#each ordered as { bike } (bike.id)}
+  {#each ordered as { bike, components, odometerKm } (bike.id)}
     {#if bike.id !== primaryId}
       <!-- SECONDARY BIKE — clean card -->
       <section class="rounded-card bg-surface border border-hairline elevation-card p-4 flex flex-col gap-3">
@@ -365,32 +455,68 @@
             <p class="text-xs text-ink-dim mt-0.5">{typeLabel[bike.type] ?? bike.type} · {bike.weightKg} kg</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <button
-              class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-ink transition-colors"
-              title="Edit bike"
-              aria-label="Edit {bike.name}"
-              onclick={() => openEditBike(bike)}
-            >
-              <Icon name="pencil" size={15} strokeWidth={1.8} />
-            </button>
+            {#if confirmBikeId !== bike.id}
+              <button
+                class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-ink transition-colors"
+                title="Edit bike"
+                aria-label="Edit {bike.name}"
+                onclick={() => openEditBike(bike, odometerKm)}
+              >
+                <Icon name="pencil" size={15} strokeWidth={1.8} />
+              </button>
+              <button
+                class="grid h-8 w-8 place-items-center rounded-pill bg-tile border border-hairline text-ink-dim hover:text-kritis hover:border-hairline-strong transition-colors"
+                title="Delete bike"
+                aria-label="Delete {bike.name}"
+                onclick={() => removeBike(bike)}
+              >
+                <Icon name="trash-2" size={15} strokeWidth={1.8} />
+              </button>
+            {/if}
             <StatusChip label="Standby" status="neutral" />
           </div>
         </div>
         <div class="flex items-end justify-between gap-3">
           <p class="text-metric-md text-tabular font-extrabold">
-            {fmtDist(bike.odometerKm)}<span class="text-xs text-ink-dim font-semibold ml-1">{distLabel}</span>
+            {fmtDist(odometerKm)}<span class="text-xs text-ink-dim font-semibold ml-1">{distLabel}</span>
           </p>
           {#if bike.notes}
             <p class="text-[10.5px] text-ink-dim text-right max-w-[52%] leading-relaxed">{bike.notes}</p>
           {/if}
         </div>
-        <button
-          class="mt-1 h-9 w-full rounded-pill bg-tile border border-hairline-strong text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-ink active:scale-[0.98] transition-all"
-          onclick={() => setActive(bike)}
-        >
-          <Icon name="check" size={14} strokeWidth={2.2} />
-          Set as active bike
-        </button>
+        {#if confirmBikeId === bike.id}
+          <div class="mt-1 flex items-center justify-between gap-2">
+            <span class="text-[10.5px] font-bold text-kritis">
+              Delete “{bike.name}”{components.length > 0
+                ? ` and its ${components.length} component${components.length === 1 ? '' : 's'}`
+                : ''}?
+            </span>
+            <div class="flex items-center gap-1.5">
+              <button
+                class="h-7 px-2.5 rounded-lg bg-kritis text-white grid place-items-center text-[10px] font-extrabold uppercase tracking-wider"
+                aria-label="Confirm delete {bike.name}"
+                onclick={() => removeBike(bike)}
+              >
+                <Icon name="check" size={13} strokeWidth={2.4} />
+              </button>
+              <button
+                class="h-7 px-2.5 rounded-lg bg-tile border border-hairline grid place-items-center text-ink-dim"
+                aria-label="Cancel delete {bike.name}"
+                onclick={() => (confirmBikeId = null)}
+              >
+                <Icon name="x" size={13} strokeWidth={2} />
+              </button>
+            </div>
+          </div>
+        {:else}
+          <button
+            class="mt-1 h-9 w-full rounded-pill bg-tile border border-hairline-strong text-[10px] font-extrabold uppercase tracking-wider text-ink flex items-center justify-center gap-1.5 hover:border-ink active:scale-[0.98] transition-all"
+            onclick={() => setActive(bike)}
+          >
+            <Icon name="check" size={14} strokeWidth={2.2} />
+            Set as active bike
+          </button>
+        {/if}
       </section>
     {/if}
   {/each}
@@ -429,13 +555,13 @@
 
       {#if shownBike}
         <span class="text-[11px] text-ink-dim text-tabular px-0.5">
-          {shownBike.bike.name} · {fmtDist(shownBike.bike.odometerKm)} {distLabel} odometer
+          {shownBike.bike.name} · {fmtDist(shownBike.odometerKm)} {distLabel} odometer
         </span>
       {/if}
 
       {#if shownBike && shownBike.components.length > 0}
         <div class="rounded-card bg-surface border border-hairline elevation-card divide-y divide-hairline">
-          {#each wearOf(shownBike.components, shownBike.bike.odometerKm) as w (w.comp.id)}
+          {#each wearOf(shownBike.components, shownBike.odometerKm) as w (w.comp.id)}
             <div class="p-4 flex flex-col gap-2.5">
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3 min-w-0">
@@ -488,13 +614,16 @@
                 </div>
               {:else}
                 <div class="flex items-center justify-between">
-                  <span class="text-[10px] text-ink-dim text-tabular">Installed at {fmtDist(w.comp.installedAtOdoKm)} {distLabel}</span>
+                  <span class="text-[10px] text-ink-dim text-tabular">
+                    Installed at {fmtDist(w.comp.installedAtOdoKm)} {distLabel}{#if w.comp.lastServiceAtOdoKm != null}
+                      · serviced at {fmtDist(w.comp.lastServiceAtOdoKm)} {distLabel}{/if}
+                  </span>
                   <div class="flex items-center gap-1.5">
                     <button
                       class="grid h-7 w-7 place-items-center rounded-lg bg-tile border border-hairline text-ink-dim hover:text-crimson-deep hover:border-hairline-strong transition-colors"
                       title="Service done — reset wear at current odometer"
                       aria-label="Service {w.comp.name}"
-                      onclick={() => service(w.comp, shownBike.bike.odometerKm)}
+                      onclick={() => service(w.comp, shownBike.odometerKm)}
                     >
                       <Icon name="rotate-ccw" size={14} strokeWidth={1.8} />
                     </button>

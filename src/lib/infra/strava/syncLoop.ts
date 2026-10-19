@@ -29,7 +29,7 @@
  * HTTP branch is testable with fake servers.
  */
 
-import { db, type Activity } from '../../data/db';
+import { db, isCyclingActivity, type Activity } from '../../data/db';
 import { backfillMetrics } from '../../data/recompute';
 import { encodeStream } from '../../data/streams';
 import { pruneExpiredApiStreams } from './prune';
@@ -84,6 +84,11 @@ export interface SyncResult {
   pruned: number;
   /** NP/IF/TSS + power curves recomputed from the traces that just landed */
   metricsComputed?: number;
+  /**
+   * kilometres newly attributed to the active bike this session — the amount the
+   * derived odometer grew by (F3-AC2)
+   */
+  odometerCreditedKm: number;
   /** when the loop stopped early, why */
   reason?: SyncFailureReason;
   /** ms until the rate-limit window resets (only for `rate_limited`) */
@@ -126,7 +131,14 @@ async function fetchPage(deps: SyncDeps, url: string, token: string): Promise<Pa
  * that fails is a status the rider should read, not an exception the console should eat.
  */
 export async function runStravaSync(deps: SyncDeps): Promise<SyncResult> {
-  const result: SyncResult = { ok: false, pulled: 0, streamsFetched: 0, streamsBackfilled: 0, pruned: 0 };
+  const result: SyncResult = {
+    ok: false,
+    pulled: 0,
+    streamsFetched: 0,
+    streamsBackfilled: 0,
+    pruned: 0,
+    odometerCreditedKm: 0
+  };
 
   const token = deps.token();
   if (!token) return { ...result, reason: 'not_connected' };
@@ -181,7 +193,7 @@ export async function runStravaSync(deps: SyncDeps): Promise<SyncResult> {
     const prev = await db.activities.get(act.id);
     if (prev?.streamsFetchedAt !== undefined) act.streamsFetchedAt = prev.streamsFetchedAt;
     stored.push({ id: act.id, date: act.date });
-    await db.activities.put(act);
+    result.odometerCreditedKm += await storeWithBikeAttribution(act, prev);
     result.pulled++;
   }
 
@@ -296,6 +308,52 @@ async function fetchOneStream(
 /** Stamp the activity so the backfill pass leaves it alone next time. */
 async function markStreamPulled(deps: SyncDeps, id: string): Promise<void> {
   await db.activities.update(id, { streamsFetchedAt: deps.now() } as Partial<Activity>);
+}
+
+/**
+ * Store one pulled ride with its **bike attribution** — and return the kilometres that
+ * attribution just added to the bike's derived odometer (0 when none).
+ *
+ * F3-AC2 for the API pipeline: a synced ride must reach the odometer the same way an
+ * imported file does, because the odometer is what component wear is measured against —
+ * and since v3 the odometer *is* `Σ distanceKm of activities carrying that bikeId`
+ * (data/odometer.ts). Attributing the row is therefore the whole credit; there is no
+ * counter left to increment and no transaction spanning two tables to keep in step.
+ *
+ * "Exactly once" is the attribution itself, carried across the re-pull overwrite by the
+ * caller the way `streamsFetchedAt` is: the row is written whole, so without the carry a
+ * cursor reset would both lose the ride's bike (silently shrinking the odometer) and, on
+ * the next attribution pass, re-place it. Attribution never *moves* a row that already
+ * has a bike — the machine it was ridden on does not change because the window was
+ * re-covered.
+ *
+ * A walk or run the athlete logged in Strava is real activity but not riding: no bikeId
+ * (`isCyclingActivity`, the same filter the stats layer uses), so it touches no
+ * odometer. When the stable is empty the ride is stored unattributed — and a later
+ * re-pull after the rider adds a machine can still place it, because "unattributed" is
+ * the only state that ever meant "not counted yet".
+ */
+async function storeWithBikeAttribution(act: Activity, prev: Activity | undefined): Promise<number> {
+  // Carry the existing attribution across the overwrite, before anything decides anew.
+  if (prev?.bikeId !== undefined) act.bikeId = prev.bikeId;
+
+  const unattributed = act.bikeId === undefined;
+  const creditable = unattributed && act.distanceKm > 0 && isCyclingActivity(act);
+
+  if (creditable) {
+    // Same "active, else first" pick as `activeBike` in queries.svelte.ts, so the sync
+    // places rides on the machine the rider is looking at on the Gear page.
+    const bikes = await db.bikes.toArray();
+    const bike = bikes.find((b) => b.active) ?? bikes[0];
+    if (bike) {
+      act.bikeId = bike.id;
+      await db.activities.put(act);
+      return act.distanceKm;
+    }
+  }
+
+  await db.activities.put(act);
+  return 0;
 }
 
 /**

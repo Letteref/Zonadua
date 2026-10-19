@@ -245,6 +245,112 @@ test.describe('strava sync', () => {
   });
 });
 
+test.describe('strava bike attribution', () => {
+  /**
+   * A synced ride must reach the active bike's odometer — once.
+   *
+   * The odometer is what component wear is measured against, so a pipeline that stores the
+   * ride but skips it would let a chain wear past its interval unnoticed. The odometer is
+   * now *derived* — `baselineKm + Σ distanceKm of rides carrying that bikeId`
+   * (data/odometer.ts) — so reaching it means attributing the row, and attribution is
+   * idempotent: a re-pull (cursor reset, or a window the ride re-covered) that overwrites
+   * the row carries its bikeId across, so the sum never moves twice. This test drives
+   * that through the real UI: the fake activities endpoint answers the same summary on
+   * every press, so the second Sync now is exactly the re-pull the carry exists for.
+   *
+   * Production seeds no bike (the odometer belongs to a machine the rider added), so the
+   * stable is written directly, the way the connect flow leaves `sync_state`.
+   */
+  const seedBike = async (page: Page, odometerKm: number): Promise<void> => {
+    await page.evaluate((odo) => {
+      const done = new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('zonadua');
+        open.onsuccess = () => {
+          const d = open.result;
+          try {
+            const tx = d.transaction('bikes', 'readwrite');
+            tx.objectStore('bikes').put({
+              id: 'bike-e2e',
+              name: 'E2E Bike',
+              type: 'road',
+              weightKg: 8,
+              crr: 0.004,
+              cda: 0.36,
+              // derived odometer: no synced rides exist yet, so the baseline is the whole
+              // reading the test starts from
+              baselineKm: odo,
+              active: true,
+              updatedAt: Date.now()
+            });
+            tx.oncomplete = () => {
+              d.close();
+              resolve();
+            };
+            tx.onerror = () => reject(tx.error);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        open.onerror = () => reject(open.error);
+      });
+      return done;
+    }, odometerKm);
+  };
+
+  /** The figure the rider reads on Gear: baseline + Σ attributed rides. */
+  const bikeOdometer = async (page: Page): Promise<number> =>
+    page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+      });
+      const bike = await new Promise<Record<string, unknown> | undefined>((res) => {
+        const rq = db.transaction('bikes', 'readonly').objectStore('bikes').get('bike-e2e');
+        rq.onsuccess = () => res(rq.result as Record<string, unknown> | undefined);
+      });
+      const acts = await new Promise<Array<Record<string, unknown>>>((res) => {
+        const rq = db.transaction('activities', 'readonly').objectStore('activities').getAll();
+        rq.onsuccess = () => res(rq.result as Array<Record<string, unknown>>);
+      });
+      db.close();
+      return (
+        (bike!.baselineKm as number) +
+        acts
+          .filter((a) => a.bikeId === 'bike-e2e')
+          .reduce((s, a) => s + (a.distanceKm as number), 0)
+      );
+    });
+
+  test('a synced ride adds its kilometres to the active bike odometer', async ({ page }) => {
+    await seedConnected(page);
+    await seedBike(page, 1000);
+
+    // The same summary on every press — the list endpoint ignores the `after` cursor, so
+    // every session after the first is a re-pull of the same ride.
+    await page.route('**/athlete/activities**', (route) =>
+      stravaFulfill(route, { body: [summary(9004, 'Odometer Ride')], headers: RATE_HEADERS })
+    );
+    await page.route('**/activities/9004/streams**', (route) =>
+      stravaFulfill(route, { body: STREAMS, headers: RATE_HEADERS })
+    );
+
+    await openSettings(page);
+    await page.getByRole('button', { name: 'Sync now' }).click();
+    await expect(syncNote(page)).toContainText(/pulled 1 ride/i);
+    await expect(syncNote(page)).toContainText(/Odometer \+42 km/i);
+    // 1000 baseline + the attributed ride: the figure the rider reads on the Gear page
+    await expect.poll(() => bikeOdometer(page)).toBe(1042);
+
+    // The re-pull: same ride again, row overwritten whole. The attribution rides across,
+    // so the sum — and the figure — must not move.
+    await page.getByRole('button', { name: 'Sync now' }).click();
+    await expect(syncNote(page)).toContainText(/pulled 1 ride/i);
+    await expect(syncNote(page)).not.toContainText(/Odometer/i);
+    expect(await bikeOdometer(page)).toBe(1042);
+  });
+});
+
 test.describe('strava trace backfill', () => {
   /**
    * A ride synced before its trace was stored must recover on its own.

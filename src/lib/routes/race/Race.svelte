@@ -4,11 +4,12 @@
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
-  import { allBikes, allRoutes, fetchRouteProfile, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
+  import { allBikes, allRoutes, fetchRouteProfile, fetchRouteTrack, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
   import { db, type Race, type RaceCheckpoint, type RaceLog } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { liveQuery } from 'dexie';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
+import RouteMapMini from '$lib/components/RouteMapMini.svelte';
 import { buildPlan, clockOf, fitIfForAvgSpeed, planSeries, slowestWindows, type PlanSeriesPoint } from '$lib/domain/pacing';
 import {
   gateBufferAt,
@@ -171,6 +172,8 @@ import { appSettings } from '$lib/data/queries.svelte';
 
   // ---------- route profile + solved plan (shared by setup and live chart, §23) ----------
   let profile = $state<ProfilePoint[]>([]);
+  /** GPS track of the same route — feeds the live mini-map; [] on pre-track rows */
+  let track = $state<Array<{ km: number; lat: number; lng: number }>>([]);
   const riderKg = $derived(weightSeries.current?.at(-1)?.kg ?? 68);
   const bike = $derived(bikes.find((b) => b.id === selectedBikeId));
 
@@ -181,6 +184,9 @@ import { appSettings } from '$lib/data/queries.svelte';
     let cancelled = false;
     void fetchRouteProfile(id ?? undefined).then((pts) => {
       if (!cancelled) profile = pts;
+    });
+    void fetchRouteTrack(id ?? undefined).then((pts) => {
+      if (!cancelled) track = pts;
     });
     return () => {
       cancelled = true;
@@ -457,11 +463,14 @@ import { appSettings } from '$lib/data/queries.svelte';
         await db.races.put(race);
       } else {
         // re-starting re-binds the route as well: the rider may have imported the GPX after
-        // the race was first created, and a stale 'stub-route' would blank the course chart
+        // the race was first created, and a stale 'stub-route' would blank the course chart.
+        // The dial travels too: `cutoffFinishMin` was previously written only on creation,
+        // so a gate set on this page vanished on save and reload.
         await db.races.update(raceId, {
           name,
           status: 'live',
           routeId: routeIdRef,
+          cutoffFinishMin: cutoffMin,
           checkpoints: plainCheckpoints,
           planJson,
           updatedAt: Date.now()
@@ -561,6 +570,17 @@ import { appSettings } from '$lib/data/queries.svelte';
     }
     return planAvgKph == null ? null : Math.round(planAvgKph * 10) / 10;
   });
+
+  /**
+   * Pins for the live mini-map: every named checkpoint plus the finish. The label carries
+   * the gate's own name ("KM 50 · Bukittinggi") because at map scale the km alone gives
+   * no anchor; the clock it must be passed by lives in the cut-offs card that sits just
+   * above the map, not painted over the track.
+   */
+  const mapMarkers = $derived([
+    ...checkpoints.map((c) => ({ km: c.km, label: c.label?.trim() || undefined })),
+    { km: raceKm, label: 'FINISH' }
+  ]);
 
   /**
    * Plan minutes still ahead of the rider, stops included.
@@ -975,10 +995,13 @@ import { appSettings } from '$lib/data/queries.svelte';
       </button>
     </section>
 
-    <!-- YOUR PLAN — the monolith highlight card -->
+    <!-- YOUR PLAN — the monolith highlight card. Panggung (mockup B, plan-monolith-panggung.html):
+         same centre-axis composition as the live buffer hero — context pill on top, the
+         number on stage with a small caption, supporting facts in an equal-cell strip.
+         No e2e readout is anchored to this card: fueling.spec only needs the "Your plan"
+         kicker to stay visible, and the AVG·KCAL·NP one-line test belongs to Routes. -->
     <SectionCard kicker="Your plan · optimized" dark>
-      <div class="flex items-baseline gap-3">
-        <span class="text-[40px] leading-none font-extrabold tracking-tight text-tabular" style="color:#ff4d5e">{planTotal}</span>
+      <div class="flex flex-col items-center gap-3 pt-1 text-center">
         <span class="bg-[#23252c] px-2 py-0.5 rounded-pill text-[10px] font-black text-on-mono-dim text-tabular uppercase">
           {#if bufferMin == null}
             no cut-off data
@@ -986,13 +1009,13 @@ import { appSettings } from '$lib/data/queries.svelte';
             {bufferMin >= 0 ? '+' : '−'}{Math.floor(Math.abs(bufferMin) / 60)}h {Math.abs(bufferMin % 60)}m buffer
           {/if}
         </span>
+        <span class="text-[44px] leading-none font-extrabold tracking-tight text-tabular" style="color:#ff4d5e">{planTotal}</span>
+        <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-on-mono-dim -mt-2">Estimated ride time</span>
       </div>
-      <div class="flex items-center justify-between text-on-mono-dim font-bold text-[11px] pt-1 border-t border-[#2b2d33] text-tabular">
-        <span>ETA <span class="text-on-mono">{planEta}</span></span>
-        <span class="text-[#3f434b]">·</span>
-        <span>AVG <span class="text-on-mono">{planAvgKph == null ? '—' : planAvgKph.toFixed(1)} KM/H</span></span>
-        <span class="text-[#3f434b]">·</span>
-        <span><span style="color:#ff4d5e">{targetWatts} W</span> NP</span>
+      <div class="grid grid-cols-3 mt-4 pt-3 border-t border-[#2b2d33] text-center text-[9.5px] font-bold uppercase tracking-[0.02em] text-on-mono-dim text-tabular whitespace-nowrap">
+        <span>ETA <b class="text-on-mono">{planEta}</b></span>
+        <span class="border-l border-[#2b2d33]">AVG <b class="text-on-mono">{planAvgKph == null ? '—' : planAvgKph.toFixed(1)} KM/H</b></span>
+        <span class="border-l border-[#2b2d33]"><b style="color:#ff4d5e">{targetWatts} W</b> NP</span>
       </div>
     </SectionCard>
 
@@ -1012,10 +1035,24 @@ import { appSettings } from '$lib/data/queries.svelte';
             <span class="text-[34px] leading-none font-extrabold tracking-tight text-tabular text-crimson">{fueling.carbPerHour}</span>
             <span class="text-[11px] font-bold uppercase tracking-wider text-ink-dim">g carb / h</span>
           </div>
-          <div class="flex items-center justify-between text-ink-dim font-bold text-[11px] pt-2 border-t border-hairline text-tabular">
-            <span>FLUID <span class="text-ink">{fueling.fluidPerHour} L/H</span></span>
-            <span class="text-ink-dim/40">·</span>
-            <span>MIX <span class="text-ink">{fueling.mixPerStopG} G</span> × {fueling.stopCount} STOPS</span>
+          <!--
+            Two secondary facts, two labelled cells — not one justify-between strip.
+            The strip floated a separator dot in the middle of whatever slack existed,
+            so FLUID and MIX drifted apart at every card width. Label above value keeps
+            the hierarchy the number row already established: the figure leads, the
+            word that names it sits small and dim above it.
+          -->
+          <div class="grid grid-cols-2 gap-2 pt-2.5 mt-0.5 border-t border-hairline">
+            <div class="flex flex-col gap-0.5 min-w-0">
+              <span class="text-[9px] font-bold uppercase tracking-wider text-ink-dim">FLUID</span>
+              <span class="text-[13px] font-extrabold text-ink text-tabular truncate">{fueling.fluidPerHour} L/H</span>
+            </div>
+            <div class="flex flex-col gap-0.5 min-w-0 border-l border-hairline pl-2.5">
+              <span class="text-[9px] font-bold uppercase tracking-wider text-ink-dim">MIX</span>
+              <span class="text-[13px] font-extrabold text-ink text-tabular truncate">
+                {fueling.mixPerStopG} G × {fueling.stopCount} STOPS
+              </span>
+            </div>
           </div>
           {#if fueling.carbIsCapped}
             <p class="text-[11px] leading-relaxed text-ink-dim">
@@ -1180,33 +1217,107 @@ import { appSettings } from '$lib/data/queries.svelte';
           </span>
         </div>
       {/snippet}
-      {#snippet right()}
+      <!-- Panggung (balanced stage, mockup B): the verdict sits on the card's centre
+           axis with the status chip directly above it — no more left-heavy top corner
+           with the chip floating on a row of its own. Every supporting figure then
+           shares one equal-cell strip below the track, four facts with equal weight.
+           The e2e readout contract still holds: `.text-metric-hero` keeps the trailing
+           BUFFER/BEHIND/NO PLAN word (the block span is last in innerText), the cells
+           keep the literal "Cut-off ·" and "N km done/to go" strings. -->
+      <div class="flex flex-col items-center gap-3 pt-1">
         <StatusChip
           label={status === 'aman' ? 'Ahead of target' : status === 'waspada' ? 'Watch the clock' : status === 'unknown' ? 'No plan' : 'Behind cut-off'}
           status={status === 'unknown' ? 'neutral' : status}
           icon={status === 'kritis' ? 'alert' : status === 'waspada' ? 'warn' : status === 'unknown' ? undefined : 'check'}
           onDark
         />
-      {/snippet}
-      <!-- glow-crimson-text, not glow-crimson: a box-shadow on this <p> renders as a
-           rectangle the width of the whole line (including the empty space after the
-           number), which reads as a stray grey panel behind the figure. drop-shadow
-           follows the glyphs instead. -->
-      <p class="text-metric-hero text-tabular font-extrabold glow-crimson-text" style="color:#ff4d5e">
-        {bufferLabel}<span class="text-xl font-bold text-on-mono-dim ml-2">{buffer == null ? 'NO PLAN' : buffer >= 0 ? 'BUFFER' : 'BEHIND'}</span>
-      </p>
-      <div class="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-on-mono-dim">
-        <span>Now · {clockNow}</span>
-        <span>Cut-off · {fmtClock(startMin + cutoffMin)}</span>
+        <!-- Flat #ff4d5e, no glow: the plan monolith's number is flat, and the two
+             cards read as one system only when their hero figures are treated the same. -->
+        <p class="text-metric-hero text-tabular font-extrabold text-center" style="color:#ff4d5e">
+          {bufferLabel}<span class="block text-[11px] font-bold uppercase tracking-[0.14em] text-on-mono-dim mt-1.5">{buffer == null ? 'NO PLAN' : buffer >= 0 ? 'BUFFER' : 'BEHIND'}</span>
+        </p>
       </div>
-      <HatchTrack pct={progressPct} status="signal" marker onDark />
-      <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-on-mono-dim text-tabular">
-        <span>{kmAtClock.toFixed(1)} km done</span>
-        <span>{Math.max(0, raceKm - kmAtClock).toFixed(1)} km to go</span>
+      <div class="mt-4">
+        <HatchTrack pct={progressPct} status="signal" marker onDark />
+      </div>
+      <div class="grid grid-cols-4 text-center text-[9px] font-bold uppercase tracking-[0.02em] text-on-mono-dim text-tabular whitespace-nowrap">
+        <span>Now · <b class="text-on-mono">{clockNow}</b></span>
+        <span class="border-l border-[#2b2d33]">Cut-off · <b class="text-on-mono">{fmtClock(startMin + cutoffMin)}</b></span>
+        <span class="border-l border-[#2b2d33]">{kmAtClock.toFixed(1)} km done</span>
+        <span class="border-l border-[#2b2d33]">{Math.max(0, raceKm - kmAtClock).toFixed(1)} km to go</span>
       </div>
     </SectionCard>
 
+    <!--
+      Read order on race day (requested restack): the numbers the rider keeps checking come
+      first, the course picture last. Projected finish / required avg / log checkpoint sit
+      directly under the buffer monolith; the course chart — the thing studied, not
+      monitored — now opens the bottom half, after the checkpoint cut-offs it illustrates.
+    -->
+    <div class="grid grid-cols-2 gap-3">
+      <section class="bg-tile border border-hairline rounded-card p-4">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Projected finish</span>
+        <p class="text-3xl font-bold text-ink text-tabular tracking-tight mt-2">{finishClock}</p>
+        <p class="text-[11px] text-ink-dim mt-1">{buffer == null ? 'needs a route profile' : `${buffer >= 0 ? '+' : '−'}${Math.abs(buffer)}m to limit`}</p>
+      </section>
+      <section class="bg-tile border border-hairline rounded-card p-4">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Required avg</span>
+        <p class="text-3xl font-bold text-ink text-tabular tracking-tight mt-2">{reqPace} <span class="text-sm text-ink-dim">km/h</span></p>
+        <p class="text-[11px] text-ink-dim mt-1">current avg {avgSpeed}</p>
+      </section>
+    </div>
+
+    <!-- LOG CHECKPOINT — the one big two-tap input (F7) -->
+    <section class="bg-surface border border-hairline rounded-card p-4 flex flex-col gap-3 elevation-card">
+      <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Log checkpoint</span>
+      <div class="flex items-center gap-2">
+        <div class="flex-1 h-14 rounded-2xl bg-tile border border-hairline-strong px-4 flex items-center gap-2">
+          <input
+            class="w-full bg-transparent outline-none text-ink text-2xl font-extrabold text-tabular"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="0.1"
+            placeholder="KM"
+            bind:value={kmInput}
+            aria-label="Current kilometers"
+          />
+          <span class="text-xs text-ink-dim font-bold uppercase">km</span>
+        </div>
+        <button
+          class="h-14 px-5 rounded-2xl bg-crimson-fill text-white text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 glow-signal active:scale-[0.98] transition-transform disabled:opacity-40"
+          disabled={!kmInput}
+          onclick={logCheckpoint}
+        >
+          <Icon name="plus" size={18} strokeWidth={2.4} />
+          Log
+        </button>
+      </div>
+    </section>
+
+    <!-- Checkpoint cut-offs -->
+    {#if cpBuffers.length > 0}
+      <section class="bg-surface border border-hairline rounded-card p-4 flex flex-col gap-2.5 elevation-card">
+        <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Checkpoint cut-offs</span>
+        {#each cpBuffers as cp (cp.km)}
+          <div class="flex items-center justify-between bg-raised border border-hairline p-3 rounded-2xl">
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-ink text-tabular">KM {cp.km}{cp.label ? ` · ${cp.label}` : ''}</span>
+              <span class="text-[10px] text-ink-dim">must pass by {fmtClock(startMin + (cp.cutoffMin ?? 0))}</span>
+            </div>
+            {#if cp.buffer == null}
+              <StatusChip label="no projection" status="neutral" />
+            {:else}
+              <StatusChip label="{cp.buffer >= 0 ? '+' : '−'}{Math.abs(cp.buffer)}m" status={cpStatus(cp.buffer)} icon={cp.buffer < 0 ? 'alert' : 'check'} />
+            {/if}
+          </div>
+        {/each}
+      </section>
+    {/if}
+
     <!-- Live profile: same solver as the setup page, crosshair reads buffer vs cut-off (§23) -->
+    <!-- The mini-map mirrors the crosshair: tapping the profile moves the pointer on the
+         route shape, so the two views stay one decision apart. -->
     <section class="bg-surface border border-hairline rounded-card p-4 flex flex-col gap-2.5 elevation-card">
       <div class="flex items-center justify-between gap-2">
         <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Course &amp; cut-offs</span>
@@ -1290,6 +1401,12 @@ import { appSettings } from '$lib/data/queries.svelte';
             {/if}
           {/snippet}
         </SpeedProfileChart>
+        <!-- Route mini-map: the same km sits on the track shape. Tapping the elevation
+             profile above moves the amber pointer here — where am I / where did I tap, in
+             one glance, with no tile download because the race must run offline. -->
+        {#if track.length >= 2}
+          <RouteMapMini points={track} positionKm={kmAtClock} probeKm={probeKm} markers={mapMarkers} height={128} />
+        {/if}
         <p class="text-[10px] font-medium text-ink-dim">
           Drag the crosshair to check any point against the cut-off it leads to.
           {#if !kmLogged}
@@ -1303,67 +1420,6 @@ import { appSettings } from '$lib/data/queries.svelte';
         </p>
       {/if}
     </section>
-
-    <div class="grid grid-cols-2 gap-3">
-      <section class="bg-tile border border-hairline rounded-card p-4">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Projected finish</span>
-        <p class="text-3xl font-bold text-ink text-tabular tracking-tight mt-2">{finishClock}</p>
-        <p class="text-[11px] text-ink-dim mt-1">{buffer == null ? 'needs a route profile' : `${buffer >= 0 ? '+' : '−'}${Math.abs(buffer)}m to limit`}</p>
-      </section>
-      <section class="bg-tile border border-hairline rounded-card p-4">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Required avg</span>
-        <p class="text-3xl font-bold text-ink text-tabular tracking-tight mt-2">{reqPace} <span class="text-sm text-ink-dim">km/h</span></p>
-        <p class="text-[11px] text-ink-dim mt-1">current avg {avgSpeed}</p>
-      </section>
-    </div>
-
-    <!-- LOG CHECKPOINT — the one big two-tap input (F7) -->
-    <section class="bg-surface border border-hairline rounded-card p-4 flex flex-col gap-3 elevation-card">
-      <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Log checkpoint</span>
-      <div class="flex items-center gap-2">
-        <div class="flex-1 h-14 rounded-2xl bg-tile border border-hairline-strong px-4 flex items-center gap-2">
-          <input
-            class="w-full bg-transparent outline-none text-ink text-2xl font-extrabold text-tabular"
-            type="number"
-            inputmode="decimal"
-            min="0"
-            step="0.1"
-            placeholder="KM"
-            bind:value={kmInput}
-            aria-label="Current kilometers"
-          />
-          <span class="text-xs text-ink-dim font-bold uppercase">km</span>
-        </div>
-        <button
-          class="h-14 px-5 rounded-2xl bg-crimson-fill text-white text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 glow-signal active:scale-[0.98] transition-transform disabled:opacity-40"
-          disabled={!kmInput}
-          onclick={logCheckpoint}
-        >
-          <Icon name="plus" size={18} strokeWidth={2.4} />
-          Log
-        </button>
-      </div>
-    </section>
-
-    <!-- Checkpoint cut-offs -->
-    {#if cpBuffers.length > 0}
-      <section class="bg-surface border border-hairline rounded-card p-4 flex flex-col gap-2.5 elevation-card">
-        <span class="text-[11px] font-bold tracking-wider uppercase text-ink-dim">Checkpoint cut-offs</span>
-        {#each cpBuffers as cp (cp.km)}
-          <div class="flex items-center justify-between bg-raised border border-hairline p-3 rounded-2xl">
-            <div class="flex flex-col">
-              <span class="text-xs font-bold text-ink text-tabular">KM {cp.km}{cp.label ? ` · ${cp.label}` : ''}</span>
-              <span class="text-[10px] text-ink-dim">must pass by {fmtClock(startMin + (cp.cutoffMin ?? 0))}</span>
-            </div>
-            {#if cp.buffer == null}
-              <StatusChip label="no projection" status="neutral" />
-            {:else}
-              <StatusChip label="{cp.buffer >= 0 ? '+' : '−'}{Math.abs(cp.buffer)}m" status={cpStatus(cp.buffer)} icon={cp.buffer < 0 ? 'alert' : 'check'} />
-            {/if}
-          </div>
-        {/each}
-      </section>
-    {/if}
 
     <!-- Checkpoint timeline -->
     <SectionCard kicker="Checkpoint timeline">

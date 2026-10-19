@@ -395,3 +395,118 @@ export function readoutOfOutcomes(
   const latest = compared.reduce((a, b) => (b.at >= a.at ? b : a));
   return { compared: compared.length, medianDeltaPct, latest };
 }
+
+/** The shape a cut-off travels in — structurally `RaceCheckpoint` without the Dexie import. */
+export interface StoredCutoff {
+  km: number;
+  label?: string;
+  /** minutes AFTER the start the race was saved with */
+  cutoffMin?: number;
+}
+
+/**
+ * Re-express a race's cut-offs against the start being saved.
+ *
+ * ## Why this translation exists
+ *
+ * The two screens speak different units **on purpose**, and `Save as race plan` is the
+ * only bridge between them. The estimator's checkpoint table speaks wall-clock gates —
+ * it buffers the solved arrival against "finish by 13:00", whatever hour you roll out.
+ * The race page stores minutes *after the start* (`start + cutoff`) because its editor
+ * takes the time-of-day a rider types and converts it with `wall − start`, and its
+ * hard-limit dial edits a duration. When the saved start changes — the departure picker
+ * can move it hours at a time — copying the stored numbers across unchanged would drag
+ * the gate along with them: a 13 h limit set for a 05:30 roll-out read against 21:00
+ * becomes a gate at 10:30 the next morning, and the "beat 13:00" the estimator showed
+ * never appears anywhere.
+ *
+ * So each stored cut-off is **rebased**: the wall-clock gate it produced under the
+ * previous start (`prevStart + stored`) is kept, and re-expressed as a duration from
+ * the start now being saved — exactly the arithmetic the race page's own checkpoint
+ * editor performs. A gate that now sits before the roll-out (a later start over a
+ * morning gate) has no non-negative duration to express; the finish falls back to the
+ * race page's own dial floor (120 min) and checkpoints to 0, so the rider sees a
+ * shortened-but-honest window rather than a negative limit nobody typed.
+ */
+export function rebaseCutoffsForStart(input: {
+  /** the stored race's cut-offs, measured from ITS start; `null` on a fresh save */
+  prev: { startWallMin: number; cutoffFinishMin: number; checkpoints: readonly StoredCutoff[] } | null;
+  /** wall-clock gates for a fresh save — the estimator's own table, minutes past midnight */
+  freshGates: {
+    finishWallMin?: number;
+    /**
+     * The finish limit as a duration from the start, when the caller already knows it
+     * (the estimator just solved the ride). Wins over the wall-clock gate: a gate past
+     * midnight cannot survive wall arithmetic — it wraps to a morning clock and collapses
+     * to the floor — while an overnight race's true limit (10 h from a 22:00 gun) is
+     * exactly that case.
+     */
+    finishDurationMin?: number;
+    checkpoints: readonly { km: number; label?: string; gateWallMin: number }[];
+  };
+  /** minutes past midnight of the start being saved */
+  nextStartWallMin: number;
+  /** the race page's finish-dial floor, minutes (its own buttons stop at 120) */
+  minFinishMin?: number;
+}): { cutoffFinishMin: number; checkpoints: StoredCutoff[] } {
+  const wall = (min: number): number => ((min % 1440) + 1440) % 1440;
+  const floor = input.minFinishMin ?? 120;
+  /** keep the gate, measure it from the new start, never below the caller's floor */
+  const rebase = (gateWall: number, min: number): number =>
+    Math.max(min, wall(gateWall) - wall(input.nextStartWallMin));
+
+  if (input.prev) {
+    const p = input.prev;
+    return {
+      cutoffFinishMin: rebase(p.startWallMin + p.cutoffFinishMin, floor),
+      checkpoints: p.checkpoints.map((c) =>
+        c.cutoffMin == null ? { ...c } : { ...c, cutoffMin: rebase(p.startWallMin + c.cutoffMin, 0) }
+      )
+    };
+  }
+  const g = input.freshGates;
+  return {
+    cutoffFinishMin:
+      g.finishDurationMin != null
+        ? Math.max(floor, g.finishDurationMin)
+        : g.finishWallMin != null
+          ? rebase(g.finishWallMin, floor)
+          : floor,
+    checkpoints: g.checkpoints.map((c) => ({
+      km: c.km,
+      ...(c.label !== undefined ? { label: c.label } : {}),
+      cutoffMin: rebase(c.gateWallMin, 0)
+    }))
+  };
+}
+
+/**
+ * Combine the planner's checkpoint list with a race's stored gates.
+ *
+ * `Save as race plan` writes the *positions the rider is looking at* — including edits
+ * made in the planner's table — so a save over an existing race cannot simply keep the
+ * race's old kilometres: that would silently discard the edits it was pressed to apply.
+ * But the gates the rider entered on the race page are facts too, so each one is
+ * re-attached to the planner point sitting on its kilometre (0.1 grid). A point the rider
+ * deleted or moved takes its gate with it, on purpose — the gate belonged to that spot.
+ *
+ * `stored` is expected to carry already-rebased cut-offs (see `rebaseCutoffsForStart`);
+ * this function only matches, it does no start-time arithmetic.
+ */
+export function checkpointsWithStoredGates(
+  planner: readonly { km: number; label?: string }[],
+  stored: readonly StoredCutoff[]
+): StoredCutoff[] {
+  const gateByKm = new Map<number, number>();
+  for (const c of stored) {
+    if (c.cutoffMin != null) gateByKm.set(Math.round(c.km * 10) / 10, c.cutoffMin);
+  }
+  return planner.map((c) => {
+    const gate = gateByKm.get(Math.round(c.km * 10) / 10);
+    return {
+      km: c.km,
+      ...(c.label != null && c.label !== '' ? { label: c.label } : {}),
+      ...(gate != null ? { cutoffMin: gate } : {})
+    };
+  });
+}

@@ -22,6 +22,7 @@
  */
 
 import type { WindSample } from '../../domain/wind';
+import type { RideForecastHour } from '../../domain/departure';
 
 const ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
 
@@ -97,6 +98,121 @@ export async function fetchWindForecast(
     return parseHourlyWind(await res.json());
   } catch {
     // offline, DNS failure, abort, malformed JSON — all the same to the caller
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Ride forecast — the departure picker's richer series.
+ *
+ * Separate from `fetchWindForecast` on purpose: that one answers the estimator's wind
+ * card and its contract is "wind or nothing", while this one carries temperature and
+ * rain as well, in the *route's* timezone (`timezone=auto`), because a departure picker
+ * that shows UTC hours to a rider planning their morning is showing the wrong clock.
+ * Keeping the two calls apart also means the wind card's mocked E2E fixture cannot
+ * silently become a ride forecast: a wind-only body fails this parser's completeness
+ * check and degrades to "no forecast", which is the honest answer for that shape.
+ * ------------------------------------------------------------------ */
+
+export interface RideForecast {
+  /** Open-Meteo's own UTC offset for the route's timezone, seconds */
+  utcOffsetSeconds: number;
+  hours: RideForecastHour[];
+}
+
+/** URL for a ride forecast, exported so the shape can be asserted without a network. */
+export function rideForecastUrl(req: ForecastRequest): string {
+  const q = new URLSearchParams({
+    latitude: String(req.latitude),
+    longitude: String(req.longitude),
+    hourly:
+      'temperature_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m',
+    wind_speed_unit: 'kmh',
+    // route-local wall clock: the picker offers "06:00", and 06:00 means 06:00 *there*
+    timezone: 'auto',
+    start_date: req.startDate,
+    end_date: req.endDate
+  });
+  return `${ENDPOINT}?${q.toString()}`;
+}
+
+/**
+ * Pull a complete ride forecast out of an Open-Meteo body.
+ *
+ * The same completeness doctrine as `parseHourlyWind`: any missing hour (Open-Meteo's
+ * "no data" is null), any mismatched array length, or a missing offset rejects the
+ * whole series. A hole in the rain series that read as "dry" would recommend the very
+ * hour the rider gets soaked in.
+ */
+export function parseRideForecast(body: unknown): RideForecast | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as { hourly?: unknown; utc_offset_seconds?: unknown };
+  const hourly = b.hourly;
+  if (!hourly || typeof hourly !== 'object') return null;
+
+  const offset = Number(b.utc_offset_seconds);
+  if (!Number.isFinite(offset)) return null;
+
+  const h = hourly as Record<string, unknown>;
+  const times = h.time;
+  const temps = h.temperature_2m;
+  const probs = h.precipitation_probability;
+  const mms = h.precipitation;
+  const speeds = h.wind_speed_10m;
+  const dirs = h.wind_direction_10m;
+  if (![times, temps, probs, mms, speeds, dirs].every((a) => Array.isArray(a))) return null;
+
+  const t = times as unknown[];
+  const tp = temps as unknown[];
+  const pr = probs as unknown[];
+  const mm = mms as unknown[];
+  const ws = speeds as unknown[];
+  const wd = dirs as unknown[];
+  const n = t.length;
+  if (n === 0 || [tp, pr, mm, ws, wd].some((a) => a.length !== n)) return null;
+
+  const out: RideForecastHour[] = [];
+  for (let i = 0; i < n; i++) {
+    const tempC = Number(tp[i]);
+    const prob = Number(pr[i]);
+    const rain = Number(mm[i]);
+    const s = Number(ws[i]);
+    const d = Number(wd[i]);
+    if (
+      t[i] == null ||
+      tp[i] == null ||
+      pr[i] == null ||
+      mm[i] == null ||
+      ws[i] == null ||
+      wd[i] == null ||
+      ![tempC, prob, rain, s, d].every(Number.isFinite)
+    ) {
+      return null;
+    }
+    out.push({
+      time: String(t[i]),
+      tempC,
+      precipProbPct: prob,
+      precipMm: rain,
+      wind: { speedKph: s, fromDeg: ((d % 360) + 360) % 360 }
+    });
+  }
+  return { utcOffsetSeconds: offset, hours: out };
+}
+
+/**
+ * Fetch a ride forecast. Returns `null` on any failure — the caller then says "no
+ * forecast" in words instead of offering departure hours it cannot score.
+ */
+export async function fetchRideForecast(
+  req: ForecastRequest,
+  signal?: AbortSignal
+): Promise<RideForecast | null> {
+  try {
+    const res = await fetch(rideForecastUrl(req), { signal });
+    if (!res.ok) return null;
+    return parseRideForecast(await res.json());
+  } catch {
     return null;
   }
 }

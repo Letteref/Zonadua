@@ -173,7 +173,11 @@ export async function ensureSeeded(): Promise<void> {
       weightKg: 9.4,
       crr: 0.0045,
       cda: 0.32,
-      odometerKm: 8412,
+      // The odometer is derived (baseline + Σ attributed rides, data/odometer.ts). The
+      // demo stable must still *read* 8,412 km — mockups and wear states were composed
+      // against that figure — so the baseline is 8,412 minus the 649.5 km of non-commute
+      // rides seeded below and attributed to this bike.
+      baselineKm: 8412 - 649.5,
       active: true,
       notes: 'Shimano 105 Di2 · 32/28 cassette',
       updatedAt: Date.now()
@@ -185,7 +189,8 @@ export async function ensureSeeded(): Promise<void> {
       weightKg: 10.2,
       crr: 0.0068,
       cda: 0.38,
-      odometerKm: 3190,
+      // no seeded rides are attributed to the gravel bike, so baseline is the whole figure
+      baselineKm: 3190,
       active: false,
       notes: 'Canyon Grizl CF SL 7 · 45mm Pirelli Cinturato',
       updatedAt: Date.now()

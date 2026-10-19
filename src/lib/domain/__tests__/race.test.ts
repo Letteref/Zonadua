@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AMAN_MIN,
+  checkpointsWithStoredGates,
   clockAtKm,
   feasibility,
   gateBufferAt,
@@ -9,6 +10,7 @@ import {
   planMinutesBetween,
   raceOutcome,
   readoutOfOutcomes,
+  rebaseCutoffsForStart,
   sustainAt,
   wPrimeSpentAt
 } from '../race';
@@ -442,5 +444,125 @@ describe('readoutOfOutcomes', () => {
       { name: 'newest but unmeasured', at: 30, outcome: null }
     ]);
     expect(r.latest!.name).toBe('newer');
+  });
+});
+
+describe('rebaseCutoffsForStart', () => {
+  // The estimator shows wall-clock gates ("beat 13:00"); the race page stores minutes
+  // after the start. Saving with a new roll-out must keep the gate, re-measured from
+  // the new start — this is the unit conversion `Save as race plan` is responsible for.
+  const FRESH = {
+    finishWallMin: 13 * 60,
+    checkpoints: [{ km: 120, label: 'CP2 Payakumbuh', gateWallMin: 570 }]
+  };
+
+  it('fresh save at the estimator\'s default 05:30 keeps both gates on their wall clocks', () => {
+    const out = rebaseCutoffsForStart({ prev: null, freshGates: FRESH, nextStartWallMin: 5 * 60 + 30 });
+    expect(out.cutoffFinishMin).toBe(780 - 330); // 450 → 05:30 + 7h30 = 13:00
+    expect(out.checkpoints[0].cutoffMin).toBe(570 - 330); // 240 → 09:30
+  });
+
+  it('a picked 02:00 roll-out rebases the same gates, it does not copy the old numbers', () => {
+    const out = rebaseCutoffsForStart({ prev: null, freshGates: FRESH, nextStartWallMin: 120 });
+    // naive copying would keep 780 → "must beat 15:00"; the estimator says 13:00
+    expect(120 + out.cutoffFinishMin).toBe(13 * 60);
+    expect(120 + out.checkpoints[0].cutoffMin!).toBe(570);
+  });
+
+  it('a gate before the new roll-out falls back to the page\'s own floors, never negative', () => {
+    const out = rebaseCutoffsForStart({ prev: null, freshGates: FRESH, nextStartWallMin: 21 * 60 });
+    expect(out.cutoffFinishMin).toBe(120); // the finish dial stops at 2 h
+    expect(out.checkpoints[0].cutoffMin).toBe(0);
+  });
+
+  it('an existing race keeps its displayed gate when the start moves', () => {
+    // stored at a 05:30 start with a 13 h limit → gate at 18:30; roll out at 02:00 instead
+    const out = rebaseCutoffsForStart({
+      prev: { startWallMin: 330, cutoffFinishMin: 780, checkpoints: [{ km: 120, label: 'CP2', cutoffMin: 570 }] },
+      freshGates: FRESH,
+      nextStartWallMin: 120
+    });
+    expect(120 + out.cutoffFinishMin).toBe(330 + 780); // still 18:30
+    expect(120 + out.checkpoints[0].cutoffMin!).toBe(330 + 570); // still 15:00
+  });
+
+  it('leaves a checkpoint with no cut-off alone — absence is not zero', () => {
+    const out = rebaseCutoffsForStart({
+      prev: { startWallMin: 330, cutoffFinishMin: 780, checkpoints: [{ km: 50 }] },
+      freshGates: FRESH,
+      nextStartWallMin: 120
+    });
+    expect(out.checkpoints[0].cutoffMin).toBeUndefined();
+  });
+
+  it('a gate past midnight wraps to the same wall clock', () => {
+    // stored at a 22:00 start with a 13 h limit → gate 11:00 next morning
+    const out = rebaseCutoffsForStart({
+      prev: { startWallMin: 22 * 60, cutoffFinishMin: 780, checkpoints: [] },
+      freshGates: FRESH,
+      nextStartWallMin: 5 * 60 + 30
+    });
+    expect(330 + out.cutoffFinishMin).toBe(11 * 60);
+  });
+
+  it('a fresh finish *duration* is stored directly — overnight races keep their limit', () => {
+    // 22:00 gun, 10 h estimate + margin = a finish gate at 08:00 *next day*. As a wall
+    // clock that wraps to 480 and collapses to the 120 floor; as the duration the
+    // estimator actually solved, it survives intact.
+    const out = rebaseCutoffsForStart({
+      prev: null,
+      freshGates: { finishDurationMin: 10 * 60, checkpoints: [] },
+      nextStartWallMin: 22 * 60
+    });
+    expect(out.cutoffFinishMin).toBe(600);
+    expect(out.checkpoints).toEqual([]); // no organizer gates were known, none invented
+  });
+
+  it('a fresh duration still rises to the race page\'s floor', () => {
+    const out = rebaseCutoffsForStart({
+      prev: null,
+      freshGates: { finishDurationMin: 90, checkpoints: [] },
+      nextStartWallMin: 330
+    });
+    expect(out.cutoffFinishMin).toBe(120);
+  });
+});
+
+describe('checkpointsWithStoredGates — planner positions, race-page gates', () => {
+  it('re-attaches a gate to the planner point sitting on its kilometre', () => {
+    const out = checkpointsWithStoredGates(
+      [
+        { km: 20, label: 'Flats' },
+        { km: 40, label: 'Climb' },
+        { km: 100, label: 'Finish Line' }
+      ],
+      [
+        { km: 40, label: 'Old name', cutoffMin: 150 },
+        { km: 100, cutoffMin: 480 }
+      ]
+    );
+    expect(out).toEqual([
+      { km: 20, label: 'Flats' },
+      { km: 40, label: 'Climb', cutoffMin: 150 }, // the planner's label wins, the gate stays
+      { km: 100, label: 'Finish Line', cutoffMin: 480 }
+    ]);
+  });
+
+  it('a point the rider deleted or moved takes its gate with it', () => {
+    const out = checkpointsWithStoredGates(
+      [{ km: 41, label: 'Climb' }, { km: 100, label: 'Finish Line' }],
+      [
+        { km: 40, cutoffMin: 150 }, // the km-40 point no longer exists
+        { km: 60, cutoffMin: 300 } // nor a planner point on km 60
+      ]
+    );
+    expect(out).toEqual([{ km: 41, label: 'Climb' }, { km: 100, label: 'Finish Line' }]);
+  });
+
+  it('matching is on the 0.1 grid, and an empty label stays absent', () => {
+    const out = checkpointsWithStoredGates([{ km: 15.04, label: '' }], [
+      { km: 15.03, cutoffMin: 60 }
+    ]);
+    expect(out).toEqual([{ km: 15.04, cutoffMin: 60 }]);
   });
 });

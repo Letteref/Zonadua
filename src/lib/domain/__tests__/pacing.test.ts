@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPlan,
   clockOf,
+  defaultCheckpoints,
   durationOf,
   planSeries,
   resolveTargetWatts,
@@ -380,5 +381,77 @@ describe('slowestWindows', () => {
     }
     // and the km it reports is the middle of the window it actually walked
     expect(w[0].km).toBeCloseTo((w[0].fromKm + w[0].toKm) / 2, 6);
+  });
+});
+
+describe('defaultCheckpoints — control points derived from the profile', () => {
+  const flat = Array.from({ length: 11 }, (_, i) => ({ distKm: i * 10, altM: 100 }));
+
+  it('places one point per ~50 km leg and finishes at the route\'s true end', () => {
+    // 100 km → 2 legs at the thirds, plus the finish — nothing typed by hand
+    expect(defaultCheckpoints(flat).map((c) => c.km)).toEqual([33.3, 66.7, 100]);
+    expect(defaultCheckpoints(flat).at(-1)!.label).toBe('Finish Line');
+  });
+
+  it('names flat terrain Flats and never invents a cut-off', () => {
+    const cps = defaultCheckpoints(flat);
+    expect(cps[0].label).toBe('Flats');
+    // absence is not zero: a gate the organizer never published stays unstored
+    expect(cps.every((c) => c.cutoffMin === undefined)).toBe(true);
+  });
+
+  it('names a leg by the terrain that leads to its point', () => {
+    // 60 km: flat twenty, then a 300 m wall — two legs, because short routes get two
+    const hilly = [
+      { distKm: 0, altM: 100 },
+      { distKm: 20, altM: 100 },
+      { distKm: 40, altM: 400 },
+      { distKm: 60, altM: 100 }
+    ];
+    const cps = defaultCheckpoints(hilly);
+    expect(cps.map((c) => c.km)).toEqual([20, 40, 60]);
+    expect(cps[0].label).toBe('Flats');
+    expect(cps[1].label).toBe('Climb');
+  });
+
+  it('calls a losing leg Descent', () => {
+    const drop = [
+      { distKm: 0, altM: 600 },
+      { distKm: 25, altM: 450 },
+      { distKm: 50, altM: 300 },
+      { distKm: 75, altM: 150 },
+      { distKm: 100, altM: 150 }
+    ];
+    expect(defaultCheckpoints(drop)[0].label).toBe('Descent');
+  });
+
+  it('scales the point count with the route, bounded to 2–6 legs', () => {
+    const long = Array.from({ length: 41 }, (_, i) => ({ distKm: i * 10, altM: 100 })); // 400 km
+    expect(defaultCheckpoints(long).length).toBe(7); // 6 legs + finish
+    const tiny = Array.from({ length: 5 }, (_, i) => ({ distKm: i, altM: 100 })); // 4 km
+    expect(defaultCheckpoints(tiny).length).toBe(3); // 2 legs + finish
+  });
+
+  it('returns nothing for a profile with no length to place points on', () => {
+    expect(defaultCheckpoints([])).toEqual([]);
+    expect(defaultCheckpoints([{ distKm: 0, altM: 100 }])).toEqual([]);
+    expect(defaultCheckpoints([{ distKm: 5, altM: 100 }, { distKm: 5, altM: 120 }])).toEqual([]);
+  });
+
+  it('gives a sub-kilometre route only the finish — no checkpoints forty metres apart', () => {
+    const lap = [
+      { distKm: 0, altM: 100 },
+      { distKm: 0.05, altM: 101 },
+      { distKm: 0.13, altM: 100 }
+    ];
+    expect(defaultCheckpoints(lap)).toEqual([{ km: 0.1, label: 'Finish Line' }]);
+  });
+
+  it('feeds buildPlan checkpoints whose buffers stay empty', () => {
+    const plan = buildPlan({ ...base, checkpoints: defaultCheckpoints(profile) });
+    expect(plan.ok).toBe(true);
+    expect(plan.checkpoints.length).toBe(5); // 4 legs on the 200 km fixture + finish
+    expect(plan.checkpoints.at(-1)!.km).toBe(200);
+    expect(plan.checkpoints.every((c) => c.bufferMin === undefined)).toBe(true);
   });
 });

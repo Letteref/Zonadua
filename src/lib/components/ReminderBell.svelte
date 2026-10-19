@@ -12,8 +12,8 @@
   /** F3-AC3: all components ≥90% of interval, across every bike, worst first. */
   const wearAlerts = $derived(
     bikes
-      .flatMap(({ bike, components }) =>
-        components.map((c) => ({ comp: c, bikeName: bike.name, wear: computeWear(c, bike.odometerKm) }))
+      .flatMap(({ bike, components, odometerKm }) =>
+        components.map((c) => ({ comp: c, bikeName: bike.name, wear: computeWear(c, odometerKm) }))
       )
       .filter((w) => w.wear.status !== 'aman')
       .sort((a, b) => b.wear.pct - a.wear.pct)

@@ -308,6 +308,87 @@ function hardestSegment(solution: RideSolution) {
 }
 
 /**
+ * Control points for the route actually loaded — derived from its profile, never typed.
+ *
+ * The planner used to show five literal checkpoints (km 25 / 87 / 120 / 160 / 200.4,
+ * named after one imagined course) for every file the rider loaded: the ETAs were solved
+ * from physics, but the *positions* belonged to a single mock race. On a 60 km route the
+ * finish clamp stacked three of them on the same metre, and `Save as race plan` stamped
+ * "CP2 Payakumbuh" onto races that pass no such place.
+ *
+ * Now the profile decides: one point per ~50 km of the route that actually exists
+ * (2–6 of them), plus the finish at its true end. A label describes the terrain that
+ * *leads* to the point — a leg that climbs says Climb, a flat one says Flats — because
+ * inventing a place name for a hill the app merely sampled would be the same fiction in
+ * a friendlier font.
+ *
+ * No cut-off is attached: gates are facts about an event the estimator does not know.
+ * The race page is where a rider enters them (its editor already takes km / label /
+ * roll-by); absence is not zero.
+ */
+export function defaultCheckpoints(profile: readonly ProfilePoint[]): CheckpointDef[] {
+  if (profile.length < 2) return [];
+  const startKm = profile[0].distKm;
+  const totalKm = profile[profile.length - 1].distKm - startKm;
+  if (!(totalKm > 0)) return [];
+  const round1 = (km: number): number => Math.round(km * 10) / 10;
+
+  // Sub-kilometre "routes" (a lap of the car park, a mis-exported file) get only the
+  // finish: two control points forty metres apart are noise, not checkpoints.
+  if (totalKm < 1) return [{ km: round1(startKm + totalKm), label: 'Finish Line' }];
+
+  /** elevation anywhere on the polyline, interpolated linearly between samples */
+  const altAt = (km: number): number => {
+    if (km <= profile[0].distKm) return profile[0].altM;
+    for (let i = 1; i < profile.length; i++) {
+      const a = profile[i - 1];
+      const b = profile[i];
+      if (b.distKm >= km) {
+        const span = b.distKm - a.distKm;
+        return span <= 0 ? b.altM : a.altM + ((km - a.distKm) / span) * (b.altM - a.altM);
+      }
+    }
+    return profile[profile.length - 1].altM;
+  };
+
+  /** steepest point-to-point grade (%) over the open-closed interval (fromKm, toKm] */
+  const maxGradeBetween = (fromKm: number, toKm: number): number => {
+    let max = 0;
+    for (let i = 1; i < profile.length; i++) {
+      const a = profile[i - 1];
+      const b = profile[i];
+      if (b.distKm <= fromKm) continue;
+      if (a.distKm >= toKm) break;
+      const dKm = b.distKm - a.distKm;
+      if (dKm <= 0) continue;
+      max = Math.max(max, ((b.altM - a.altM) / (dKm * 1000)) * 100);
+    }
+    return max;
+  };
+
+  const legs = Math.min(6, Math.max(2, Math.round(totalKm / 50)));
+
+  const out: CheckpointDef[] = [];
+  let prevKm = startKm;
+  for (let i = 1; i <= legs; i++) {
+    const km = startKm + (totalKm * i) / (legs + 1);
+    const netM = altAt(km) - altAt(prevKm);
+    const maxGrade = maxGradeBetween(prevKm, km);
+    // A long drag counts as climbing even below any single steep pitch, and a leg that
+    // both rises and drops is named by what dominates it — the metres gained.
+    const label =
+      netM >= 80 || maxGrade >= 4 ? 'Climb'
+      : netM <= -40 ? 'Descent'
+      : maxGrade < 2 && Math.abs(netM) < 30 ? 'Flats'
+      : 'Rolling';
+    out.push({ km: round1(km), label });
+    prevKm = km;
+  }
+  out.push({ km: round1(startKm + totalKm), label: 'Finish Line' });
+  return out;
+}
+
+/**
  * One chart row per point on the route: distance on the x axis, altitude and the *solved*
  * speed on the two y axes, elapsed time for the crosshair.
  *

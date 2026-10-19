@@ -248,6 +248,7 @@ Tracker race-day yang menjawab "apakah saya aman dari cut-off?" dengan input min
 | Race-day dark mode + wake-lock | P0 (bagian F7) | Kebutuhan nyata race start 04:00 |
 | Odometer & pengingat maintenance sepeda | P1 (bagian F3) | Menjaga app relevan harian, bukan hanya saat race |
 | Kalibrasi estimasi dari riwayat ride | P2 | Semakin dipakai, semakin akurat |
+| eFTP auto-suggest (best 20 min, jendela 90 hari) | P1 (sudah ada di Settings) | Usul update FTP + zona dari ride asli rider; accept/decline dengan baris bukti ride sumber — `domain/eftp.ts` |
 | Segment/TSM comparison vs attempt sebelumnya | P2 | Motivasi jangka panjang |
 | Ekspor rencana race ke PDF/teks (untuk cetak ditempel di stem cap) | P2 | Detail yang dicintai ultra rider |
 

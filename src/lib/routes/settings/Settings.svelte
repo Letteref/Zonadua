@@ -12,12 +12,20 @@
   import { markWiped, newId } from '$lib/data/seed';
   import { resetOnboarding } from '$lib/data/onboarding.svelte';
   import { BACKUP_CREDENTIALS_NOTE, buildBackupPayload, redactCredentials } from '$lib/data/backup';
+  import { normalizeRestoredBikes } from '$lib/data/odometer';
   import { disconnectStrava, startStravaConnect } from '$lib/infra/strava/connect';
   import { runLiveSync } from '$lib/infra/strava/runSync';
   import { recomputeSince } from '$lib/data/recompute';
   import { bandsFromStops, validateStops, ZONE_TEMPLATES, type ZoneStop } from '$lib/domain/zones';
   import { buildTrend } from '$lib/domain/trend';
   import { ftpFromTwentyMinuteTest } from '$lib/domain/ftp';
+  import {
+    bestTwentyMinuteEffort,
+    isEftpDismissed,
+    suggestEftp,
+    type EftpDismissal,
+    type EftpEffort
+  } from '$lib/domain/eftp';
   import TrendChart from '$lib/components/TrendChart.svelte';
   import { toast } from '$lib/toast.svelte';
 
@@ -75,6 +83,7 @@
         const parts: string[] = [];
         if (r.pulled > 0) parts.push(`Pulled ${r.pulled} ride${r.pulled === 1 ? '' : 's'}`);
         if (traces > 0) parts.push(`${traces} power trace${traces === 1 ? '' : 's'}`);
+        if (r.odometerCreditedKm > 0) parts.push(`Odometer +${Math.round(r.odometerCreditedKm)} km`);
         syncNote = parts.length > 0 ? `${parts.join(' · ')}.` : 'Up to date — nothing new upstream.';
       }
     } catch (err) {
@@ -89,6 +98,11 @@
   let hydrated = $state(false);
   // full FTP history, not just the newest row — the trend chart needs the whole series
   let ftpHistory = $state<FtpHistory[]>([]);
+  // eFTP auto-suggest inputs, filled by the same hydration pass below (declared here so
+  // the async load above them is not writing across a temporal dead zone)
+  let eftpEffort = $state<EftpEffort | null>(null);
+  let eftpDismiss = $state<EftpDismissal | undefined>(undefined);
+  let eftpApplying = $state(false);
   let name = $state('');
   let heightCm = $state(174);
   let weightKg = $state(68.2);
@@ -104,13 +118,19 @@
 
   void (async () => {
     try {
-      const [a, s, w, f] = await Promise.all([
+      const [a, s, w, f, acts, curves] = await Promise.all([
         db.athlete.get('me'),
         db.settings.get('app'),
         db.weight_log.orderBy('date').last(),
-        db.ftp_history.orderBy('date').last()
+        db.ftp_history.orderBy('date').last(),
+        db.activities.toArray(),
+        db.power_curves.toArray()
       ]);
       ftpHistory = await db.ftp_history.orderBy('date').toArray();
+      // eFTP detection runs once per visit on the rows already loaded here; the
+      // suggestion below is derived, so logging or dismissing updates it live.
+      eftpEffort = bestTwentyMinuteEffort(acts, curves, Date.now());
+      eftpDismiss = s?.eftpDismiss;
       if (a) {
         name = a.name;
         heightCm = a.heightCm;
@@ -230,6 +250,75 @@
       );
     } catch (err) {
       showFailure('Could not log FTP', err);
+    }
+  }
+
+  // ---------- eFTP auto-suggest (PRD §7): best 20 min of the last 90 days ----------
+  /**
+   * The offer on screen: a qualifying effort whose estimate differs from what is
+   * logged, unless the rider already said not to this exact suggestion. Logging an FTP
+   * equal to the estimate (or a different best effort arriving) is what closes it —
+   * there is no timer and no hidden threshold.
+   */
+  const eftpSuggestion = $derived.by(() => {
+    if (!hydrated || !eftpEffort) return null;
+    const s = suggestEftp(eftpEffort, ftpHistory.at(-1)?.ftp ?? null);
+    if (!s || isEftpDismissed(eftpDismiss, s)) return null;
+    return s;
+  });
+
+  /** Evidence date, same short form as the Rides list. */
+  const fmtEffortDate = (iso: string): string =>
+    new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+  /**
+   * Accept runs through `logFtp` — the single door into ftp_history — so the detected
+   * value and a hand-typed one share the same write, rescore, and toast. `eftpApplying`
+   * is the during-state: the row is local and near-instant, so a disabled button plus
+   * the existing result toast covers before/result/failure without a spinner.
+   */
+  async function applyEftpSuggestion(): Promise<void> {
+    const s = eftpSuggestion;
+    if (!s || eftpApplying) return;
+    eftpApplying = true;
+    try {
+      ftpW = s.estimateFtp;
+      await logFtp();
+    } finally {
+      eftpApplying = false;
+    }
+  }
+
+  /**
+   * "Not now" persists the dismissal against its evidence, not against a timestamp: the
+   * suggestion reappears only when a different best effort yields a different number.
+   */
+  async function dismissEftpSuggestion(): Promise<void> {
+    const s = eftpSuggestion;
+    if (!s || eftpApplying) return;
+    const dismissal: EftpDismissal = { activityId: s.effort.activityId, ftp: s.estimateFtp };
+    try {
+      // keep every field the form does not own (same rule as saveProfile)
+      const prev = await db.settings.get('app');
+      const rec: SettingsRec = {
+        id: 'app',
+        unit: prev?.unit ?? 'metric',
+        theme: prev?.theme ?? 'auto',
+        lang: prev?.lang ?? 'en',
+        aiProvider: prev?.aiProvider,
+        aiKey: prev?.aiKey,
+        weatherOn: prev?.weatherOn ?? true,
+        lastBackupAt: prev?.lastBackupAt,
+        archetype: prev?.archetype,
+        weeklyTargetKm: prev?.weeklyTargetKm,
+        eftpDismiss: dismissal,
+        updatedAt: Date.now()
+      };
+      await db.settings.put(rec);
+      eftpDismiss = dismissal;
+      showToast('FTP suggestion hidden — a new best effort will suggest again');
+    } catch (err) {
+      showFailure('Could not hide the FTP suggestion', err);
     }
   }
 
@@ -388,6 +477,18 @@
       // credential in a file is either from an older build or was put there by hand — and a
       // restore should not be a way to reintroduce one. Same list, both directions.
       const data = redactCredentials(parsed.data ?? {});
+      // A pre-v3 file carries the old increment counter and no baseline; writing it as-is
+      // would collapse the displayed odometer to the tracked subset. Freeze the baseline
+      // from the file's own rides so the restored figure matches the exported one
+      // (data/odometer.ts — same conversion the schema-v3 upgrade runs).
+      if (Array.isArray(data.bikes)) {
+        data.bikes = normalizeRestoredBikes(
+          data.bikes as Array<{ id: string; baselineKm?: number; odometerKm?: number }>,
+          Array.isArray(data.activities)
+            ? (data.activities as Array<{ bikeId?: string; distanceKm?: number }>)
+            : []
+        );
+      }
       const tableNames = Object.keys(data) as string[];
       await db.transaction('rw', db.tables, async () => {
         for (const tn of tableNames) {
@@ -529,11 +630,56 @@
         {/if}
       </p>
 
+      <!--
+        DETECTED FTP (PRD §7 eFTP auto-suggest) — sits above the manual calculator because
+        it needs no test ride: the best 20-minute effort of the last 90 days already
+        recorded. The evidence line names the exact ride the number came from; the two
+        actions are Log FTP (primary, same door as the button below) and Not now.
+        Absent entirely when nothing qualifies — no rides, demo rides only, or an
+        estimate already matching the logged FTP — which is the designed empty state.
+      -->
+      {#if eftpSuggestion}
+        <div class="rounded-2xl bg-tile border border-signal p-3 flex flex-col gap-2.5">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Detected from your rides</span>
+          <div class="flex items-end justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-xl font-extrabold leading-tight text-ink text-tabular">FTP {eftpSuggestion.estimateFtp} W</p>
+              <p class="text-[11px] text-ink-dim text-tabular">
+                {#if eftpSuggestion.currentFtp === null}
+                  No FTP logged yet
+                {:else}
+                  Current {eftpSuggestion.currentFtp} W · <span class={eftpSuggestion.deltaW! > 0 ? 'text-aman' : eftpSuggestion.deltaW! < 0 ? 'text-crimson-deep' : 'text-ink-dim'}>{eftpSuggestion.deltaW! > 0 ? '+' : ''}{eftpSuggestion.deltaW} W</span>
+                {/if}
+              </p>
+            </div>
+          </div>
+          <p class="text-[11px] font-medium text-ink-dim">
+            Best 20 min {eftpSuggestion.effort.watts} W — “{eftpSuggestion.effort.name}”, {fmtEffortDate(eftpSuggestion.effort.date)}, from your last 90 days (95% of it). Logging applies it as today's FTP: zone watts follow (zones are % of FTP); earlier rides keep the FTP in force on their date.
+          </p>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              class="h-9 rounded-pill bg-crimson-fill text-white text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-50 active:scale-[0.98] transition-transform"
+              disabled={eftpApplying}
+              onclick={() => void applyEftpSuggestion()}
+            >
+              Log FTP {eftpSuggestion.estimateFtp} W
+            </button>
+            <button
+              class="h-9 rounded-pill bg-surface border border-hairline text-ink-dim text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-50 active:scale-[0.98] transition-transform"
+              disabled={eftpApplying}
+              onclick={() => void dismissEftpSuggestion()}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      {/if}
+
       <!-- FTP CALCULATOR (20-minute test × 0.95) -->
       <div class="rounded-2xl bg-tile border border-hairline p-3 flex flex-col gap-2">
         <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Estimate from a 20-minute test</span>
         <div class="flex items-end gap-2">
-          <label class="flex flex-col gap-1.5 flex-1">
+          <label class="flex flex-col gap-1.5 flex-1 min-w-0">
             <span class="text-[10px] font-semibold text-ink-dim">20-min avg power (W)</span>
             <input
               class="h-11 rounded-2xl bg-surface border border-hairline px-3.5 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
@@ -608,6 +754,12 @@
         <span class="text-[10px] font-semibold text-ink-dim">vs FTP {ftpW} W</span>
       </div>
 
+      <!--
+        One row by the app's pill-strip convention (Rides uses this exact strip): the
+        templates scroll sideways rather than wrapping — the card column is 374 px at
+        its widest and three labelled pills never fit one line below that, so wrapping
+        was the wrong trade. `title` on each pill keeps the full note reachable.
+      -->
       <div class="flex gap-2 overflow-x-auto scrollbar-none">
         {#each ZONE_TEMPLATES as t (t.id)}
           <button

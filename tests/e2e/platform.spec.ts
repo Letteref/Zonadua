@@ -380,22 +380,43 @@ test.describe('M1 — data in', () => {
     await page.reload();
     await page.getByText(/GEAR|BIKES/i).first().waitFor({ timeout: 20_000 });
 
-    const before = await page.evaluate(async () => {
-      const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('zonadua');
-        req.onsuccess = () => res(req.result);
-        req.onerror = () => rej(req.error);
-      });
-      const rows = await new Promise<Array<{ id: string; odometerKm: number; active?: boolean }>>(
-        (res, rej) => {
-          const req = db.transaction('bikes', 'readonly').objectStore('bikes').getAll();
-          req.onsuccess = () => res(req.result as never);
+    // The odometer is derived (baselineKm + Σ distanceKm of rides carrying that bikeId),
+    // so the fixture bike's reading is computed here the same way Gear computes it.
+    const derivedOdometer = async (): Promise<Array<{ id: string; odometerKm: number; active?: boolean }>> => {
+      return page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((res, rej) => {
+          const req = indexedDB.open('zonadua');
+          req.onsuccess = () => res(req.result);
           req.onerror = () => rej(req.error);
-        }
-      );
-      db.close();
-      return rows;
-    });
+        });
+        const bikes = await new Promise<Array<{ id: string; baselineKm?: number; active?: boolean }>>(
+          (res, rej) => {
+            const req = db.transaction('bikes', 'readonly').objectStore('bikes').getAll();
+            req.onsuccess = () => res(req.result as never);
+            req.onerror = () => rej(req.error);
+          }
+        );
+        const acts = await new Promise<Array<{ bikeId?: string; distanceKm?: number }>>(
+          (res, rej) => {
+            const req = db.transaction('activities', 'readonly').objectStore('activities').getAll();
+            req.onsuccess = () => res(req.result as never);
+            req.onerror = () => rej(req.error);
+          }
+        );
+        db.close();
+        return bikes.map((b) => ({
+          id: b.id,
+          active: b.active,
+          odometerKm:
+            (b.baselineKm ?? 0) +
+            acts
+              .filter((a) => a.bikeId === b.id)
+              .reduce((s, a) => s + (a.distanceKm ?? 0), 0)
+        }));
+      });
+    };
+
+    const before = await derivedOdometer();
     expect(before.length, 'seed created no bikes').toBeGreaterThan(0);
     const active = before.find((b) => b.active) ?? before[0];
     const odoBefore = active.odometerKm;
@@ -419,22 +440,12 @@ test.describe('M1 — data in', () => {
       });
     }, gpxFor(40, 'E2E Odometer Ride'));
 
-    const after = await page.evaluate(async (id) => {
-      const db = await new Promise<IDBDatabase>((res, rej) => {
-        const req = indexedDB.open('zonadua');
-        req.onsuccess = () => res(req.result);
-        req.onerror = () => rej(req.error);
-      });
-      const row = await new Promise<{ odometerKm: number } | undefined>((res, rej) => {
-        const req = db.transaction('bikes', 'readonly').objectStore('bikes').get(id);
-        req.onsuccess = () => res(req.result as never);
-        req.onerror = () => rej(req.error);
-      });
-      db.close();
-      return row;
-    }, active.id);
+    const after = await derivedOdometer();
+    const row = after.find((b) => b.id === active.id);
 
-    expect(after!.odometerKm - odoBefore).toBeGreaterThan(38);
+    // the imported GPX lands with the active bike's id, so the sum — and with it the
+    // figure the rider reads — grows by its ~40 km
+    expect(row!.odometerKm - odoBefore).toBeGreaterThan(38);
   });
 
   test('weight and FTP are logged and drawn on the body trend', async ({ page }) => {
@@ -1111,6 +1122,101 @@ test.describe('first launch without demo data — the Gear page has a way in', (
     await expect(page.getByText(/primary bike/i)).toBeVisible();
     await expect(page.getByText(/no machines yet/i)).toHaveCount(0);
     await expect(page.getByText('10.6 kg')).toBeVisible();
+  });
+});
+
+test.describe('deleting a bike is one act, not four orphans', () => {
+  /**
+   * The Gear page could edit and activate a bike but never remove one — a rider who sold
+   * a machine kept it (and its wear clock) forever. Deleting is not just a row removal:
+   * the bike owns components, carries ride attribution, and may be holding the `active`
+   * flag that Routes and Race model with. The fix deletes all of it in one transaction;
+   * this test is the receipt that each consequence actually lands, driven through the
+   * UI the rider clicks.
+   *
+   * The second bike and the component are seeded *before* the reload (raw IDB rows,
+   * same connection pattern as `seedDashboardFixture`): Dexie's `liveQuery` only observes
+   * mutations on its own connection, so rows written after first paint would never
+   * reach the screen.
+   */
+  test('two-step confirm removes bike, components, attribution; active passes on', async ({ page }) => {
+    await openApp(page, '#/gear');
+    await seedDashboardFixture(page);
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('zonadua');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const now = Date.now();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(['bikes', 'components'], 'readwrite');
+          // the successor that must inherit the active flag
+          tx.objectStore('bikes').put({
+            id: 'bike-backup',
+            name: 'Backup bike',
+            type: 'gravel',
+            weightKg: 10.2,
+            crr: 0.0068,
+            cda: 0.38,
+            baselineKm: 300,
+            active: false,
+            updatedAt: now
+          });
+          // the wear clock that must die with its bike, not linger on the wall
+          tx.objectStore('components').put({
+            id: 'comp-chain',
+            bikeId: 'bike-e2e',
+            name: 'Chain',
+            kind: 'chain',
+            installedAtOdoKm: 0,
+            intervalKm: 4000,
+            updatedAt: now
+          });
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      } finally {
+        db.close();
+      }
+    });
+    await page.reload();
+    await page.locator('#app').waitFor({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'E2E Road' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Backup bike' })).toBeVisible();
+
+    // step one arms, step two fires — the same two-step shape as the component delete
+    await page.getByRole('button', { name: 'Delete E2E Road' }).click();
+    const confirmBar = page.getByText(/Delete “E2E Road” and its 1 component/);
+    await expect(confirmBar).toBeVisible();
+
+    // a change of heart must not delete anything
+    await page.getByRole('button', { name: 'Cancel delete E2E Road' }).click();
+    await expect(page.getByRole('heading', { name: 'E2E Road' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Delete E2E Road' })).toBeVisible();
+
+    // step one + step two for real
+    await page.getByRole('button', { name: 'Delete E2E Road' }).click();
+    await page.getByRole('button', { name: 'Confirm delete E2E Road' }).click();
+    await expect(page.locator('[role="status"]')).toContainText(/E2E Road deleted/i, { timeout: 10_000 });
+
+    // the bike is gone from the screen, and its machine slot passed to the successor
+    await expect(page.getByRole('heading', { name: 'E2E Road' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Backup bike' })).toBeVisible();
+    await expect(page.getByText(/primary bike/i)).toBeVisible();
+
+    // and the database agrees: no orphan component, no ride still claiming a dead bike,
+    // exactly one bike left — the active one
+    const state = await dumpState(page);
+    const bikes = state['bikes'] as Array<{ id: string; active: boolean }>;
+    expect(bikes.map((b) => b.id)).toEqual(['bike-backup']);
+    expect(bikes[0].active).toBe(true);
+    expect((state['components'] as Array<{ bikeId: string }>).filter((c) => c.bikeId === 'bike-e2e')).toEqual([]);
+    // all seven fixture rides survive — only the label was dropped
+    const rides = state['activities'] as Array<{ id: string; bikeId?: string }>;
+    expect(rides.filter((r) => r.id.startsWith('dash-ride-'))).toHaveLength(7);
+    expect(rides.filter((r) => r.bikeId === 'bike-e2e')).toEqual([]);
   });
 });
 

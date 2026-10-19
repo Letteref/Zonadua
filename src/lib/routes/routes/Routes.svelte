@@ -2,20 +2,29 @@
   import Icon from '$lib/components/Icon.svelte';
   import type { IconName } from '$lib/icons';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
-  import CircleButton from '$lib/components/CircleButton.svelte';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
-    import { activeBike, appSettings, latestFtp, weightSeries, fetchRouteProfile, allRoutes } from '$lib/data/queries.svelte';
+    import { activeBike, appSettings, latestFtp, weightSeries, fetchRouteProfile, fetchRouteTrack, allRoutes, allActivities } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
   import { untrack } from 'svelte';
-  import { db, type Race } from '$lib/data/db';
+  import { db, isCyclingActivity, type Race } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { parseAndStoreRoute } from '$lib/data/route-import';
   import type { ProfilePoint } from '$lib/domain/physics';
-  import { buildPlan, clockOf, durationOf, planSeries, fitIfForAvgSpeed } from '$lib/domain/pacing';
+  import {
+  buildPlan,
+  clockOf,
+  defaultCheckpoints,
+  durationOf,
+  planSeries,
+  fitIfForAvgSpeed,
+  type CheckpointDef
+} from '$lib/domain/pacing';
   import { formatDistance, formatElevation, formatWeight, type UnitSystem } from '$lib/domain/units';
   import { toast } from '$lib/toast.svelte';
-  import { peakHeadwind, correctForWind, type WindSample } from '$lib/domain/wind';
-  import { fetchWindForecast } from '$lib/infra/weather/openmeteo';
+  import { bearingBetween, peakHeadwind, correctForWind, type WindSample } from '$lib/domain/wind';
+  import { fetchWindForecast, fetchRideForecast } from '$lib/infra/weather/openmeteo';
+  import { buildDeparturePlan, historicalSpeedKph, type DepartureOption } from '$lib/domain/departure';
+  import { checkpointsWithStoredGates, rebaseCutoffsForStart } from '$lib/domain/race';
 
   /** the global pill (UI-SPEC §46); this route only picks the words */
   const showToast = (msg: string, tone: 'ok' | 'error' = 'ok'): void =>
@@ -138,7 +147,7 @@
       pacing: { mode: 'if', ifTarget, ftp },
       stops: { count: stopCount, minutesEach: stopMin },
       startMin,
-      checkpoints: CHECKPOINTS
+      checkpoints: routeCheckpoints
     });
   }
 
@@ -220,17 +229,157 @@
     }
   }
 
+  // ---------- best start: weather-aware departure picker ----------
+  /**
+   * "When should I leave?" — scored from the route the estimator already loaded, the
+   * rider's *own* historical speed (their log, not a domain average), and Open-Meteo's
+   * hourly temperature/rain/wind in the route's timezone.
+   *
+   * Choosing an option writes `startMin` — the very dial the Setup card edits — so the
+   * whole screen re-solves around the chosen roll-out. The picker advises; `buildPlan`
+   * stays the single source of every ETA on screen.
+   */
+  let departBusy = $state(false);
+  let departOptions = $state<DepartureOption[]>([]);
+  let departBest = $state<number | null>(null);
+  let departPicked = $state<number | null>(null);
+  let departEvidence = $state('');
+  let departNote = $state<string | null>(null);
+
+  /** newest-first cycling rides → the speed the ETA rests on */
+  const rideSamples = $derived(
+    [...(allActivities.current ?? [])]
+      .filter(isCyclingActivity)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((a) => ({ distanceKm: a.distanceKm, movingSec: a.movingSec }))
+  );
+  const histSpeed = $derived(historicalSpeedKph(rideSamples));
+
+  function departReset(): void {
+    departOptions = [];
+    departBest = null;
+    departPicked = null;
+    departNote = null;
+  }
+
+  async function findBestStart(): Promise<void> {
+    if (departBusy) return;
+    if (!routeCoords) {
+      departNote = 'This route has no GPS track stored — re-import the GPX to unlock weather-aware start times.';
+      return;
+    }
+    if (!histSpeed) {
+      departNote = 'No ride history yet — the ETA comes from your own log, not from a guess.';
+      return;
+    }
+    departBusy = true;
+    try {
+      // three days: a late-evening look at tomorrow's 06:00 roll-out needs tomorrow's
+      // hours too. Dates are built in UTC like the wind card; the extra day covers the
+      // route-local shift Open-Meteo reports through `utc_offset_seconds`.
+      const fc = await fetchRideForecast({
+        latitude: routeCoords.lat,
+        longitude: routeCoords.lng,
+        startDate: new Date().toISOString().slice(0, 10),
+        endDate: new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10)
+      });
+      if (!fc) {
+        departOptions = [];
+        departBest = null;
+        departNote = 'No forecast available — the picker will not offer hours it cannot score.';
+        return;
+      }
+      const built = buildDeparturePlan({
+        forecast: fc.hours,
+        utcOffsetSeconds: fc.utcOffsetSeconds,
+        nowEpochMin: Math.floor(Date.now() / 60000),
+        distanceKm: routeKm,
+        speed: histSpeed,
+        bearingDeg: windBearing,
+        horizonHours: 24
+      });
+      if (!built) {
+        departOptions = [];
+        departBest = null;
+        departNote = 'The forecast does not cover a full ride from any hour — nothing honest to score.';
+        return;
+      }
+      departOptions = built.options;
+      departBest = built.bestIndex;
+      departPicked = built.bestIndex;
+      departEvidence = built.evidence;
+      departNote = null;
+    } finally {
+      departBusy = false;
+    }
+  }
+
+  /** Choosing a roll-out writes the same `startMin` the Setup card edits: one plan. */
+  function pickDeparture(idx: number): void {
+    const o = departOptions[idx];
+    if (!o) return;
+    const [h, m] = o.startClock.split(':').map(Number);
+    startMin = (h * 60 + m) % 1440;
+    departPicked = idx;
+  }
+
   const npTarget = $derived(Math.round(pacingIf * ftp));
   const barPct = $derived(Math.max(2, Math.min(100, ((pacingIf - 0.55) / 0.4) * 100)));
 
-  /** Named control points; the ETA of each one is solved, never assumed. */
-  const CHECKPOINTS = [
-    { km: 25, label: 'Rolling Flats' },
-    { km: 87, label: 'Mid Valley' },
-    { km: 120, label: 'Koto Tinggi Climb', cutoffMin: 10 * 60 + 30 },
-    { km: 160, label: 'Summit Ridge' },
-    { km: 200.4, label: 'Finish Line', cutoffMin: 13 * 60 }
-  ];
+  /**
+   * Control points for THIS profile — derived, never typed.
+   *
+   * This used to be a literal five-row list from one mock course (km 25 / 87 / 120 / 160 /
+   * 200.4, with names like "Koto Tinggi Climb"), shown for every GPX the rider loaded.
+   * The ETAs were solved from physics, but the positions were fiction — and on a shorter
+   * route the finish clamp stacked three of them on the same metre. `defaultCheckpoints`
+   * reads the loaded profile instead: one point per ~50 km of the route that actually
+   * exists, labelled by its own terrain, finish at the route's true end. No cut-offs:
+   * gates belong to the race page, where the rider enters what the organizer published.
+   *
+   * The rider edits this list in the table below (km, label, add, remove); the first edit
+   * materialises it into `customCheckpoints`, and switching routes drops it back to null —
+   * the previous route's kilometres describe the previous route. Edits live in memory
+   * until `Save as race plan` writes them; a reload returns to the derived set.
+   */
+  let customCheckpoints = $state<CheckpointDef[] | null>(null);
+  const routeCheckpoints = $derived(customCheckpoints ?? defaultCheckpoints(profile));
+
+  /** patch one checkpoint; the list stays sorted because `buildPlan` accrues legs in order */
+  function cpPatch(i: number, patch: Partial<CheckpointDef>): void {
+    customCheckpoints = routeCheckpoints
+      .map((c, j) => (j === i ? { ...c, ...patch } : c))
+      .sort((a, b) => a.km - b.km);
+  }
+  /** km commits on blur/Enter, clamped to the route — past-the-end is not a checkpoint */
+  function cpSetKm(i: number, raw: string): void {
+    const v = Number.parseFloat(raw);
+    if (!Number.isFinite(v)) return;
+    cpPatch(i, { km: Math.min(Math.max(0, v), routeKm) });
+  }
+  function cpRemove(i: number): void {
+    customCheckpoints = routeCheckpoints.filter((_, j) => j !== i);
+  }
+  /** a new point lands mid-gap: the middle of the longest empty stretch, start to finish */
+  function cpAdd(): void {
+    const kms = [0, ...routeCheckpoints.map((c) => c.km), routeKm].sort((a, b) => a - b);
+    let span = 0;
+    let at = routeKm / 2;
+    for (let i = 1; i < kms.length; i++) {
+      const gap = kms[i] - kms[i - 1];
+      if (gap > span) {
+        span = gap;
+        at = (kms[i - 1] + kms[i]) / 2;
+      }
+    }
+    customCheckpoints = [...routeCheckpoints, { km: Math.round(at * 10) / 10, label: 'Checkpoint' }].sort(
+      (a, b) => a.km - b.km
+    );
+  }
+  /** back to what the profile derives — forgetting the materialised edits */
+  function cpReset(): void {
+    customCheckpoints = null;
+  }
 
   /**
    * The plan the whole screen reads.
@@ -260,17 +409,24 @@
     { icon: 'sun', label: 'Start:', value: clockOf(startMin), tone: 'signal' }
   ] as const satisfies readonly { icon: IconName; label: string; value: string; tone: string }[]);
 
-  // Checkpoint rows come straight from the plan, so the table can never drift from the estimate
+  /**
+   * Table rows: the rider's checkpoint list (edited or derived), each paired with the
+   * solve at the same position. Rows come from the *list*, not from the plan, so a
+   * checkpoint stays visible and editable even when the plan cannot solve yet.
+   */
   const waypoints = $derived(
-    plan.checkpoints.map((c, i) => ({
-      ...c,
-      isFinish: i === plan.checkpoints.length - 1,
-      isCp: c.bufferMin !== undefined,
-      grade: `${c.gradePct >= 0 ? '+' : ''}${c.gradePct.toFixed(1)}% grade`,
-      kmLabel: `${c.km.toFixed(1)}k`,
-      eta: clockOf(c.clockMin),
-      elapsed: durationOf(c.elapsedSec)
-    }))
+    routeCheckpoints.map((c, i) => {
+      const s = plan.checkpoints[i];
+      return {
+        km: c.km,
+        label: c.label ?? '',
+        grade: s
+          ? `${s.gradePct >= 0 ? '+' : ''}${s.gradePct.toFixed(1)}% grade · ${s.legKph.toFixed(1)} km/h leg`
+          : null,
+        eta: s ? clockOf(s.clockMin) : '—',
+        elapsed: s ? durationOf(s.elapsedSec) : '—'
+      };
+    })
   );
 
   // ---------- GPX import → Route record ----------
@@ -289,6 +445,8 @@
       // one import pipeline, shared with the Route library (lib/data/route-import.ts)
       const r = await parseAndStoreRoute(file);
       loadedRouteId = r.id;
+      // a new route means new derived checkpoints; the previous list described the old one
+      customCheckpoints = null;
       routeName = r.name;
       rawProfile = r.sampled;
       // the file carries its own location and direction: the previous route's coordinates
@@ -335,10 +493,13 @@
    * something. The stored profile is decoded and run through the same estimator the import
    * path feeds — the rider sees the real projection, not a placeholder.
    *
-   * The stored track is `[km, alt]` pairs only (import drops lat/lng when it compresses),
-   * so a preview restores terrain but not coordinates: wind resets to manual rather than
-   * inheriting the bearing of whatever route was loaded before. A forecast for a hill this
-   * file cannot locate would be worse than no forecast.
+   * The stored track (`trackCompressed`) carries every GPS fix the file recorded, so a
+   * preview restores terrain *and* location: coordinates and bearing are read back off
+   * the track, which is what lets the wind card and the departure picker run on a
+   * saved route. A row older than the track column leaves both null — the forecast
+   * stays off rather than inheriting the coordinates of whatever hill was loaded
+   * before. Without a bearing there is no honest way to turn a forecast into a
+   * headwind, and guessing one would be the single worst thing this feature could do.
    *
    * `loadedRouteId` is read untracked: the import path writes it while this same id sits in
    * the URL, and letting that write re-trigger the effect would re-decode the *previous*
@@ -349,7 +510,11 @@
     if (!id || id === untrack(() => loadedRouteId)) return;
     void (async () => {
       try {
-        const [row, pts] = await Promise.all([db.routes.get(id), fetchRouteProfile(id)]);
+        const [row, pts, track] = await Promise.all([
+          db.routes.get(id),
+          fetchRouteProfile(id),
+          fetchRouteTrack(id)
+        ]);
         if (loadedRouteId === id) return; // an import won the race while decoding
         if (!row || pts.length < 2) {
           showToast('That saved route could not be opened', 'error');
@@ -360,12 +525,21 @@
         const stride = Math.ceil(pts.length / 600);
         const sampled = pts.filter((_, i) => i % stride === 0 || i === pts.length - 1);
         loadedRouteId = id;
+        // opening a different saved route likewise forgets the previous route's edits
+        customCheckpoints = null;
         routeName = row.name;
         rawProfile = sampled;
         windForecast = null;
-        windBearing = null;
         windNote = null;
-        routeCoords = null;
+        // the saved route's own track restores the location the old preview dropped:
+        // first fix is the honest forecast anchor, the first valid segment its bearing
+        routeCoords = track.length >= 2 ? { lat: track[0].lat, lng: track[0].lng } : null;
+        let bearing: number | null = null;
+        for (let k = 1; k < track.length && bearing == null; k++) {
+          bearing = bearingBetween(track[k - 1].lat, track[k - 1].lng, track[k].lat, track[k].lng);
+        }
+        windBearing = bearing;
+        departReset();
         showToast(`Previewing ${row.name} — ${formatDistance(row.distanceKm, unit)}`);
       } catch (err) {
         console.error('[zonadua] route preview failed:', err);
@@ -374,44 +548,89 @@
     })();
   });
 
-  // ---------- export GPX (from the stored profile) ----------
-  function exportGpx(): void {
-    if (!loadedRouteId) {
-      showToast('Export available after importing a GPX');
-      return;
-    }
-    void (async () => {
-      const rows = await db.routes.get(loadedRouteId!);
-      if (!rows) return;
-      const blobStream = new Blob([rows.pointsCompressed as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-      const xy: Array<[number, number]> = JSON.parse(await new Response(blobStream).text());
-      const body = xy.map(([km, alt]) => `  <trkpt lat="0" lon="0"><ele>${alt.toFixed(1)}</ele></trkpt><!-- ${km.toFixed(2)} km -->`).join('\n');
-      const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Zonadua"><trk><name>${routeName}</name><trkseg>\n${body}\n</trkseg></trk></gpx>`;
-      const url = URL.createObjectURL(new Blob([gpx], { type: 'application/gpx+xml' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${routeName}.gpx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('GPX exported');
-    })();
-  }
-
   // ---------- save as race plan → Dexie → Race page ----------
   async function saveAsRacePlan(): Promise<void> {
     try {
       const routeRows = await db.routes.toArray();
       const routeId = loadedRouteId ?? routeRows[0]?.id ?? 'stub-route';
+
+      // The saved start is the time this screen is showing: a picked departure carries
+      // its *date* as well as its clock (a forecast hour can sit on tomorrow), while a
+      // manually typed clock keeps today's date, as it always did. An existing race
+      // gets the same treatment — leaving its old startTime behind would keep the old
+      // roll-out while every card on this screen displays the new one.
+      const chosen = departPicked != null ? departOptions[departPicked] : null;
+      const startTime = chosen
+        ? new Date(chosen.startEpochMin * 60000).toISOString()
+        : new Date(new Date().setHours(0, 0, 0, 0) + startMin * 60000).toISOString();
+      const savedClock = chosen ? chosen.startClock : clockOf(startMin);
+
       const existing = await db.races.where('status').anyOf(['planned', 'live']).toArray();
+
+      // Cut-offs travel in different units on the two screens: the estimator's table
+      // speaks wall-clock gates ("beat 13:00"), the race page stores minutes *after the
+      // start*. Saving with a new roll-out must therefore re-express them against it —
+      // copying the old numbers would drag the gate to 15:00 under a 02:00 start while
+      // the estimator still says 13:00. `rebaseCutoffsForStart` keeps each gate and
+      // re-measures it from the start being saved, for fresh saves and existing races
+      // alike.
+      const startWallOf = (iso: string): number => {
+        const d = new Date(iso);
+        return d.getHours() * 60 + d.getMinutes();
+      };
+      // A fresh save has no organizer gates to inherit — only the estimate this screen
+      // just solved. The finish default is ETA plus margin (a quarter of the ride, at
+      // least an hour, rounded up to the half hour the race dial steps in), so a longer
+      // route gets a later gate instead of the literal 13:00 every race used to inherit.
+      // It is a planning default the race page's dial corrects, not an event fact — and
+      // as a duration it survives a finish past midnight, which a wall-clock gate cannot.
+      const estFinishMin = plan.ok && plan.finishClockMin != null ? plan.finishClockMin - startMin : null;
+      const finishDurationMin =
+        estFinishMin != null
+          ? estFinishMin + Math.max(60, Math.ceil((estFinishMin * 0.25) / 30) * 30)
+          : 10 * 60; // no solved plan (no FTP yet): a plain default the dial can correct
+      const cutoffs = rebaseCutoffsForStart({
+        prev: existing[0]
+          ? {
+              startWallMin: startWallOf(existing[0].startTime),
+              cutoffFinishMin: existing[0].cutoffFinishMin,
+              checkpoints: existing[0].checkpoints
+            }
+          : null,
+        // fresh: the finish duration above, and no checkpoint gates — the old list
+        // injected "CP2 Payakumbuh" at km 120 into every race, whatever the route
+        freshGates: { finishDurationMin, checkpoints: [] },
+        nextStartWallMin: startWallOf(startTime)
+      });
+
+      // Positions come from the planner's list — edits in the table included; a save
+      // that quietly kept the race's old kilometres would discard the very changes the
+      // button was pressed to apply. The race's own gates survive by matching km (already
+      // rebased above): a point the rider deleted or moved takes its gate with it.
+      const savedCheckpoints = checkpointsWithStoredGates(
+        routeCheckpoints.map((c) => ({ km: c.km, label: c.label?.trim() || undefined })),
+        cutoffs.checkpoints
+      );
+
       const base: Race = existing[0]
-        ? { ...existing[0], name: routeName || 'Sample route', status: 'planned', updatedAt: Date.now() }
+        ? {
+            ...existing[0],
+            name: routeName || 'Sample route',
+            startTime,
+            cutoffFinishMin: cutoffs.cutoffFinishMin,
+            checkpoints: savedCheckpoints,
+            status: 'planned',
+            updatedAt: Date.now()
+          }
         : {
             id: newId(),
             routeId,
             name: routeName || 'Sample route',
-            startTime: new Date(new Date().setHours(0, 0, 0, 0) + startMin * 60000).toISOString(),
-            cutoffFinishMin: 13 * 60,
-            checkpoints: [{ km: 120, cutoffMin: 570, label: 'CP2 Payakumbuh' }],
+            startTime,
+            cutoffFinishMin: cutoffs.cutoffFinishMin,
+            // the planner's own control points, positions and labels only: the rider
+            // enters each gate (or none) on the race page, where the editor lives
+            checkpoints: savedCheckpoints,
             // carry the solved plan, not just the inputs — M4 projects from this
             planJson: JSON.stringify({
               ifTarget: pacingIf,
@@ -430,7 +649,7 @@
             updatedAt: Date.now()
           };
       await db.races.put(base);
-      showToast('Race plan saved — opening Race…');
+      showToast(`Race plan saved for ${savedClock} — opening Race…`);
       setTimeout(() => route.navigate('race'), 800);
     } catch (err) {
       console.error('[zonadua] saveAsRacePlan failed:', err);
@@ -445,11 +664,39 @@
     headline={routeName || 'Plan a ride'}
     sub={hasRoute ? 'Loaded from GPX —' : 'No route loaded yet —'}
     accent={hasRoute ? `${formatDistance(routeKm, unit)} · ${formatElevation(routeElevM, unit)} of climbing.` : 'sample route below.'}
-  >
-    <CircleButton icon="share-2" label="Export GPX" onclick={exportGpx} />
-  </EditorialHeader>
+  />
 
   <input bind:this={fileInput} class="hidden" type="file" accept=".gpx" onchange={onGpxPick} aria-label="Import GPX route" />
+
+  {#if hasRoute && savedRoutes.length > 0}
+    <!-- Switching routes without leaving the page: the import card below is gone once a
+         route is loaded, so without this row the only way to another GPX was the Library.
+         The button opens a fresh GPX (same pipeline as a first import); picking a select
+         option navigates to #/routes/:id — the same loader the Library rows use, so there
+         is one load path, not two. -->
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        class="h-11 w-11 shrink-0 rounded-pill bg-surface border border-hairline grid place-items-center text-ink-dim hover:text-crimson-deep hover:border-hairline-strong transition-colors elevation-card"
+        onclick={() => fileInput?.click()}
+        aria-label="Open GPX file"
+        title="Open GPX"
+      >
+        <Icon name="file-up" size={18} strokeWidth={1.5} />
+      </button>
+      <select
+        class="h-11 flex-1 min-w-0 rounded-pill bg-tile border border-hairline-strong px-3 text-[11px] font-extrabold uppercase tracking-wider text-ink outline-none focus:border-signal cursor-pointer"
+        aria-label="Switch to another saved route"
+        value={savedPick}
+        onchange={onPickSaved}
+      >
+        <option value="" disabled>Switch route · {savedRoutes.length} saved</option>
+        {#each savedRoutes as r (r.id)}
+          <option value={r.id}>{r.name} · {r.distanceKm.toFixed(1)} km</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   {#if !hasRoute}
     <!-- EMPTY STATE: the estimator is ready, waiting for a route -->
@@ -923,44 +1170,176 @@
     {/if}
   </section>
 
+  <!-- BEST START: the weather-aware departure picker (Open-Meteo + the rider's own speed) -->
+  {#if hasRoute}
+    <section class="rounded-card bg-surface border border-hairline p-4 flex flex-col gap-3 elevation-card">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="h-9 w-9 rounded-pill bg-tile grid place-items-center border border-hairline">
+            <Icon name="clock" size={17} strokeWidth={1.5} class="text-ink" />
+          </div>
+          <div class="flex flex-col">
+            <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink">Best start</span>
+            <span class="text-[11px] text-ink-dim">Open-Meteo · ETA from your rides</span>
+          </div>
+        </div>
+        <button
+          class="h-9 px-4 rounded-pill border border-hairline-strong text-ink font-extrabold uppercase text-[10px] tracking-wider active:scale-[0.98] transition-transform disabled:opacity-50"
+          disabled={departBusy}
+          onclick={findBestStart}
+        >
+          {departBusy ? 'Scoring…' : departOptions.length > 0 ? 'Refresh' : 'Find'}
+        </button>
+      </div>
+
+      {#if departNote}
+        <p class="text-[12px] leading-relaxed text-ink-dim">{departNote}</p>
+      {/if}
+
+      {#if departOptions.length > 0}
+        <!-- one pill per departure hour; the strip scrolls (same convention as Settings) -->
+        <div
+          class="flex gap-1.5 overflow-x-auto scrollbar-none pt-2.5 border-t border-hairline"
+          role="group"
+          aria-label="Departure hours"
+        >
+          {#each departOptions as o, idx (o.hourIndex)}
+            <button
+              class="shrink-0 h-14 min-w-[64px] px-3 rounded-2xl border flex flex-col items-center justify-center gap-0.5 transition-colors {departPicked === idx
+                ? 'bg-ink text-on-mono border-ink'
+                : idx === departBest
+                  ? 'bg-signal/10 border-signal text-ink'
+                  : 'bg-tile border-hairline text-ink-dim'}"
+              aria-pressed={departPicked === idx}
+              aria-label={`${o.startClock} departure, ${Math.round(o.tempC)} degrees, ${o.rainPct} percent rain${idx === departBest ? ', best start' : ''}`}
+              onclick={() => pickDeparture(idx)}
+            >
+              <span class="text-[13px] font-extrabold text-tabular leading-none">{o.startClock}</span>
+              <span class="text-[9px] font-bold text-tabular leading-none">{Math.round(o.tempC)}° · {o.rainPct}%</span>
+              {#if idx === departBest}
+                <span
+                  class="text-[8px] font-extrabold uppercase tracking-wider leading-none {departPicked === idx
+                    ? 'text-rose'
+                    : 'text-crimson-deep'}">Best</span
+                >
+              {/if}
+            </button>
+          {/each}
+        </div>
+
+        {#if departPicked != null && departOptions[departPicked]}
+          {@const o = departOptions[departPicked]}
+          <p class="text-[12px] leading-relaxed text-ink-dim">
+            Roll out <span class="font-bold text-ink">{o.startClock}</span> → home
+            <span class="font-bold text-ink">{o.finishClock}{o.finishesNextDay ? ' (+1d)' : ''}</span>
+            · <span class="font-bold text-ink">{o.durationH.toFixed(1)} h</span>
+            · {o.rainPct}% rain · {#if o.headwindKph > 0}<span class="font-bold text-crimson-deep"
+              >{o.headwindKph} km/h head</span
+            >{:else if o.headwindKph < 0}<span class="font-bold text-aman"
+              >{Math.abs(o.headwindKph)} km/h push</span
+            >{:else}no wind applied{/if}
+          </p>
+        {/if}
+
+        <div class="rounded-xl bg-tile p-3 text-[11px] font-bold text-ink">
+          <span class="uppercase text-ink-dim">Evidence:</span> {departEvidence}
+        </div>
+      {/if}
+    </section>
+  {/if}
+
   <!-- Checkpoints -->
   <section>
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-1.5">
-        <Icon name="flag" size={18} strokeWidth={1.5} class="text-signal" />
-        <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-dim">Checkpoints &amp; control points</span>
+    <div class="flex items-start justify-between gap-2 mb-2">
+      <div class="flex items-start gap-1.5 min-w-0">
+        <Icon name="flag" size={18} strokeWidth={1.5} class="text-signal shrink-0 mt-px" />
+        <!-- the break is deliberate: at 11 px the full phrase wraps wherever it likes and
+             races the badge for width; two fixed lines make the stack the design -->
+        <span class="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-dim leading-snug">
+          Checkpoints &amp;<br />control points
+        </span>
       </div>
-      <span class="text-[10px] font-extrabold uppercase text-ink-dim px-2 py-0.5 rounded bg-surface border border-hairline">solved from physics</span>
+      <span class="shrink-0 whitespace-nowrap text-[10px] font-extrabold uppercase text-aman px-2 py-0.5 rounded bg-aman/10 border border-aman/30 self-start">
+        solved from physics
+      </span>
     </div>
     <div class="grid grid-cols-1 gap-2">
-      {#each waypoints as w (w.label)}
-        <div class="rounded-2xl bg-surface border {w.isCp ? 'border-signal/40' : 'border-hairline'} p-3 flex items-center justify-between hover:border-hairline-strong transition-colors">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="w-12 h-10 rounded-xl {w.isCp ? 'bg-signal/15 border border-signal/40' : 'bg-raised border border-hairline'} flex flex-col items-center justify-center shrink-0">
-              <span class="text-[11px] font-bold text-ink text-tabular leading-none">{w.kmLabel}</span>
-              <span class="text-[8px] text-ink-dim uppercase tracking-wider">KM</span>
+      {#each waypoints as w, i (i)}
+        <div class="rounded-2xl bg-surface border border-hairline p-3 flex items-center justify-between gap-2 hover:border-hairline-strong transition-colors">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
+            <!-- km commits on blur/Enter (not per keystroke): typing "12" on the way to
+                 "120" must not re-solve the whole plan mid-word.
+                 One line, not a stack: a native number input sprouts spinners in Chromium
+                 that steal width and shove the digits sideways, so every row used to sit at
+                 a different offset. The spinner buttons are stripped, the figure is
+                 right-aligned in tabular figures so decimals stack down the column, and the
+                 KM unit holds a fixed spot beside it. The crimson tint marks the kilometre
+                 as the one number on this row worth a glance. -->
+            <div
+              class="w-[68px] h-10 shrink-0 rounded-xl bg-crimson/8 border border-crimson/25 flex items-center justify-center gap-1 px-2"
+            >
+              <input
+                type="number"
+                inputmode="decimal"
+                min="0"
+                max={routeKm}
+                step="0.1"
+                value={w.km}
+                onchange={(e) => cpSetKm(i, (e.currentTarget as HTMLInputElement).value)}
+                class="w-full min-w-0 bg-transparent text-right text-[11px] font-bold text-ink text-tabular leading-none outline-none focus:text-crimson-deep py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                aria-label={`Checkpoint ${i + 1} kilometres`}
+              />
+              <span class="text-[8px] font-extrabold text-crimson-deep uppercase tracking-wider shrink-0">KM</span>
             </div>
-            <div class="flex flex-col min-w-0">
-              <span class="truncate font-semibold text-ink text-sm flex items-center gap-1.5">
-                {w.label}
-                {#if w.isCp}<Icon name="lock" size={12} strokeWidth={1.5} class="text-signal shrink-0" />{/if}
-              </span>
-              <span class="text-[10px] font-extrabold uppercase tracking-wider {w.isCp ? 'text-crimson-deep' : 'text-ink-dim'}">
-                {w.grade} · {w.legKph.toFixed(1)} km/h leg
-              </span>
+            <div class="flex flex-col min-w-0 flex-1 gap-0.5">
+              <input
+                type="text"
+                value={w.label}
+                oninput={(e) => cpPatch(i, { label: (e.currentTarget as HTMLInputElement).value })}
+                class="w-full min-w-0 bg-transparent rounded-lg px-1.5 py-1 font-semibold text-ink text-sm outline-none border border-transparent focus:border-hairline-strong focus:bg-canvas"
+                aria-label={`Checkpoint ${i + 1} label`}
+              />
+              {#if w.grade}
+                <span class="text-[9px] font-extrabold uppercase tracking-wider text-ink-dim px-1.5 truncate">
+                  {w.grade}
+                </span>
+              {/if}
             </div>
           </div>
-          <div class="flex flex-col items-end shrink-0 text-tabular">
-            <span class="text-xs font-bold {w.isCp ? 'text-crimson-deep' : 'text-ink'}">{w.eta}</span>
-            <span class="text-[10px] text-ink-dim">{w.elapsed}</span>
-            {#if w.bufferMin !== undefined}
-              <span class="text-[10px] font-bold {w.bufferMin < 0 ? 'text-kritis' : 'text-aman'}">
-                {w.bufferMin >= 0 ? '+' : ''}{w.bufferMin.toFixed(0)} min vs cut-off
-              </span>
-            {/if}
+          <div class="flex items-center gap-2 shrink-0">
+            <div class="flex flex-col items-end text-tabular">
+              <span class="text-xs font-bold text-ink">{w.eta}</span>
+              <span class="text-[10px] text-ink-dim">{w.elapsed}</span>
+            </div>
+            <button
+              class="h-8 w-8 rounded-pill bg-raised border border-hairline grid place-items-center text-ink-dim hover:text-kritis hover:border-kritis/40 transition-colors"
+              onclick={() => cpRemove(i)}
+              aria-label={`Remove checkpoint ${i + 1}`}
+            >
+              <Icon name="trash" size={14} strokeWidth={1.5} />
+            </button>
           </div>
         </div>
       {/each}
+    </div>
+    <div class="flex gap-2 mt-2">
+      <button
+        class="flex-1 h-10 rounded-pill bg-surface border border-hairline-strong text-ink font-extrabold uppercase text-[10px] tracking-wider flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+        onclick={cpAdd}
+      >
+        <Icon name="plus" size={14} strokeWidth={2} />
+        Add checkpoint
+      </button>
+      {#if customCheckpoints != null}
+        <button
+          class="h-10 px-4 rounded-pill bg-tile border border-hairline text-ink-dim font-extrabold uppercase text-[10px] tracking-wider flex items-center gap-1.5 active:scale-[0.98] transition-transform"
+          onclick={cpReset}
+          aria-label="Reset checkpoints to derived"
+        >
+          <Icon name="rotate-ccw" size={13} strokeWidth={1.5} />
+          Auto
+        </button>
+      {/if}
     </div>
   </section>
 

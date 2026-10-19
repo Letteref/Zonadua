@@ -185,8 +185,8 @@
   });
 
   const wearWorst = $derived.by(() => {
-    const all = (allBikesWithComponents.current ?? []).flatMap(({ bike, components }) =>
-      components.map((c) => ({ ...computeWear(c, bike.odometerKm), bikeName: bike.name }))
+    const all = (allBikesWithComponents.current ?? []).flatMap(({ bike, components, odometerKm }) =>
+      components.map((c) => ({ ...computeWear(c, odometerKm), bikeName: bike.name }))
     );
     return all.sort((x, y) => y.pct - x.pct)[0] ?? null;
   });
@@ -194,6 +194,20 @@
   const hiShare30d = $derived(zoneDist && zoneDist.totalSec > 0
     ? Math.round(zoneDist.zones.filter((z) => z.band.minPct >= 90).reduce((s, z) => s + z.pct, 0) * 10) / 10
     : null);
+
+  /**
+   * How long this rider actually rides: mean moving minutes per cycling activity over
+   * the last 30 days. Every duration the coach prescribes scales from this — a rider
+   * who spins 45 min gets 45-min structures, not canned 90-min ones. Null when the
+   * month is empty; the domain then falls back to its stated neutral hour.
+   */
+  const avgRideMin30d = $derived.by(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const recent = cycling.filter((a) => new Date(a.date) >= cutoff && a.movingSec > 0);
+    if (recent.length === 0) return null;
+    return Math.round(recent.reduce((s, a) => s + a.movingSec, 0) / recent.length / 60);
+  });
 
   const insightInput = $derived({
     ctl: ctlVal,
@@ -216,7 +230,8 @@
     ftpAgeDays: ftpTestedDays,
     hiShare30d,
     race: raceCard && raceCard.days <= 28 ? { name: raceCard.name, days: Math.max(0, raceCard.days) } : null,
-    wear: wearWorst && wearWorst.pct >= 0.85 ? { name: wearWorst.comp.name, pct: wearWorst.pct } : null
+    wear: wearWorst && wearWorst.pct >= 0.85 ? { name: wearWorst.comp.name, pct: wearWorst.pct } : null,
+    avgRideMin30d
   });
   const insight = $derived(buildCoachInsight(insightInput));
 
@@ -553,14 +568,15 @@
           <span class="text-[11px] font-bold text-ink-dim uppercase tracking-wider">From your data</span>
         {/if}
       </div>
+      <!-- Plain white card — the severity lives in the pill, not in the surface. -->
       <article class="flex flex-col gap-2 rounded-2xl border border-hairline bg-surface p-5 elevation-card">
         <div class="flex items-center justify-between">
           <span
             class="rounded-pill px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider {insight.severity === 'critical'
               ? 'bg-crimson-fill text-white'
               : insight.severity === 'watch'
-                ? 'bg-crimson/10 text-crimson-deep'
-                : 'bg-tile text-aman'}"
+                ? 'bg-[#e0961f]/20 text-warn'
+                : 'bg-aman/10 text-aman'}"
           >
             {insight.severity === 'critical' ? 'Critical' : insight.severity === 'watch' ? 'Watch' : 'Good'}
           </span>

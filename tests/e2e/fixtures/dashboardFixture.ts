@@ -87,7 +87,9 @@ export async function seedDashboardFixture(page: Page): Promise<void> {
           weightKg: 9.4,
           crr: 0.0045,
           cda: 0.32,
-          odometerKm: 1200,
+          // The odometer shown is baseline + Σ(distanceKm of attributed rides); the seven
+          // rides below total 251.3 km, so this bike still *reads* 1,200 km on Gear.
+          baselineKm: 1200 - 251.3,
           active: true,
           updatedAt: now
         });

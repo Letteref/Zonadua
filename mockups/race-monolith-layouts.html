@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zonadua — Opsi Layout Monolith Buffer Live Race</title>
+<style>
+  :root {
+    --canvas:#f9f9f9; --surface:#fff; --tile:#f1f2f4; --mono:#141519;
+    --on-mono:#f7f8fa; --on-mono-dim:#9ba1aa; --hairline:#e8eaed; --hairline-strong:#d9dce0;
+    --ink:#17181c; --ink-dim:#62656c; --crimson:#e8102e; --fill:#d50f26; --deep:#a80c21;
+    --rose:#ff4d5e; --hairline-dark:#2b2d33; --aman:#4ade9a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--canvas); color:var(--ink);
+    font-family:'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    padding:40px 16px 80px; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em;
+  }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { font-size:25px; font-weight:800; letter-spacing:-0.02em; text-transform:uppercase; }
+  .lede { color:var(--ink-dim); font-size:14px; margin:8px 0 28px; line-height:1.55; }
+  .lede em { color:var(--deep); font-style:italic; font-weight:600; }
+  .mock { background:var(--surface); border:1px solid var(--hairline); border-radius:24px; padding:22px 20px 8px;
+          box-shadow:0 1px 2px rgba(23,24,28,.04), 0 10px 28px -14px rgba(23,24,28,.14); overflow:hidden; margin-bottom:18px; }
+  .mock h2 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:2px; }
+  .mock h2 .num { color:var(--deep); margin-right:6px; }
+  .mock p.desc { font-size:12.5px; color:var(--ink-dim); line-height:1.5; margin-bottom:14px; }
+  .stage { background:var(--canvas); border-radius:18px; padding:34px 12px 24px; margin-bottom:10px;
+           display:flex; justify-content:center; }
+  .phone { width:366px; }
+
+  /* ===== shared monolith + chrome (faithful to app.css tokens) ===== */
+  .kicker { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:10px; display:block; }
+  .mono-card { border-radius:24px; overflow:hidden; color:var(--on-mono); position:relative;
+    background:
+      radial-gradient(130% 110% at 88% 112%, rgba(232,16,46,.4) 0%, rgba(232,16,46,.14) 42%, transparent 68%),
+      linear-gradient(150deg, #17181d 0%, #141519 50%, #1a1218 100%);
+    box-shadow:0 16px 40px -16px rgba(20,21,25,.55), 0 6px 28px -10px rgba(232,16,46,.24); }
+  .chrome { display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(0,0,0,.4);
+            border-bottom:1px solid rgba(255,255,255,.1); height:36px; padding:0 14px 0 8px; }
+  .chrome .back { width:36px; height:36px; display:grid; place-items:center; color:rgba(247,248,250,.7); }
+  .addr { flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:6px; border-radius:999px;
+          background:rgba(255,255,255,.1); padding:4px 12px; font-size:10px; font-weight:700; color:rgba(247,248,250,.8); }
+  .addr span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .live { display:flex; align-items:center; gap:6px; flex:none; }
+  .live i { width:6px; height:6px; border-radius:999px; background:var(--crimson); animation:pulse 1.6s infinite; }
+  .live b { font-size:9px; font-weight:800; letter-spacing:.14em; color:rgba(247,248,250,.6); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .chip { display:inline-flex; height:24px; align-items:center; gap:5px; padding:0 10px; border-radius:999px;
+          font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+  .chip.aman { color:var(--aman); border:1px solid rgba(74,222,154,.35); background:rgba(74,222,154,.1); }
+  .chip.aman svg { flex:none; }
+
+  .hero-num { font-size:40px; line-height:1; font-weight:800; letter-spacing:-.03em; color:var(--rose);
+              font-variant-numeric:tabular-nums; filter:drop-shadow(0 0 6px rgba(255,77,94,.45)) drop-shadow(0 2px 14px rgba(255,77,94,.3)); }
+  .hero-lbl { font-size:20px; font-weight:700; color:var(--on-mono-dim); margin-left:8px; }
+  .meta { display:flex; justify-content:space-between; font-size:11px; font-weight:700; letter-spacing:.06em;
+          text-transform:uppercase; color:var(--on-mono-dim); font-variant-numeric:tabular-nums; }
+  .meta b { color:var(--on-mono); }
+  .meta .rose { color:var(--rose); }
+  .meta-sm { font-size:10px; }
+
+  .track { position:relative; height:8px; border-radius:999px; overflow:hidden; background:#23252c; border:1px solid #2b2d33; }
+  .track .hatch { position:absolute; inset:0; opacity:.15;
+    background:repeating-linear-gradient(45deg, #e8102e 0, #e8102e 4px, transparent 4px, transparent 8px); }
+  .track .fill { position:absolute; inset-block:0; left:0; width:63.4%; border-radius:999px;
+    background:linear-gradient(135deg, #d50f26 0%, #a80c21 100%);
+    box-shadow:0 4px 14px -4px rgba(232,16,46,.5), 0 12px 36px -12px rgba(232,16,46,.35); }
+  .track .marker { position:absolute; top:50%; left:63.4%; width:12px; height:12px; border-radius:999px; background:#fff;
+    border:2px solid var(--crimson); transform:translate(-50%,-50%); box-shadow:0 1px 2px rgba(23,24,28,.14); }
+  .body { padding:16px; display:flex; flex-direction:column; gap:12px; }
+
+  .trio { border-top:1px solid var(--hairline-dark); display:grid; grid-template-columns:1fr 1fr 1fr; text-align:center; padding-top:12px; }
+  .trio div + div { border-left:1px solid var(--hairline-dark); }
+  .trio p { font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .trio b { display:block; font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:3px; color:var(--on-mono); }
+
+  .pill-time { display:flex; flex-direction:column; align-items:center; gap:2px; border-radius:14px; background:rgba(255,255,255,.05);
+               border:1px solid rgba(255,255,255,.08); padding:8px 12px; min-width:74px; }
+  .pill-time p { font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-mono-dim); }
+  .pill-time b { font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--on-mono); }
+  .pill-time.dim b { color:var(--on-mono-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Opsi layout — monolith buffer live race</h1>
+  <p class="lede">Kartu <em>Buffer vs cut-off</em> di race mode. Semua opsi memakai data, token, dan chrome yang sama persis — yang berubah hanya komposisinya. Masalah baseline: angka besar menempel kiri, chip status mengambang terpisah di barisnya sendiri, dan sisi kanan baris angka kosong — kartu terasa <em>berat di kiri-atas</em>.</p>
+
+  <!-- ============ A · BASELINE ============ -->
+  <div class="mock">
+    <h2><span class="num">A</span>Baseline — layout sekarang</h2>
+    <p class="desc">Referensi: chip status di kanan-atas (baris sendiri), angka besar rata kiri dengan label menyusul inline, baris waktu, lalu track. Inilah yang terpasang di kode hari ini.</p>
+    <div class="stage"><div class="phone">
+      <span class="kicker">Buffer vs cut-off</span>
+      <div class="mono-card">
+        <div class="chrome">
+          <span class="back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+          <span class="addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Bukittinggi Loop</span></span>
+          <span class="live"><i></i><b>LIVE</b></span>
+        </div>
+        <div class="body">
+          <div style="display:flex;justify-content:flex-end;">
+            <span class="chip aman"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>Ahead of target</span>
+          </div>
+          <p class="hero-num">+2h 14m<span class="hero-lbl">BUFFER</span></p>
+          <div class="meta"><span>Now · <b>14:32</b></span><span>Cut-off · <b>21:10</b></span></div>
+          <div class="track"><span class="hatch"></span><span class="fill"></span><span class="marker"></span></div>
+          <div class="meta meta-sm"><span><b>63.4</b> km done</span><span><b>36.6</b> km to go</span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ============ B · PANGGUNG ============ -->
+  <div class="mock">
+    <h2><span class="num">B</span>Panggung — simetris penuh, angka di tengah</h2>
+    <p class="desc">Semua elemen disusun sumbu tengah: chip di atas, angka buffer besar di panggung, label kecil di bawahnya, lalu strip tiga kolom setara (Now · Cut-off · To go) sebagai dasar. Seimbang secara optis; hierarki murni lewat ukuran.</p>
+    <div class="stage"><div class="phone">
+      <span class="kicker">Buffer vs cut-off</span>
+      <div class="mono-card">
+        <div class="chrome">
+          <span class="back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+          <span class="addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Bukittinggi Loop</span></span>
+          <span class="live"><i></i><b>LIVE</b></span>
+        </div>
+        <div class="body" style="align-items:center;text-align:center;">
+          <span class="chip aman"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>Ahead of target</span>
+          <p class="hero-num" style="font-size:44px;">+2h 14m</p>
+          <p style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--on-mono-dim);margin-top:-4px;">Buffer vs cut-off</p>
+          <div class="track" style="width:100%;"><span class="hatch"></span><span class="fill"></span><span class="marker"></span></div>
+          <div class="trio" style="width:100%;">
+            <div><p>Now</p><b>14:32</b></div>
+            <div><p>Cut-off</p><b>21:10</b></div>
+            <div><p>To go</p><b>36.6<span style="font-size:10px;color:var(--on-mono-dim);"> km</span></b></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ============ C · SPLIT ============ -->
+  <div class="mock">
+    <h2><span class="num">C</span>Split — angka kiri, panel waktu kanan</h2>
+    <p class="desc">Badan kartu dibagi dua kolom oleh garis hairline: kiri chip + angka buffer (tetap rata kiri, enak dibaca sekilas dari stang), kanan tiga baris statistik bertumpuk (Now, Cut-off, km done). Track membentang penuh di bawah kedua kolom.</p>
+    <div class="stage"><div class="phone">
+      <span class="kicker">Buffer vs cut-off</span>
+      <div class="mono-card">
+        <div class="chrome">
+          <span class="back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+          <span class="addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Bukittinggi Loop</span></span>
+          <span class="live"><i></i><b>LIVE</b></span>
+        </div>
+        <div class="body">
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;">
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
+              <span class="chip aman"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>Ahead</span>
+              <p class="hero-num">+2h 14m</p>
+              <p style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--on-mono-dim);">Buffer</p>
+            </div>
+            <span style="width:1px;align-self:stretch;background:var(--hairline-dark);"></span>
+            <div style="display:flex;flex-direction:column;gap:9px;">
+              <div class="meta" style="justify-content:space-between;gap:12px;"><span>Now</span><b>14:32</b></div>
+              <div class="meta" style="justify-content:space-between;gap:12px;"><span>Cut-off</span><b>21:10</b></div>
+              <div class="meta" style="justify-content:space-between;gap:12px;"><span>Km done</span><b>63.4</b></div>
+            </div>
+          </div>
+          <div class="track"><span class="hatch"></span><span class="fill"></span><span class="marker"></span></div>
+          <div class="meta meta-sm"><span><b>63.4</b> km done</span><span><b>36.6</b> km to go</span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ============ D · SKALA ============ -->
+  <div class="mock">
+    <h2><span class="num">D</span>Skala — waktu mengapit angka</h2>
+    <p class="desc">Baris instrumen: pil Now di kiri, pil Cut-off di kanan, angka buffer di tengah seperti neraca — posisi waktu terbaca sebagai "yang mengapit" buffer secara harfiah. Chip di kanan-atas menempel di badan kartu, km di bawah track.</p>
+    <div class="stage"><div class="phone">
+      <span class="kicker">Buffer vs cut-off</span>
+      <div class="mono-card">
+        <div class="chrome">
+          <span class="back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+          <span class="addr"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Bukittinggi Loop</span></span>
+          <span class="live"><i></i><b>LIVE</b></span>
+        </div>
+        <div class="body">
+          <div style="display:flex;justify-content:flex-end;">
+            <span class="chip aman"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>Ahead of target</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span class="pill-time"><p>Now</p><b>14:32</b></span>
+            <div style="text-align:center;">
+              <p class="hero-num" style="font-size:32px;">+2h 14m</p>
+              <p style="font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--on-mono-dim);margin-top:2px;">Buffer</p>
+            </div>
+            <span class="pill-time dim"><p>Cut-off</p><b>21:10</b></span>
+          </div>
+          <div class="track"><span class="hatch"></span><span class="fill"></span><span class="marker"></span></div>
+          <div class="meta meta-sm"><span><b>63.4</b> km done</span><span><b>36.6</b> km to go</span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+</div>
+</body>
+</html>

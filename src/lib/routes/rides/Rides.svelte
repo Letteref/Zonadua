@@ -214,7 +214,7 @@
             updatedAt: Date.now()
           };
           const compressed = await deflateJson(points);
-          await db.transaction('rw', [db.activities, db.activity_streams, db.bikes], async () => {
+          await db.transaction('rw', [db.activities, db.activity_streams], async () => {
             await db.activities.put(act);
             await db.activity_streams.put({
               id,
@@ -226,11 +226,10 @@
               source: ride.source,
               updatedAt: Date.now()
             });
-            // F3-AC2: import dengan sepeda aktif menambah odometer sepeda tersebut
-            if (bike) {
-              const b = await db.bikes.get(bike.id);
-              if (b) await db.bikes.update(b.id, { odometerKm: b.odometerKm + ride.distanceKm, updatedAt: Date.now() });
-            }
+            // F3-AC2 needs no odometer write here: the activity carries `bikeId`, and the
+            // displayed odometer is derived from exactly those rows (data/odometer.ts).
+            // The write that used to increment `bikes.odometerKm` in this transaction was
+            // one more counter to keep in step — delete a ride and it stayed too high.
           });
           ok++;
         } catch (err) {

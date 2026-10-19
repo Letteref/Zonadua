@@ -11,10 +11,13 @@ import { runStravaSync, type StreamFetch, type SyncDeps, type SyncResult } from 
 
 const store = vi.hoisted(() => {
   const rows = new Map<string, Record<string, unknown>>();
-  return { rows, reset: () => rows.clear() };
+  const bikes = new Map<string, Record<string, unknown>>();
+  return { rows, bikes, reset: () => { rows.clear(); bikes.clear(); } };
 });
 
-vi.mock('../../../data/db', () => ({
+vi.mock('../../../data/db', async (importOriginal) => ({    // The real module's pure helpers (isCyclingActivity) stay real — only the Dexie handle
+    // is faked, so the attribution rules are tested against production logic, not a copy.
+  ...(await importOriginal<typeof import('../../../data/db')>()),
   db: {
     activities: {
       // a tiny in-memory stand-in: the backfill pass reads the table back through
@@ -40,7 +43,15 @@ vi.mock('../../../data/db', () => ({
     sync_state: {
       get: vi.fn(async () => ({ id: 'strava', accessToken: 'old', refreshToken: 'rt', updatedAt: 1 })),
       put: vi.fn(async () => undefined)
-    }
+    },
+    bikes: {
+      toArray: vi.fn(async () => [...store.bikes.values()]),
+      update: vi.fn(async (id: unknown, patch: Record<string, unknown>) => {
+        store.bikes.set(String(id), { ...(store.bikes.get(String(id)) ?? { id }), ...patch });
+      })
+    },
+    // kept for shape parity with the real handle; attribution no longer spans tables
+    transaction: vi.fn(async (_mode: string, _tables: unknown, cb: () => Promise<unknown>) => cb())
   }
 }));
 
@@ -61,6 +72,7 @@ import { pruneExpiredApiStreams } from '../prune';
 
 /** The mocked fns behind the fake `db`/`encodeStream`, for call assertions. */
 const activitiesPut = db.activities.put as unknown as ReturnType<typeof vi.fn>;
+const bikesUpdate = db.bikes.update as unknown as ReturnType<typeof vi.fn>;
 const streamsGet = db.activity_streams.get as unknown as ReturnType<typeof vi.fn>;
 const streamsPut = db.activity_streams.put as unknown as ReturnType<typeof vi.fn>;
 const statePut = db.sync_state.put as unknown as ReturnType<typeof vi.fn>;
@@ -358,6 +370,101 @@ describe('runStravaSync', () => {
     const res = await runStravaSync(h.deps);
     expect(res).toMatchObject({ ok: false, reason: 'rate_limited' });
     expect(res.retryInMs).toBeGreaterThan(0);
+  });
+});
+
+describe('runStravaSync — bike attribution feeds the derived odometer (F3-AC2)', () => {
+  const ACTIVE_BIKE = {
+    id: 'bike-1',
+    name: 'Domane SL6',
+    type: 'road',
+    weightKg: 8.4,
+    crr: 0.004,
+    cda: 0.36,
+    baselineKm: 1000,
+    active: true,
+    updatedAt: 1
+  };
+
+  beforeEach(() => {
+    store.bikes.set(ACTIVE_BIKE.id, { ...ACTIVE_BIKE });
+    recompute.mockResolvedValue({ scanned: 0, recomputed: 0, curvesComputed: 0, tracesGenerated: 0, noPower: 0 });
+  });
+
+  it('attributes each pulled ride to the active bike — the odometer sums from that field', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+
+    const res = okResult(await runStravaSync(h.deps));
+
+    // summary() carries 42 km — attributed, so baseline 1000 + Σ rides reads 1042 on Gear
+    expect(res.odometerCreditedKm).toBe(42);
+    expect(store.rows.get('1')?.bikeId).toBe('bike-1');
+    // no counter is incremented anywhere: the bike row is untouched by the sync
+    expect(bikesUpdate).not.toHaveBeenCalled();
+  });
+
+  it('a re-pull keeps the attribution instead of moving or duplicating it', async () => {
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+    okResult(await runStravaSync(h.deps));
+    expect(store.rows.get('1')?.bikeId).toBe('bike-1');
+
+    // cursor reset: the same window is re-pulled and the row overwritten whole
+    const h2 = harness(0);
+    h2.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+    const res2 = okResult(await runStravaSync(h2.deps));
+
+    // the sum never moves: same row, same attribution — and no fresh credit reported
+    expect(res2.odometerCreditedKm).toBe(0);
+    expect(store.rows.get('1')?.bikeId).toBe('bike-1');
+  });
+
+  it('never attributes a walk to a bike', async () => {
+    const h = harness(0);
+    h.page(() =>
+      jsonResponse(200, [{ ...summary(1, '2026-10-01T02:00:00Z'), type: 'Walk' }], RATE_HEADERS)
+    );
+
+    const res = okResult(await runStravaSync(h.deps));
+
+    // the walk is still a stored activity — it just is not riding
+    expect(res.pulled).toBe(1);
+    expect(res.odometerCreditedKm).toBe(0);
+    expect(store.rows.get('1')?.bikeId).toBeUndefined();
+  });
+
+  it('stores an unattributed ride when the stable is empty — and can place it later', async () => {
+    store.bikes.clear();
+    const h = harness(0);
+    h.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+
+    const res = okResult(await runStravaSync(h.deps));
+    expect(res.pulled).toBe(1);
+    expect(res.odometerCreditedKm).toBe(0);
+    // no bikeId: "not counted yet", the only state a later placement can read
+    expect(store.rows.get('1')?.bikeId).toBeUndefined();
+
+    // the rider adds a machine, then a re-pull comes through — the ride counts now
+    store.bikes.set(ACTIVE_BIKE.id, { ...ACTIVE_BIKE });
+    const h2 = harness(0);
+    h2.page(() => jsonResponse(200, [summary(1, '2026-10-01T02:00:00Z')], RATE_HEADERS));
+    const res2 = okResult(await runStravaSync(h2.deps));
+
+    expect(res2.odometerCreditedKm).toBe(42);
+    expect(store.rows.get('1')?.bikeId).toBe('bike-1');
+  });
+
+  it('a zero-distance summary is stored unattributed', async () => {
+    const h = harness(0);
+    h.page(() =>
+      jsonResponse(200, [{ ...summary(1, '2026-10-01T02:00:00Z'), distance: 0 }], RATE_HEADERS)
+    );
+
+    const res = okResult(await runStravaSync(h.deps));
+    expect(res.pulled).toBe(1);
+    expect(res.odometerCreditedKm).toBe(0);
+    expect(store.rows.get('1')?.bikeId).toBeUndefined();
   });
 });
 
