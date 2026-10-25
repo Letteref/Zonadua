@@ -11,11 +11,13 @@ import {
   raceOutcome,
   readoutOfOutcomes,
   rebaseCutoffsForStart,
+  routeCapability,
+  routeObstacles,
   sustainAt,
   wPrimeSpentAt
 } from '../race';
 import type { PlanSeriesPoint } from '../pacing';
-import type { Segment } from '../physics';
+import { powerForSpeed, type Segment } from '../physics';
 
 /**
  * Flat 100 km at 30 km/h from a 05:30 gun, sampled every 10 km.
@@ -564,5 +566,272 @@ describe('checkpointsWithStoredGates — planner positions, race-page gates', ()
       { km: 15.03, cutoffMin: 60 }
     ]);
     expect(out).toEqual([{ km: 15.04, cutoffMin: 60 }]);
+  });
+});
+
+describe('routeCapability — can this rider ride the plan?', () => {
+  const PHYSICS = { riderKg: 68, bikeKg: 9.4, cargoKg: 0, crr: 0.0045, cda: 0.32, temperatureC: 20 };
+  /** 40 kJ tank against 250 W — small enough that a deliberate grind drains it. */
+  const FIT = { cp: 250, wPrime: 40000, r2: 0.98, points: 12, predicted: [] };
+
+  /** Hand-built plan rows: the scan's contract lives on this shape, not on solver output. */
+  function capRows(spec: Array<{ km: number; kph: number; clockMin: number }>): PlanSeriesPoint[] {
+    return spec.map(({ km, kph, clockMin }) => ({
+      km,
+      altM: 100,
+      gradePct: 0,
+      kph,
+      elapsedSec: (clockMin - 330) * 60,
+      clockMin,
+      powerLimited: false
+    }));
+  }
+
+  it('has nothing to judge without a plan', () => {
+    expect(routeCapability([], [], PHYSICS, FIT)).toBeNull();
+    expect(routeCapability([rows()[0]], [], PHYSICS, FIT)).toBeNull();
+  });
+
+  it('calls the verdict unknown when there is no CP fit — a green light nobody measured', () => {
+    // below-CP rows would read "sustainable" from sustainAt; the route-level verdict
+    // must not launder that into a yes
+    const out = routeCapability(rows(), segs(5, 140, 1200), PHYSICS, undefined)!;
+    expect(out.verdict).toBe('unknown');
+    expect(out.breakKm).toBeNull();
+    expect(out.at.cp).toBeNull();
+    expect(out.at.reason).toContain('No CP fit');
+  });
+
+  it('passes a plan that stays below CP end to end', () => {
+    // flat 30 km/h is ~140 W of demand against a 250 W CP; the segments sit below CP
+    // too, so the tank only refills
+    const out = routeCapability(rows(), segs(5, 140, 1200), PHYSICS, FIT)!;
+    expect(out.verdict).toBe('sustainable');
+    expect(out.breakKm).toBeNull();
+    expect(out.at.sustainable).toBe(true);
+  });
+
+  it('breaks at the FIRST point that stops being fundable, not the worst one', () => {
+    // 0–40 km at 30 km/h (well inside CP), then 60 km/h — ~950 W of demand — to the
+    // end, finishing with an even hungrier 90 km/h row: the deficit peaks at the
+    // finish, but the verdict must point where the rider first meets the problem.
+    const out = routeCapability(
+      capRows([
+        { km: 0, kph: 30, clockMin: 330 },
+        { km: 10, kph: 30, clockMin: 350 },
+        { km: 20, kph: 30, clockMin: 370 },
+        { km: 30, kph: 30, clockMin: 390 },
+        { km: 40, kph: 30, clockMin: 410 },
+        { km: 50, kph: 60, clockMin: 420 },
+        { km: 60, kph: 60, clockMin: 430 },
+        { km: 70, kph: 60, clockMin: 440 },
+        { km: 80, kph: 60, clockMin: 450 },
+        { km: 90, kph: 60, clockMin: 460 },
+        { km: 100, kph: 90, clockMin: 470 }
+      ]),
+      // the slow legs sit below CP, so the reserve is whole when km 50 arrives
+      segs(5, 140, 1200, 10),
+      PHYSICS,
+      FIT
+    )!;
+    expect(out.verdict).toBe('limited');
+    expect(out.breakKm).toBe(50);
+    expect(out.at.km).toBe(50);
+    expect(out.at.sustainable).toBe(false);
+    // a gap the tank could still buy, not an empty one — that is the "limited" face
+    expect(out.at.wPrimeLeft).toBeGreaterThan(0);
+  });
+
+  it('calls it spent when the tank is already empty at the break', () => {
+    // a 45 kJ wall at km 40 (750 W surplus × 60 s) empties a 40 kJ tank outright, so
+    // the point after it is judged against bare CP
+    const out = routeCapability(
+      capRows([
+        { km: 0, kph: 30, clockMin: 330 },
+        { km: 10, kph: 30, clockMin: 350 },
+        { km: 20, kph: 30, clockMin: 370 },
+        { km: 30, kph: 30, clockMin: 390 },
+        { km: 40, kph: 45, clockMin: 410 },
+        { km: 50, kph: 45, clockMin: 423 },
+        { km: 60, kph: 45, clockMin: 437 }
+      ]),
+      segs(1, 1000, 60, 40),
+      PHYSICS,
+      FIT
+    )!;
+    expect(out.verdict).toBe('spent');
+    expect(out.breakKm).toBe(40);
+    expect(out.at.wPrimeLeft).toBe(0);
+    expect(out.at.reason).toContain('W′ is spent');
+  });
+});
+
+describe('routeObstacles — the card\'s accordion list', () => {
+  const PHYSICS = { riderKg: 68, bikeKg: 9.4, cargoKg: 0, crr: 0.0045, cda: 0.32, temperatureC: 20 };
+  const FIT = { cp: 250, wPrime: 40000, r2: 0.98, points: 12, predicted: [] };
+
+  /** flat 100 km with a 10 % wall of a climb between km 30 and 60 (12 km/h up top). */
+  const hillRows: PlanSeriesPoint[] = [
+    { km: 0, altM: 100, gradePct: 0, kph: 30, elapsedSec: 0, clockMin: 330, powerLimited: false },
+    { km: 30, altM: 100, gradePct: 0, kph: 30, elapsedSec: 3600, clockMin: 390, powerLimited: false },
+    { km: 40, altM: 200, gradePct: 10, kph: 12, elapsedSec: 6600, clockMin: 440, powerLimited: false },
+    { km: 50, altM: 300, gradePct: 10, kph: 12, elapsedSec: 9600, clockMin: 490, powerLimited: false },
+    { km: 60, altM: 400, gradePct: 10, kph: 12, elapsedSec: 12600, clockMin: 540, powerLimited: false },
+    // a flat row at km 70 keeps rowAt from bleeding the 10 % grade into the gentle
+    // climb's neighbourhood — without it the "gentle" climb is honestly judged at ~7 %
+    { km: 70, altM: 400, gradePct: 0, kph: 30, elapsedSec: 15000, clockMin: 570, powerLimited: false },
+    { km: 100, altM: 400, gradePct: 0, kph: 30, elapsedSec: 20400, clockMin: 660, powerLimited: false }
+  ];
+
+  /**
+   * One solved segment spanning [startKm → startKm + lenKm). `distKm` mirrors the real
+   * solver's contract (physics.ts): the distance at the segment's END, never its
+   * length — fixtures that lie about this shape pass against arithmetic the production
+   * data can never produce.
+   */
+  function segAt(i: number, startKm: number, lenKm: number, over: Partial<Segment> = {}): Segment {
+    const sec = Math.max(1, Math.round(lenKm * 120));
+    return {
+      i,
+      distKm: startKm + lenKm,
+      altM: 100,
+      riseM: 0,
+      gradePct: 0,
+      vKph: 30,
+      sec,
+      cumDistKm: startKm + lenKm,
+      cumTimeSec: sec * (i + 1),
+      powerLimited: false,
+      powerUsedW: 150,
+      ...over
+    };
+  }
+
+  /** flat km 0→35, then a 5 % climb km 35→60 (250 m of rise per 5 km segment). */
+  function climbSegs(): Segment[] {
+    return [
+      ...Array.from({ length: 7 }, (_, k) => segAt(k, k * 5, 5)),
+      ...Array.from({ length: 5 }, (_, k) =>
+        segAt(7 + k, 35 + k * 5, 5, {
+          gradePct: 5,
+          vKph: 15,
+          powerUsedW: 200,
+          riseM: 250,
+          altM: 100 + 250 * (k + 1)
+        })
+      )
+    ];
+  }
+
+  it('measures a climb run end to end and judges at its steepest point', () => {
+    const out = routeObstacles(rows(), climbSegs(), PHYSICS, FIT)!;
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe('climb');
+    expect(out[0].startKm).toBe(35);
+    expect(out[0].endKm).toBe(60);
+    expect(out[0].lengthKm).toBeCloseTo(25, 6);
+    expect(out[0].avgGradePct).toBeCloseTo(5, 6); // 1250 m of rise over 25 km
+    expect(out[0].maxGradePct).toBe(5);
+    expect(out[0].judgement.km).toBe(47.5); // centre of the steepest plateau, not its first metre
+  });
+
+  /**
+   * A uniform ramp: the first three segments share one gradient to floating-point noise
+   * (…747432 / …747319 / …747419) and the fourth is honestly shallower.
+   */
+  function noisyRamp(): Segment[] {
+    return [
+      segAt(0, 0, 5, { gradePct: 4.18730777647432, vKph: 7.85 }),
+      segAt(1, 5, 5, { gradePct: 4.187307776474319, vKph: 7.85 }),
+      segAt(2, 10, 5, { gradePct: 4.18730777647419, vKph: 7.85 }),
+      segAt(3, 15, 5, { gradePct: 3.1, vKph: 9 })
+    ];
+  }
+
+  it('reads a uniform ramp as ONE plateau and judges at its centre', () => {
+    // The old strict `>` crowned segment 0 every time (it "wins" by 1e-15), so a climb
+    // starting at km 0 reported "tightest at km 0.0" — the feature's own boundary.
+    const out = routeObstacles(rows(), noisyRamp(), PHYSICS, FIT)!;
+    expect(out).toHaveLength(1);
+    expect(out[0].startKm).toBe(0);
+    expect(out[0].maxGradePct).toBeCloseTo(4.18730777647432, 9);
+    // plateau = km 0–15 → centre segment km 5–10 → mid 7.5, never 2.5 (or 0.25)
+    expect(out[0].judgement.km).toBe(7.5);
+    expect(out[0].judgement.km).not.toBe(out[0].startKm);
+  });
+
+  it('judges that segment on ITS solved gradient, not the chart row blended over it', () => {
+    // `rows()` is flat 0 % at 30 km/h everywhere — reading the gradient off the chart at
+    // km 7.5 would demand flat-road watts for a 4.19 % ramp. The segment's own pair is
+    // the truth the solver actually rode, and the watts have to follow it.
+    const out = routeObstacles(rows(), noisyRamp(), PHYSICS, FIT)!;
+    expect(out[0].judgement.requiredW).toBe(
+      Math.round(powerForSpeed(PHYSICS, 4.18730777647432, 7.85))
+    );
+    // …and explicitly NOT what the interpolated chart row says: dropping the segment's
+    // pair would fall straight back to the flat fixture's 0 % / 30 km/h demand.
+    expect(out[0].judgement.requiredW).not.toBe(Math.round(powerForSpeed(PHYSICS, 0, 30)));
+  });
+
+  it('a sub-half-kilometre ramp is GPX jitter, not terrain', () => {
+    const out = routeObstacles(rows(), [segAt(0, 0, 49.6), segAt(1, 49.6, 0.4, { gradePct: 8 })], PHYSICS, FIT);
+    expect(out).toEqual([]);
+  });
+
+  it('a stalled segment is a wall however short, below the climb threshold', () => {
+    const out = routeObstacles(
+      rows(),
+      [segAt(0, 0, 49.8), segAt(1, 49.8, 0.2, { gradePct: 2, powerLimited: true })],
+      PHYSICS,
+      FIT
+    )!;
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe('wall');
+    expect(out[0].startKm).toBeCloseTo(49.8, 6);
+    expect(out[0].lengthKm).toBeCloseTo(0.2, 6);
+  });
+
+  it('sorts worst first: the grind the reserve can\'t buy leads the passes', () => {
+    // a 10 % wall of a climb (~268 W demanded at 12 km/h against a 250 W CP) plus a
+    // gentle 4 % kicker late that sits under CP — geometry alone can't rank these,
+    // the CP/W′ engine does
+    const brutal = [
+      ...Array.from({ length: 7 }, (_, k) => segAt(k, k * 5, 5)), // flat km 0→35
+      ...Array.from({ length: 5 }, (_, k) =>
+        segAt(7 + k, 35 + k * 5, 5, {
+          gradePct: 10,
+          vKph: 12,
+          powerUsedW: 300,
+          riseM: 250,
+          altM: 100 + 250 * (k + 1)
+        })
+      )
+    ];
+    const flat = segAt(12, 60, 10);
+    const gentle = Array.from({ length: 2 }, (_, k) =>
+      segAt(13 + k, 70 + k * 5, 5, {
+        gradePct: 4,
+        vKph: 20,
+        powerUsedW: 190,
+        riseM: 200,
+        altM: 400 + 200 * (k + 1)
+      })
+    );
+    // the flat km 60–70 is a solved segment like any other: without it the two climbs
+    // are honestly ONE consecutive run, and the function must not pretend otherwise
+    const out = routeObstacles(hillRows, [...brutal, flat, ...gentle], PHYSICS, FIT)!;
+    expect(out.map((o) => o.startKm)).toEqual([35, 70]);
+    expect(out[0].judgement.sustainable).toBe(false);
+    expect(out[0].judgement.wPrimeLeft).toBeGreaterThan(0); // limited, not spent
+    expect(out[1].judgement.sustainable).toBe(true);
+  });
+
+  it('without a CP fit the terrain is still listed, honestly unjudged', () => {
+    const steeper = climbSegs().map((s) => (s.cumDistKm > 35 ? { ...s, gradePct: 10 } : s));
+    const out = routeObstacles(hillRows, steeper, PHYSICS, undefined)!;
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe('climb');
+    expect(out[0].judgement.cp).toBeNull();
+    expect(out[0].judgement.sustainable).toBe(true); // gradient-only truth, never a verdict
   });
 });

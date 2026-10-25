@@ -3,9 +3,10 @@
   import type { IconName } from '$lib/icons';
   import EditorialHeader from '$lib/components/EditorialHeader.svelte';
   import SpeedProfileChart from '$lib/components/SpeedProfileChart.svelte';
-    import { activeBike, appSettings, latestFtp, weightSeries, fetchRouteProfile, fetchRouteTrack, allRoutes, allActivities } from '$lib/data/queries.svelte';
+    import { activeBike, appSettings, latestFtp, powerCurves, weightSeries, fetchRouteProfile, fetchRouteTrack, allRoutes, allActivities } from '$lib/data/queries.svelte';
   import { route } from '$lib/router.svelte';
   import { untrack } from 'svelte';
+  import { slide } from 'svelte/transition';
   import { db, isCyclingActivity, type Race } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { parseAndStoreRoute } from '$lib/data/route-import';
@@ -24,7 +25,8 @@
   import { bearingBetween, peakHeadwind, correctForWind, type WindSample } from '$lib/domain/wind';
   import { fetchWindForecast, fetchRideForecast } from '$lib/infra/weather/openmeteo';
   import { buildDeparturePlan, historicalSpeedKph, type DepartureOption } from '$lib/domain/departure';
-  import { checkpointsWithStoredGates, rebaseCutoffsForStart } from '$lib/domain/race';
+  import { checkpointsWithStoredGates, rebaseCutoffsForStart, routeCapability, routeObstacles, type RouteObstacle, type SustainProjection } from '$lib/domain/race';
+  import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
 
   /** the global pill (UI-SPEC §46); this route only picks the words */
   const showToast = (msg: string, tone: 'ok' | 'error' = 'ok'): void =>
@@ -132,18 +134,25 @@
    * the risk being that pass 2 quietly solves a *different* plan than pass 1 and the drift
    * it reports is then measuring the wrong thing.
    */
+  /**
+   * The rider, the bike and the day. Every physics pass on this page — the solver, the
+   * wind correction, the capability panel below — reads this one block, so the verdict
+   * is never computed against numbers the plan did not ride by (the race page's
+   * `racePhysics` rule, kept here for the same reason).
+   */
+  const basePhysics = $derived({
+    riderKg,
+    bikeKg: bike?.weightKg ?? 9.4,
+    cargoKg,
+    crr: bike?.crr ?? 0.0045,
+    cda: bike?.cda ?? 0.32,
+    temperatureC: 20
+  });
+
   function solveWithIf(ifTarget: number, headwind: number) {
     return buildPlan({
       profile,
-      physics: {
-        riderKg,
-        bikeKg: bike?.weightKg ?? 9.4,
-        cargoKg,
-        crr: bike?.crr ?? 0.0045,
-        cda: bike?.cda ?? 0.32,
-        temperatureC: 20,
-        headwindKph: headwind
-      },
+      physics: { ...basePhysics, headwindKph: headwind },
       pacing: { mode: 'if', ifTarget, ftp },
       stops: { count: stopCount, minutesEach: stopMin },
       startMin,
@@ -401,6 +410,99 @@
   const avgKph = $derived(plan.avgKph ?? 0);
   const estFinish = $derived(plan.ok ? durationOf(plan.elapsedSec!) : '—');
   const etaFinish = $derived(plan.ok ? clockOf(plan.finishClockMin!) : '—');
+
+  // ---------- ride capability (ROADMAP M4 slice 2): CP/W′ over the whole plan ----------
+  /**
+   * The fit the panel judges against — the same `mergePowerCurves` + `fitCriticalPower`
+   * pair the race page uses, so "Aman" means the same thing on both screens. Four
+   * points is the minimum the 2-parameter model can honestly fit; below that the panel
+   * says "No CP fit" rather than inventing a verdict.
+   */
+  const cpFit = $derived.by(() => {
+    const merged = mergePowerCurves((powerCurves.current ?? []).map((c) => c.points));
+    return merged.length >= 4 ? fitCriticalPower(merged) : undefined;
+  });
+
+  /**
+   * The physics the on-screen plan actually solved with: the shared rider block plus
+   * the headwind that pass accepted. Judging capability against anything else would
+   * grade a ride the rider is not being asked to ride.
+   */
+  const planPhysics = $derived({ ...basePhysics, headwindKph: appliedHeadwind });
+
+  /**
+   * Can this rider ride the plan the chart just drew? — the cockpit's sustainAt/gateBufferAt
+   * pair asked over the whole route instead of at a crosshair. Null while there is no
+   * solve to scan, which the card renders as "not judged", never as a pass.
+   */
+  const capability = $derived(
+    plan.ok && plan.solution ? routeCapability(chartRows, plan.solution.segments, planPhysics, cpFit) : null
+  );
+
+  /**
+   * The card's headline word. The pill it sits in is plain mono surface — the same
+   * #23252c tag every other deck element wears — so the *only* colour on the card's
+   * verdict is the icon and the word themselves, taken from the cockpit's dark status
+   * palette. Colour divides the status; it never decorates the container.
+   */
+  const verdictView = $derived.by(() => {
+    switch (capability?.verdict) {
+      case 'sustainable':
+        return { word: 'Sustainable', cls: 'text-[#4ade9a]', icon: 'check' as const };
+      case 'limited':
+        return { word: 'At risk', cls: 'text-[#ffb35a]', icon: 'triangle-alert' as const };
+      case 'spent':
+        return { word: 'Not sustainable', cls: 'text-[#ff8a92]', icon: 'octagon-alert' as const };
+      case 'unknown':
+        return { word: 'No CP fit', cls: 'text-on-mono-dim', icon: 'gauge' as const };
+      default:
+        return { word: 'Not judged', cls: 'text-on-mono-dim', icon: 'gauge' as const };
+    }
+  });
+
+  /**
+   * The terrain the plan must survive, worst first — climbs ≥ 3 % and stalls at target
+   * power, each judged by the same sustain engine at its steepest point, so this list
+   * and the card's headline can never disagree about the engine behind them. Empty
+   * while there is no solve (the card says "not judged" rather than "nothing to dodge").
+   */
+  const obstacles = $derived(
+    plan.ok && plan.solution && chartRows.length >= 2
+      ? routeObstacles(chartRows, plan.solution.segments, planPhysics, cpFit)
+      : []
+  );
+  /**
+   * One obstacle open at a time — the card has to stay scannable after a tap. Keyed by
+   * the obstacle's start km (not the each index) so a plan recompute can never make the
+   * open row point at a different feature.
+   */
+  let openObstacle = $state<number | null>(null);
+
+  /**
+   * The tightest point printed at a precision that can still be told apart from the
+   * feature's own edges. One decimal is 100 m — coarser than a solver segment — so a
+   * point 40 m into a climb rounds back onto its start and reads as "the beginning of
+   * the segment", the exact complaint this figure earned. Two decimals appear only when
+   * one would collide with the km range printed on the row above.
+   */
+  function tightestKmLabel(o: RouteObstacle): string {
+    const one = o.judgement.km.toFixed(1);
+    return one === o.startKm.toFixed(1) || one === o.endKm.toFixed(1)
+      ? o.judgement.km.toFixed(2)
+      : one;
+  }
+
+  /**
+   * Row status: the pill's three words at row scale. Without a fit there is no status
+   * word at all — geometry is still true, but a colour next to it would pretend.
+   */
+  function obstacleStatus(j: SustainProjection): { word: string; cls: string } | null {
+    if (j.cp == null) return null;
+    if (j.sustainable) return { word: 'Sustainable', cls: 'text-[#4ade9a]' };
+    return j.wPrimeLeft === 0
+      ? { word: 'Not sustainable', cls: 'text-[#ff8a92]' }
+      : { word: 'At risk', cls: 'text-[#ffb35a]' };
+  }
 
   const setupTiles = $derived([
     { icon: 'bike', label: 'Bike:', value: bike?.name ?? '—', tone: 'aman' },
@@ -733,10 +835,11 @@
           The estimator reads the route profile and projects your finish from FTP {ftp} W, your active bike and stop pattern — fully offline.
         </p>
       </div>
-      <!-- one centred row: import fresh, or pick what the library already holds -->
-      <div class="flex items-center justify-center gap-2">
+      <!-- stacked, never side-by-side: at phone width these two controls cannot share
+           one row without the select or the button spilling past the card's border -->
+      <div class="flex flex-col gap-2 w-full max-w-[280px]">
         <button
-          class="h-11 px-5 rounded-pill bg-crimson-fill text-white text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-2 glow-signal active:scale-[0.98] transition-transform"
+          class="h-11 w-full justify-center rounded-pill bg-crimson-fill text-white text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-2 glow-signal active:scale-[0.98] transition-transform"
           onclick={(e) => {
             e.stopPropagation();
             fileInput?.click();
@@ -749,7 +852,7 @@
           <!-- stopPropagation, same as the button: the card itself is a click-to-import
                target, and opening a file dialog behind a dropdown would be a trap -->
           <select
-            class="h-11 min-w-0 max-w-[46%] rounded-pill bg-tile border border-hairline-strong px-3 text-[11px] font-extrabold uppercase tracking-wider text-ink outline-none focus:border-signal cursor-pointer"
+            class="h-11 w-full rounded-pill bg-tile border border-hairline-strong px-3 text-[11px] font-extrabold uppercase tracking-wider text-ink outline-none focus:border-signal cursor-pointer"
             aria-label="Preview a saved route from the library"
             value={savedPick}
             onclick={(e) => e.stopPropagation()}
@@ -850,6 +953,168 @@
         <span class="text-[9px] font-bold uppercase text-on-mono-dim">{plan.powerLimitedCount ? `${plan.powerLimitedCount} WALL` : 'CAT HC'}</span>
       </div>
     </div>
+  </section>
+
+  <!-- RIDE CAPABILITY (ROADMAP M4): can this rider hold the plan above? The same CP/W′
+       engine as the race cockpit, asked over the whole route. Visual language follows the
+       rider-approved Stitch reference: a striking crimson→black gradient deck (the one
+       card on this page allowed to shout), a cockpit split — finding left, verdict pill
+       right — an inset telemetry panel for evidence and provenance, then the route's
+       obstacles as a divided accordion (climbs ≥ 3 % and walls, worst first).
+       Adapted, not copied: fonts stay Plus Jakarta Sans with the app's `text-tabular`
+       numbers (no second typeface), icons stay hugeicons, and status colours stay the
+       cockpit triad #4ade9a/#ffb35a/#ff8a92 so this card and every StatusChip in the
+       app speak one colour language. -->
+  <section
+    class="rounded-card p-5 flex flex-col text-white border border-white/10 bg-[linear-gradient(152deg,#b60100_0%,#870000_36%,#2e0208_76%,#12090b_100%)] shadow-[0_24px_56px_-12px_rgba(137,1,0,0.35),0_12px_32px_-8px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.18)]"
+    data-test="ride-capability"
+  >
+    <header class="flex items-center justify-between gap-3 mb-4">
+      <span class="flex items-center gap-2 min-w-0">
+        <span class="h-1.5 w-1.5 rounded-pill bg-white shrink-0 shadow-[0_0_8px_rgba(255,255,255,0.8)]"></span>
+        <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-white/80">Ride capability</span>
+      </span>
+      <span class="px-2 py-0.5 rounded-pill border border-white/20 bg-black/25 text-[10px] font-bold text-white text-tabular shrink-0">CP/W′</span>
+    </header>
+
+    <!-- cockpit split: the finding anchors left, the verdict pill answers on the right -->
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <p class="min-w-0 pr-1 text-[14px] font-bold text-white leading-snug">
+        {#if capability?.breakKm != null}
+          Plan power gives out at <span class="text-[#ffb4a8] text-tabular font-extrabold whitespace-nowrap">km {capability.breakKm.toFixed(1)}</span>
+        {:else if capability?.verdict === 'sustainable'}
+          Plan power holds to the finish.
+        {:else if capability?.verdict === 'unknown'}
+          Ride with power to judge this route.
+        {:else}
+          Not judged.
+        {/if}
+      </p>
+      <span class="h-8 px-3 rounded-pill bg-black/40 border border-white/15 inline-flex items-center gap-1.5 shrink-0">
+        <Icon name={verdictView.icon} size={14} strokeWidth={2.2} class={verdictView.cls} />
+        <span class="text-[11.5px] font-extrabold uppercase tracking-wider leading-none {verdictView.cls}">{verdictView.word}</span>
+      </span>
+    </div>
+
+    <!-- telemetry panel: the evidence for the verdict, and where the fit came from -->
+    <div class="rounded-[14px] bg-black/45 border border-white/10 p-3.5 mb-4 flex flex-col gap-2.5">
+      {#if capability?.verdict === 'unknown'}
+        <p class="text-[11.5px] leading-relaxed text-white/80">
+          Ride with a power meter and this becomes a real judgement instead of a pace the model only hopes for.
+        </p>
+      {:else if capability?.breakKm != null}
+        <p class="text-[11.5px] leading-relaxed text-white/80">
+          {capability.at.reason}. Needs <span class="font-bold text-white text-tabular">{capability.at.requiredW} W</span>
+          {#if capability.at.availableW != null}
+            — <span class="font-bold text-white text-tabular">{capability.at.availableW} W</span> available,
+          {:else}
+            — no CP to lean on,
+          {/if}
+          <span class="font-bold text-white text-tabular">{Math.round((capability.at.wPrimePct ?? 0) * 100)}%</span> W′ left.
+        </p>
+      {:else if capability}
+        <p class="text-[11.5px] leading-relaxed text-white/80">
+          {capability.at.reason}. Tightest at <span class="font-bold text-white text-tabular">km {capability.at.km.toFixed(1)}</span> —
+          <span class="font-bold text-white text-tabular">{capability.at.requiredW} W</span> needed,
+          {#if capability.at.availableW != null}
+            <span class="font-bold text-white text-tabular">{capability.at.availableW} W</span> available,
+          {:else}
+            no CP to lean on,
+          {/if}
+          <span class="font-bold text-white text-tabular">{Math.round((capability.at.wPrimePct ?? 0) * 100)}%</span> W′ left.
+        </p>
+      {:else}
+        <p class="text-[11.5px] leading-relaxed text-white/80">{plan.reason}</p>
+      {/if}
+      {#if cpFit}
+        <p class="pt-2 border-t border-white/10 text-[10px] leading-relaxed text-white/55">
+          <span class="text-white/85 font-semibold text-tabular">CP {cpFit.cp} W · W′ {(cpFit.wPrime / 1000).toFixed(1)} kJ</span>
+          — fit from <span class="text-white/85 font-medium text-tabular">{cpFit.points}</span> durations across <span class="text-white/85 font-medium text-tabular">{powerCurves.current?.length ?? 0}</span> rides
+        </p>
+      {/if}
+    </div>
+
+    {#if plan.ok}
+      <div class="pt-3 border-t border-white/10 mb-1">
+        <h2 class="text-[10px] font-extrabold uppercase tracking-[0.14em] text-white/70">Route obstacles</h2>
+      </div>
+      {#if obstacles.length === 0}
+        <p class="text-[11px] text-white/60">
+          Nothing steeper than 3% and nothing beyond target power on this plan — nothing to dodge.
+        </p>
+      {:else}
+        <div class="flex flex-col divide-y divide-white/10">
+        {#each obstacles.slice(0, 8) as obs (obs.startKm)}
+          {@const st = obstacleStatus(obs.judgement)}
+          <div>
+            <button
+              class="w-full py-3 flex items-center justify-between gap-3 text-left"
+              aria-expanded={openObstacle === obs.startKm}
+              onclick={() => (openObstacle = openObstacle === obs.startKm ? null : obs.startKm)}
+            >
+              <span class="flex items-center gap-2.5 min-w-0 flex-1">
+                <span class="h-[22px] w-[22px] shrink-0 grid place-items-center rounded-[6px] bg-black/40 border border-white/10">
+                  <Icon
+                    name={obs.kind === 'wall' ? 'triangle-alert' : 'mountain'}
+                    size={12}
+                    strokeWidth={1.8}
+                    class={st ? st.cls : 'text-white/75'}
+                  />
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-[12px] font-bold text-white text-tabular leading-tight">
+                    {obs.kind === 'wall' ? 'Wall' : 'Climb'} · km {obs.startKm.toFixed(1)}–{obs.endKm.toFixed(1)}
+                  </span>
+                  <span class="block text-[9.5px] font-medium uppercase tracking-wider text-white/60 text-tabular mt-0.5 truncate">
+                    {obs.lengthKm.toFixed(1)} km · avg +{obs.avgGradePct.toFixed(1)}% · peak {obs.maxGradePct.toFixed(1)}%
+                  </span>
+                </span>
+              </span>
+              <span class="flex items-center gap-1.5 shrink-0 pl-1">
+                {#if st}
+                  <span class="text-[10px] font-extrabold uppercase tracking-tight {st.cls}">{st.word}</span>
+                {/if}
+                <Icon
+                  name="chevron-right"
+                  size={14}
+                  strokeWidth={2}
+                  class="shrink-0 transition-transform duration-200 {openObstacle === obs.startKm
+                    ? `-rotate-90 ${st ? st.cls : 'text-white/70'}`
+                    : 'rotate-90 text-white/50'}"
+                />
+              </span>
+            </button>
+            {#if openObstacle === obs.startKm}
+              <!-- in:slide only — a slide OUTRO inside this keyed each leaks its node
+                   (outro completes but Svelte never removes it, so panels pile up).
+                   Open still animates; close removes the node in the same flush. -->
+              <div in:slide={{ duration: 180 }} class="pb-3">
+                <div class="rounded-[12px] bg-black/50 border border-white/10 p-3 mt-1 flex flex-col gap-1.5">
+                  <p class="text-[11px] leading-relaxed text-white">
+                    <span class="font-semibold">Tightest at km {tightestKmLabel(obs)}</span>
+                    <span class="text-white/70"> · {obs.maxGradePct >= 0 ? '+' : ''}{obs.maxGradePct.toFixed(1)}% grade</span>:
+                    needs <span class="font-bold text-tabular">{obs.judgement.requiredW} W</span>
+                    {#if obs.judgement.availableW != null}
+                      — <span class="font-bold text-tabular">{obs.judgement.availableW} W</span> available,
+                      <span class="font-bold text-tabular">{Math.round((obs.judgement.wPrimePct ?? 0) * 100)}%</span> W′ left
+                    {:else}
+                      — no CP to lean on
+                    {/if}.
+                  </p>
+                  <p class="text-[10.5px] leading-relaxed text-white/70">{obs.judgement.reason}.</p>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/each}
+        </div>
+        {#if obstacles.length > 8}
+          <p class="text-[10px] font-bold uppercase tracking-[0.06em] text-white/60 pt-2 mt-1 border-t border-white/10">
+            +{obstacles.length - 8} more features on this route
+          </p>
+        {/if}
+      {/if}
+    {/if}
   </section>
 
   <!-- Elevation + solved speed, crosshair tooltip (UI-SPEC §21) -->

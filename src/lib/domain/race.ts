@@ -209,12 +209,22 @@ export function sustainAt(
   physics: PhysicsParams,
   fit: CriticalPowerFit | undefined,
   wPrimeSpentJ: number,
-  horizonSec: number
+  horizonSec: number,
+  /**
+   * The segment's own solved gradient and speed, when the caller already knows which
+   * segment the judgement is about. `rowAt` **interpolates** between chart rows, so
+   * asking about the middle of a segment blends its gradient with its neighbour's and
+   * the watts come out describing terrain the solver never rode — a 4.2 % ramp judged
+   * on a 3.5 % average. An obstacle knows its steepest segment exactly, so it passes
+   * that pair through; a caller judging at a chart row (the route verdict, the race
+   * page) has the row's own values already and passes nothing.
+   */
+  at?: { gradePct: number; kph: number }
 ): SustainProjection | null {
   const row = rowAt(rows, km);
   if (!row) return null;
 
-  const requiredW = Math.round(powerForSpeed(physics, row.gradePct, row.kph));
+  const requiredW = Math.round(powerForSpeed(physics, at?.gradePct ?? row.gradePct, at?.kph ?? row.kph));
   if (!fit || fit.cp <= 0 || fit.wPrime <= 0) {
     return {
       km,
@@ -313,6 +323,248 @@ export function planMinutesBetween(
   if (a == null || b == null) return null;
   return Math.max(0, b - a);
 }
+/**
+ * Route-wide verdict: can this rider hold this plan from the gun to the finish?
+ *
+ * `unknown` when there is no CP fit — and that value is the point of naming it: with no
+ * fit `sustainAt` still judges the gradient and reports `sustainable: true`, which is a
+ * perfectly true statement about a rider nobody measured. A caller that printed that as
+ * "you can ride this" would turn missing data into a green light, so the no-fit path is a
+ * first-class verdict here rather than a `true` the component has to remember to distrust.
+ */
+export type RouteVerdict = 'unknown' | 'sustainable' | 'limited' | 'spent';
+
+export interface RouteCapability {
+  verdict: RouteVerdict;
+  /**
+   * The first point the plan stops being fundable, km from the start — null when every
+   * sampled point holds. Rows are distance-ordered (`planSeries` preserves solve order),
+   * so "first" is where the rider first meets the problem, not the worst point on the
+   * route: a plan that fails early and recovers on a descent still fails, and the earliest
+   * km is where the rider must change something.
+   */
+  breakKm: number | null;
+  /**
+   * The judgement the verdict rests on: at the break when there is one, otherwise at the
+   * tightest point — the largest `requiredW − availableW` deficit — so a passing plan
+   * still hands back evidence (its narrowest margin) instead of a bare boolean.
+   */
+  at: SustainProjection;
+}
+
+/**
+ * Scan the whole plan and answer the estimator's question: *can this rider ride it?*
+ *
+ * This composes the two primitives the cockpit already trusts, over every row of
+ * `planSeries` instead of the one a crosshair happens to hover:
+ *
+ *  - **W′ accounting** — `wPrimeSpentAt` charges work above CP along the solver's own
+ *    segments (and credits recovery below it), so a descent genuinely refills the tank.
+ *  - **Horizon** — the remaining plan time to the finish, exactly the construction the
+ *    cockpit's live tracker uses (`nowSustain`): "hold this pace from here to the end".
+ *
+ * ## Why walls do not dominate the verdict
+ *
+ * A power-limited ramp is judged at the plan's *stalled* speed (`vMin`, ~5 km/h), which
+ * costs little power — the crawl up a 15 % wall is cheaper than a fast flat. So a wall
+ * breaks the verdict only when it genuinely exceeds what CP + reserve can fund, which is
+ * also when the route's own `powerLimitedPct` banner is already complaining. The two
+ * warnings stay independent and neither can cry wolf on terrain the rider can walk up.
+ *
+ * ## Why the earliest break, not the largest deficit
+ *
+ * A route-level verdict is an instruction ("this plan stops working at km X"), and the
+ * instruction is only actionable at the point the rider first reaches it. The tightest
+ * point is still returned — it is `at` when the plan passes — so the panel can show the
+ * narrowest margin even when there is nothing to break.
+ *
+ * Returns null only when there is no plan to scan (`rows.length < 2`) — "no plan" and
+ * "no CP fit" are different absences and keep different faces.
+ */
+export function routeCapability(
+  rows: readonly PlanSeriesPoint[],
+  segments: ReadonlyArray<RideSolution['segments'][number]>,
+  physics: PhysicsParams,
+  fit: CriticalPowerFit | undefined
+): RouteCapability | null {
+  if (rows.length < 2) return null;
+  const canJudge = fit !== undefined && fit.cp > 0 && fit.wPrime > 0;
+  const finishKm = rows[rows.length - 1].km;
+
+  let tightest: SustainProjection | null = null;
+  let tightestKey = -Infinity;
+  let firstBreak: SustainProjection | null = null;
+
+  for (const row of rows) {
+    const spent = canJudge ? wPrimeSpentAt(segments, fit!, row.km) : 0;
+    const holdMin = planMinutesBetween(rows, row.km, finishKm) ?? 0;
+    const s = sustainAt(rows, row.km, physics, canJudge ? fit : undefined, spent, holdMin * 60);
+    if (!s) continue;
+    // With a fit the tightest point is the largest deficit; without one `availableW` is
+    // null and the steepest demand is all there is to rank by.
+    const key = s.availableW != null ? s.requiredW - s.availableW : s.requiredW;
+    if (key > tightestKey) {
+      tightestKey = key;
+      tightest = s;
+    }
+    if (!firstBreak && !s.sustainable) firstBreak = s;
+  }
+  if (!tightest) return null;
+
+  if (!canJudge) return { verdict: 'unknown', breakKm: null, at: tightest };
+  if (!firstBreak) return { verdict: 'sustainable', breakKm: null, at: tightest };
+  return {
+    verdict: firstBreak.wPrimeLeft === 0 ? 'spent' : 'limited',
+    breakKm: firstBreak.km,
+    at: firstBreak
+  };
+}
+
+/**
+ * One terrain feature the plan must survive: a **climb** (sustained grade) or a **wall**
+ * (the solver ran out of target power and stalled at the 5 km/h floor).
+ */
+export interface RouteObstacle {
+  kind: 'climb' | 'wall';
+  startKm: number;
+  endKm: number;
+  lengthKm: number;
+  /** rise ÷ run over the whole feature, percent */
+  avgGradePct: number;
+  /** steepest solved segment in the feature, percent */
+  maxGradePct: number;
+  /** `sustainAt` at the centre of the steepest stretch — the feature's tightest moment */
+  judgement: SustainProjection;
+}
+
+export interface ObstacleOptions {
+  /** grade that starts a climb — 3 % is the cycling convention for a classified ramp */
+  minGradePct?: number;
+  /** shorter is GPX jitter, not terrain — except walls, which bite at any length */
+  minKm?: number;
+}
+
+/**
+ * Enumerate the route's obstacles, worst first — the list the capability card expands
+ * under "Route obstacles".
+ *
+ * ## What counts
+ *
+ * A maximal *consecutive* run of solved segments that are either steeper than
+ * `minGradePct` or `powerLimited`. No merging across a single flat metre: a climb, a
+ * breath, then a ramp are two separate problems for a rider, and folding them together
+ * would grade the middle as if it were hill. The name follows geometry (`climb` when
+ * the steepest segment clears the threshold, else `wall`) — danger is the status
+ * word's job, not the label's.
+ *
+ * ## How each feature is judged
+ *
+ * At the **centre of its steepest stretch**, through the same three primitives the route
+ * verdict uses (`wPrimeSpentAt` → `planMinutesBetween` → `sustainAt`), so a row in this
+ * list and the card's headline can never disagree about the engine behind them. Equal
+ * gradients are read as one plateau rather than broken by "whichever comes first": a
+ * uniform ramp's segments agree to floating-point noise (~1e-15), so a strict `>` always
+ * crowned the feature's **opening metre** — and a climb starting at km 0 then reported
+ * "tightest at km 0.0", the range's own boundary, which reads to the rider as a pointer
+ * at the segment start rather than at the steepest point. The judgement also carries
+ * that segment's own solved gradient and speed, for the interpolation reason `at` gives.
+ * Without a CP fit the geometry is still real and still listed — `judgement.cp` is null,
+ * and the card shows no status word rather than inventing one.
+ *
+ * ## Why worst-first
+ *
+ * The list answers "what will bite me today?" — an empty tank (`spent`) leads, a gap
+ * the reserve can't buy (`limited`) follows, passes trail. Distance order is what a
+ * map wants; this is what a rider wants, and every row still carries its km range.
+ */
+export function routeObstacles(
+  rows: readonly PlanSeriesPoint[],
+  segments: ReadonlyArray<RideSolution['segments'][number]>,
+  physics: PhysicsParams,
+  fit: CriticalPowerFit | undefined,
+  opts: ObstacleOptions = {}
+): RouteObstacle[] {
+  const minGradePct = opts.minGradePct ?? 3;
+  const minKm = opts.minKm ?? 0.5;
+  if (rows.length < 2 || segments.length === 0) return [];
+  const finishKm = rows[rows.length - 1].km;
+  const canJudge = !!fit && fit.cp > 0 && fit.wPrime > 0;
+
+  type Seg = RideSolution['segments'][number];
+  /**
+   * A segment plus where IT begins. The solver records where a segment *ends* —
+   * `distKm` is the end distance, identical to `cumDistKm` — so a feature's start is
+   * its first segment's predecessor's end, the same rule pacing's `segStartKm` uses.
+   * (`cumDistKm − distKm` is identically zero on real data; computing starts that way
+   * collapses every feature onto km 0.)
+   */
+  interface Tracked {
+    seg: Seg;
+    startKm: number;
+  }
+  const runs: Tracked[][] = [];
+  let current: Tracked[] = [];
+  let prevEnd = 0;
+  for (const s of segments) {
+    if (s.gradePct >= minGradePct || s.powerLimited) current.push({ seg: s, startKm: prevEnd });
+    else if (current.length) {
+      runs.push(current);
+      current = [];
+    }
+    prevEnd = s.cumDistKm;
+  }
+  if (current.length) runs.push(current);
+
+  const out: RouteObstacle[] = [];
+  for (const run of runs) {
+    const startKm = run[0].startKm;
+    const endKm = run[run.length - 1].seg.cumDistKm;
+    const lengthKm = endKm - startKm;
+    const isWall = run.some((t) => t.seg.powerLimited);
+    if (lengthKm < minKm && !isWall) continue; // jitter, not terrain
+
+    const riseM = run.reduce((sum, t) => sum + t.seg.riseM, 0);
+    const maxGradePct = run.reduce((m, t) => (t.seg.gradePct > m ? t.seg.gradePct : m), -Infinity);
+    // Gradients equal to within floating-point noise are ONE stretch of terrain — a
+    // uniform ramp disagrees with itself only in the 15th decimal, and letting `>`
+    // resolve that is a decision about noise, not about terrain. The point reported is
+    // the plateau's centre, where "the steepest part" actually means something.
+    const sameGrade = (g: number): boolean => Math.abs(g - maxGradePct) <= 1e-9;
+    const firstMax = run.findIndex((t) => sameGrade(t.seg.gradePct));
+    let lastMax = firstMax;
+    while (lastMax + 1 < run.length && sameGrade(run[lastMax + 1].seg.gradePct)) lastMax++;
+    const tightest = run[firstMax + Math.floor((lastMax - firstMax) / 2)];
+    const km = tightest.startKm + (tightest.seg.cumDistKm - tightest.startKm) / 2;
+    const holdMin = planMinutesBetween(rows, km, finishKm) ?? 0;
+    const spent = canJudge ? wPrimeSpentAt(segments, fit!, km) : 0;
+    const judgement = sustainAt(rows, km, physics, canJudge ? fit : undefined, spent, holdMin * 60, {
+      gradePct: tightest.seg.gradePct,
+      kph: tightest.seg.vKph
+    });
+    if (!judgement) continue;
+
+    out.push({
+      kind: maxGradePct >= minGradePct ? 'climb' : 'wall',
+      startKm,
+      endKm,
+      lengthKm,
+      avgGradePct: (riseM / (lengthKm * 1000)) * 100,
+      maxGradePct,
+      judgement
+    });
+  }
+
+  const rank = (o: RouteObstacle): number => {
+    if (!canJudge || o.judgement.sustainable) return 0;
+    return o.judgement.wPrimeLeft === 0 ? 2 : 1;
+  };
+  // required − available; without a fit that margin is null and the steepest demand
+  // decides — same tie-break rule as routeCapability's tightest point
+  const deficit = (o: RouteObstacle): number =>
+    o.judgement.availableW != null ? o.judgement.requiredW - o.judgement.availableW : o.judgement.requiredW;
+  return out.sort((a, b) => rank(b) - rank(a) || deficit(b) - deficit(a) || a.startKm - b.startKm);
+}
+
 /**
  * Post-race: what the plan promised against what the rider actually did (M4 DoD).
  *
