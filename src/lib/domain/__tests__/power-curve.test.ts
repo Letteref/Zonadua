@@ -2,12 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   CURVE_DURATIONS_SEC,
   FIT_MIN_DURATION_SEC,
+  CP_FROM_FTP_RATIO,
+  DEFAULT_RIDER_WEIGHT_KG,
+  W_PRIME_MAX_J,
+  W_PRIME_MIN_J,
   curveValueAt,
+  estimateCpWFromFtp,
+  estimateWPrimeFromBody,
   fitCriticalPower,
   meanMaxPower,
   mergePowerCurves,
+  resolveCpFit,
   wPrimeExhaustionTime,
-  wPrimeRemaining
+  wPrimeRemaining,
+  type CurvePoint
 } from '../power-curve';
 
 const constant = (watts: number, sec: number): number[] => new Array(sec).fill(watts);
@@ -243,5 +251,145 @@ describe('curveValueAt', () => {
 
   it('returns undefined for an empty curve', () => {
     expect(curveValueAt([], 60)).toBeUndefined();
+  });
+});
+
+describe('resolveCpFit — measured beats typed, typed beats nothing', () => {
+  /** A hyperbolic curve the two-parameter model fits cleanly: CP 250 W, W′ 20 kJ. */
+  const modelCurve = (cp = 250, wPrime = 20000): CurvePoint[] =>
+    [180, 300, 600, 1200, 3600].map((durationSec) => ({
+      durationSec,
+      watts: Math.round(cp + wPrime / durationSec)
+    }));
+
+  const ENTERED = { cp: 231, wPrime: 13200 };
+
+  it('says nothing at all when there is neither a curve nor a typed pair', () => {
+    expect(resolveCpFit([])).toBeUndefined();
+    expect(resolveCpFit([], undefined)).toBeUndefined();
+  });
+
+  it('judges on the typed pair when no curve exists, and marks it as entered', () => {
+    const out = resolveCpFit([], ENTERED)!;
+    expect(out.source).toBe('entered');
+    expect(out.fit.cp).toBe(231);
+    expect(out.fit.wPrime).toBe(13200);
+    // nothing downstream may read a typed pair as evidence of a fit
+    expect(out.fit.points).toBe(0);
+    expect(out.fit.r2).toBe(0);
+    expect(out.fit.predicted).toEqual([]);
+  });
+
+  it("prefers the rider's own rides over a number they typed", () => {
+    const out = resolveCpFit([modelCurve()], ENTERED)!;
+    expect(out.source).toBe('measured');
+    expect(out.fit.points).toBe(5);
+    expect(out.fit.cp).toBeGreaterThan(240);
+    expect(out.fit.cp).toBeLessThan(260);
+    expect(out.fit.wPrime).toBeGreaterThan(15000);
+    expect(out.fit.wPrime).toBeLessThan(25000);
+  });
+
+  it('falls back to the typed pair when the curve is too thin to fit', () => {
+    // two durations cannot identify two parameters, so a "fit" here would be invented
+    const thin: CurvePoint[] = [
+      { durationSec: 180, watts: 361 },
+      { durationSec: 600, watts: 283 }
+    ];
+    expect(resolveCpFit([thin])).toBeUndefined();
+    const out = resolveCpFit([thin], ENTERED)!;
+    expect(out.source).toBe('entered');
+    expect(out.fit.cp).toBe(231);
+  });
+
+  it('refuses half a pair — a CP with no W′ cannot judge a ride', () => {
+    expect(resolveCpFit([], { cp: 231, wPrime: 0 })).toBeUndefined();
+    expect(resolveCpFit([], { cp: 0, wPrime: 13200 })).toBeUndefined();
+    expect(resolveCpFit([], { cp: -5, wPrime: 13200 })).toBeUndefined();
+  });
+});
+
+describe('estimateWPrimeFromBody — W′ tracks kilos and training, not one constant', () => {
+  it('gives a heavier rider a bigger tank at the same tier', () => {
+    const light = estimateWPrimeFromBody(60, 'structured');
+    const heavy = estimateWPrimeFromBody(85, 'structured');
+    expect(heavy).toBeGreaterThan(light);
+    // 210 J/kg: 60 kg → 12.6 kJ, 85 kg → 17.85 → 17.9 kJ
+    expect(light).toBe(12_600);
+    expect(heavy).toBe(17_900);
+  });
+
+  it('gives a more trained rider a bigger tank at the same weight', () => {
+    // 170 / 210 / 250 J/kg at 68 kg
+    expect(estimateWPrimeFromBody(68, 'foundation')).toBe(11_600);
+    expect(estimateWPrimeFromBody(68, 'structured')).toBe(14_300);
+    expect(estimateWPrimeFromBody(68, 'performance')).toBe(17_000);
+  });
+
+  it('rounds to the nearest 100 J — W′ is not a figure anyone measures to the joule', () => {
+    // 210 × 68.2 = 14322 → 14300
+    expect(estimateWPrimeFromBody(68.2, 'structured')).toBe(14_300);
+  });
+
+  it('falls back to the middle tier for a missing or unknown archetype', () => {
+    expect(estimateWPrimeFromBody(70, undefined)).toBe(estimateWPrimeFromBody(70, 'structured'));
+    expect(estimateWPrimeFromBody(70, 'nonsense')).toBe(estimateWPrimeFromBody(70, 'structured'));
+  });
+
+  it('assumes a mid-size rider when there is no usable weight', () => {
+    const assumed = estimateWPrimeFromBody(undefined, 'structured');
+    expect(assumed).toBe(estimateWPrimeFromBody(DEFAULT_RIDER_WEIGHT_KG, 'structured'));
+    expect(estimateWPrimeFromBody(0, 'structured')).toBe(assumed);
+    expect(estimateWPrimeFromBody(-68, 'structured')).toBe(assumed);
+    expect(estimateWPrimeFromBody(Number.NaN, 'structured')).toBe(assumed);
+  });
+
+  it('stays inside the band real riders occupy', () => {
+    // 170 J/kg × 40 kg = 6.8 kJ, below anything a human races on
+    expect(estimateWPrimeFromBody(40, 'foundation')).toBe(W_PRIME_MIN_J);
+    // 250 J/kg × 120 kg = 30 kJ, above the largest credible tank
+    expect(estimateWPrimeFromBody(120, 'performance')).toBe(W_PRIME_MAX_J);
+  });
+});
+
+describe('estimateCpWFromFtp — a starting pair for the rider with no meter', () => {
+  it('scales both halves: CP off FTP, W′ off body and tier', () => {
+    const est = estimateCpWFromFtp(275, { weightKg: 68.2, archetype: 'structured' })!;
+    expect(est.cp).toBe(261);
+    expect(est.wPrime).toBe(14_300);
+    expect(est.weightKg).toBe(68.2);
+    expect(est.weightAssumed).toBe(false);
+    expect(est.archetype).toBe('structured');
+    expect(CP_FROM_FTP_RATIO).toBe(0.95);
+  });
+
+  it('changes W′ with the tier while CP stays the same', () => {
+    const base = estimateCpWFromFtp(275, { weightKg: 68.2, archetype: 'structured' })!;
+    const racer = estimateCpWFromFtp(275, { weightKg: 68.2, archetype: 'performance' })!;
+    expect(racer.cp).toBe(base.cp);
+    expect(racer.wPrime).toBeGreaterThan(base.wPrime);
+    expect(racer.wPrime).toBe(17_100); // 250 × 68.2 = 17050 → 17100
+  });
+
+  it('says out loud when the body mass was assumed', () => {
+    const est = estimateCpWFromFtp(275)!;
+    expect(est.weightAssumed).toBe(true);
+    expect(est.weightKg).toBe(DEFAULT_RIDER_WEIGHT_KG);
+    expect(est.wPrime).toBe(estimateWPrimeFromBody(DEFAULT_RIDER_WEIGHT_KG, 'structured'));
+  });
+
+  it('rounds CP to whole watts — a fraction of a watt is not a number to ride to', () => {
+    // 231 × 0.95 = 219.45 → 219; 233 × 0.95 = 221.35 → 221
+    expect(estimateCpWFromFtp(231)!.cp).toBe(219);
+    expect(estimateCpWFromFtp(233)!.cp).toBe(221);
+  });
+
+  it('offers no estimate when there is no FTP to work from', () => {
+    expect(estimateCpWFromFtp(undefined)).toBeUndefined();
+    expect(estimateCpWFromFtp(null)).toBeUndefined();
+    expect(estimateCpWFromFtp(0)).toBeUndefined();
+    expect(estimateCpWFromFtp(-275)).toBeUndefined();
+    expect(estimateCpWFromFtp(Number.NaN)).toBeUndefined();
+    expect(estimateCpWFromFtp(Number.POSITIVE_INFINITY)).toBeUndefined();
   });
 });

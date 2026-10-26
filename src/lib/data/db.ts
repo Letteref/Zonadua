@@ -317,6 +317,20 @@ export interface Settings {
    * version bump (see the comment on `archetype`).
    */
   eftpDismiss?: { activityId: string; ftp: number };
+  /**
+   * CP/W′ the rider typed in themselves, for the meter they do not own.
+   *
+   * Two parameters cannot be identified from a mean-max curve that does not exist, and
+   * the app refuses to synthesise one from ride averages — that collapses to W′ ≈ 0 and
+   * would print a verdict built on nothing. So a rider without power *states* the pair,
+   * the capability card consumes it only when no curve fits, and every surface labels it
+   * "entered" rather than "fitted". Absent on any device that never typed one, where the
+   * card keeps its honest "No CP fit".
+   *
+   * `cp` is watts and `wPrime` is joules, matching `CriticalPowerFit`. Not an index, so
+   * adding it needs no schema bump (see the comment on `archetype`).
+   */
+  manualCpW?: { cp: number; wPrime: number };
   updatedAt: number;
 }
 

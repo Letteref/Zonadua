@@ -21,6 +21,36 @@ describe('race fueling context', () => {
   const stops = { count: 3, minutesEach: 15 };
   const race = { raceName: 'Gran Fondo', distanceKm: 160 };
 
+  /**
+   * The clock these context tests run against — fixed, like `context.test.ts`'s `WED`, so
+   * the suite does not depend on when or where it runs.
+   *
+   * Chosen to be Monday 03:00 local, the exact hour this file used to fail. The ride
+   * timestamp was built with `new Date().toISOString()`, which stamps the **UTC** calendar
+   * day, while `weekWindow` builds its Monday-to-today window from **local** days. Between
+   * 00:00 and 07:00 in UTC+7 the two disagree by a day — at this clock `toISOString()`
+   * reads `2026-10-25T20:00Z`, a day before the window opens — so the week's only ride was
+   * filtered out, `buildCoachContext` returned `null`, and these tests died on an empty
+   * render instead of on the fueling figures they are actually about.
+   */
+  const now = new Date(2026, 9, 26, 3, 0);
+
+  /**
+   * The week's one ride, stamped from that same clock in the local-naive shape rides are
+   * stored in (`2026-10-26T02:00:00`, no zone suffix). Deriving it from `now` rather than
+   * writing the day out again keeps the two halves from drifting apart, and putting
+   * `now.toISOString()` here would be the same bug wearing a different hat: a UTC day is
+   * a different string from a local day, and `weekWindow` compares them as text.
+   */
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const rideRow = {
+    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T02:00:00`,
+    distanceKm: 40,
+    elevGainM: 100,
+    movingSec: 3600,
+    tss: 50
+  };
+
   it('quotes exactly what planNutrition computed', () => {
     const block = buildNutritionContext({ ...race, plan: solved, stops, riderKg: 68 });
     const expected = planNutrition({
@@ -113,10 +143,10 @@ describe('race fueling context', () => {
   it('tells the model to stay silent on grams when no plan exists', () => {
     const block = buildNutritionContext({ ...race, plan: { ok: false, reason: 'no route profile' }, stops, riderKg: 68 });
     const ctx = buildCoachContext({
-      rides: [{ date: new Date().toISOString(), distanceKm: 40, elevGainM: 100, movingSec: 3600, tss: 50 }],
+      rides: [rideRow],
       athlete: { weightKg: 68 },
       nutrition: block,
-      now: new Date()
+      now
     })!;
     const rendered = renderContext(ctx);
 
@@ -129,9 +159,9 @@ describe('race fueling context', () => {
 
   it('omits the fueling section entirely for a weekly review', () => {
     const ctx = buildCoachContext({
-      rides: [{ date: new Date().toISOString(), distanceKm: 40, elevGainM: 100, movingSec: 3600, tss: 50 }],
+      rides: [rideRow],
       athlete: { weightKg: 68 },
-      now: new Date()
+      now
     })!;
 
     expect(renderContext(ctx)).not.toMatch(/Race fueling/);

@@ -20,6 +20,12 @@
   import { buildTrend } from '$lib/domain/trend';
   import { ftpFromTwentyMinuteTest } from '$lib/domain/ftp';
   import {
+    W_PRIME_J_PER_KG,
+    estimateCpWFromFtp,
+    resolveCpFit,
+    type CpEstimate
+  } from '$lib/domain/power-curve';
+  import {
     bestTwentyMinuteEffort,
     isEftpDismissed,
     suggestEftp,
@@ -127,6 +133,23 @@
   let aiProvider = $state<'gemini' | 'openai' | 'openrouter' | 'anthropic'>('gemini');
   let aiKey = $state('');
   let keyDirty = $state(false);
+  /**
+   * Manual CP/W′ — stated physiology for the meter this rider does not own. `''` is the
+   * empty input (the same shape `testAvgW` uses), and `manualCpW` mirrors what is saved so
+   * the caption can describe it without a second query.
+   */
+  let cpW = $state<number | ''>('');
+  let wPrimeKj = $state<number | ''>('');
+  let manualCpW = $state<{ cp: number; wPrime: number } | undefined>(undefined);
+  /**
+   * The pair currently sitting in the fields because nothing measured one and nothing was
+   * saved — derived from FTP when the block hydrates. Kept separately from `manualCpW` so
+   * the caption can say the numbers are an estimate rather than the rider's own word, and
+   * cleared the moment they save or clear.
+   */
+  let cpPrefill = $state<(CpEstimate & { basisFtp: number }) | undefined>(undefined);
+  /** Both halves or neither: one parameter alone cannot judge anything. */
+  const cpPairValid = $derived(cpW !== '' && wPrimeKj !== '' && cpW > 0 && wPrimeKj > 0);
   // theme lives only in the DB record for now — the switch lands with race-day theming (F7)
 
 
@@ -157,6 +180,25 @@
         weatherOn = s.weatherOn;
         aiProvider = s.aiProvider ?? 'gemini';
         aiKey = s.aiKey ?? '';
+        manualCpW = s.manualCpW;
+        if (s.manualCpW) {
+          cpW = s.manualCpW.cp;
+          wPrimeKj = Math.round(s.manualCpW.wPrime / 100) / 10;
+        }
+      }
+      // Nothing stated, nothing measured: prefill the two fields from FTP so a rider with
+      // no meter has somewhere to start. `resolveCpFit` is asked with no entered pair, so
+      // it answers only "is there a curve fit?" — when there is, the fields stay empty and
+      // the estimate is not offered at all.
+      if (!s?.manualCpW && !resolveCpFit(curves.map((c) => c.points)) && f?.ftp) {
+        // Body mass and the onboarding tier are what make W′ this rider's own rather than
+        // one 13 kJ constant for every human; see `estimateWPrimeFromBody`.
+        const est = estimateCpWFromFtp(f.ftp, { weightKg: w?.kg, archetype: s?.archetype });
+        if (est) {
+          cpW = est.cp;
+          wPrimeKj = Math.round(est.wPrime / 100) / 10;
+          cpPrefill = { ...est, basisFtp: f.ftp };
+        }
       }
       hydrated = true;
     } catch (err) {
@@ -414,6 +456,35 @@
       // failure here means the rider flips a switch and reloads into the old state
       showFailure(`Could not save — ${msg}`, err);
     }
+  }
+
+  /**
+   * Save the CP/W′ the rider typed in.
+   *
+   * This is the one place in the app that writes a physiology pair nobody measured, so it
+   * stays deliberately narrow: both fields or nothing (Save is disabled until both are
+   * real numbers), stored as stated values, and the capability card labels them "entered"
+   * wherever it prints its provenance. It never overwrites a curve fit — a measured fit
+   * outranks it (`resolveCpFit`).
+   */
+  async function saveManualCpW(): Promise<void> {
+    if (cpW === '' || wPrimeKj === '' || cpW <= 0 || wPrimeKj <= 0) return;
+    const pair = { cp: Math.round(cpW), wPrime: Math.round(wPrimeKj * 1000) };
+    await savePrefs(
+      { manualCpW: pair },
+      `CP ${pair.cp} W · W′ ${(pair.wPrime / 1000).toFixed(1)} kJ saved — your word, not a fit`
+    );
+    manualCpW = pair;
+    cpPrefill = undefined;
+  }
+
+  /** Clearing returns the card to its honest "No CP fit" — never to a guessed pair. */
+  async function clearManualCpW(): Promise<void> {
+    await savePrefs({ manualCpW: undefined }, 'CP/W′ cleared — the card says "No CP fit" until a power curve exists');
+    manualCpW = undefined;
+    cpPrefill = undefined;
+    cpW = '';
+    wPrimeKj = '';
   }
 
   async function saveKey(): Promise<void> {
@@ -721,6 +792,76 @@
         <p class="text-[11px] font-medium text-ink-dim">
           Ride 20 minutes all-out, enter the average power — the estimate is 95% of it. "Use" fills the FTP field; press Log FTP to save it.
         </p>
+      </div>
+
+      <!--
+        MANUAL CP/W′ — for the meter the rider does not own. Two parameters cannot be
+        identified from a mean-max curve that does not exist, so this is *stated*
+        physiology, not a fit. The capability card consumes it only when no power curve
+        fits and says so ("entered in Settings, not fitted"); leave both fields empty and
+        the card keeps its honest "No CP fit".
+      -->
+      <div class="rounded-2xl bg-tile border border-hairline p-3 flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-ink-dim">Critical power — no meter needed</span>
+          {#if cpPrefill && !manualCpW}
+            <!-- a prefilled pair is arithmetic on FTP, so it is badged, not just captioned -->
+            <span class="shrink-0 rounded-pill border border-hairline bg-surface px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-ink-dim">
+              Estimate
+            </span>
+          {/if}
+        </div>
+        <div class="flex items-end gap-2">
+          <label class="flex flex-col gap-1.5 flex-1 min-w-0">
+            <span class="text-[10px] font-semibold text-ink-dim">CP (W)</span>
+            <input
+              class="h-11 w-full min-w-0 rounded-2xl bg-surface border border-hairline px-3 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+              type="number"
+              min="50"
+              step="1"
+              placeholder="e.g. 231"
+              bind:value={cpW}
+            />
+          </label>
+          <label class="flex flex-col gap-1.5 flex-1 min-w-0">
+            <span class="text-[10px] font-semibold text-ink-dim">W′ (kJ)</span>
+            <input
+              class="h-11 w-full min-w-0 rounded-2xl bg-surface border border-hairline px-3 text-sm font-bold text-ink text-tabular outline-none focus:border-signal transition-colors"
+              type="number"
+              min="1"
+              max="60"
+              step="0.1"
+              placeholder="e.g. 13.2"
+              bind:value={wPrimeKj}
+            />
+          </label>
+          <button
+            class="h-11 px-3.5 rounded-pill bg-ink text-on-mono text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40 active:scale-[0.98] transition-transform"
+            disabled={!cpPairValid}
+            onclick={() => void saveManualCpW()}
+          >
+            Save
+          </button>
+        </div>
+        <p class="text-[11px] font-medium text-ink-dim">
+          {#if manualCpW}
+            Entered: CP {manualCpW.cp} W · W′ {(manualCpW.wPrime / 1000).toFixed(1)} kJ — the capability card treats this as your word, not a measurement.
+          {:else if cpPrefill}
+            Estimate: 0.95 × FTP {cpPrefill.basisFtp} W for CP, {W_PRIME_J_PER_KG[cpPrefill.archetype]} J/kg at
+            {cpPrefill.weightAssumed ? `an assumed ${cpPrefill.weightKg}` : `${cpPrefill.weightKg}`} kg for W′.
+            Nobody measured it — adjust either field, then Save.
+          {:else}
+            Type the pair from a lab test or another app. Without it the capability card says "No CP fit" instead of guessing.
+          {/if}
+        </p>
+        {#if manualCpW}
+          <button
+            class="h-9 rounded-pill bg-surface border border-hairline text-ink-dim text-[10px] font-extrabold uppercase tracking-wider active:scale-[0.98] transition-transform"
+            onclick={() => void clearManualCpW()}
+          >
+            Clear CP/W′
+          </button>
+        {/if}
       </div>
     </section>
 

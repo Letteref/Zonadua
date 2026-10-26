@@ -26,7 +26,7 @@
   import { fetchWindForecast, fetchRideForecast } from '$lib/infra/weather/openmeteo';
   import { buildDeparturePlan, historicalSpeedKph, type DepartureOption } from '$lib/domain/departure';
   import { checkpointsWithStoredGates, rebaseCutoffsForStart, routeCapability, routeObstacles, type RouteObstacle, type SustainProjection } from '$lib/domain/race';
-  import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
+  import { resolveCpFit } from '$lib/domain/power-curve';
 
   /** the global pill (UI-SPEC §46); this route only picks the words */
   const showToast = (msg: string, tone: 'ok' | 'error' = 'ok'): void =>
@@ -413,15 +413,22 @@
 
   // ---------- ride capability (ROADMAP M4 slice 2): CP/W′ over the whole plan ----------
   /**
-   * The fit the panel judges against — the same `mergePowerCurves` + `fitCriticalPower`
-   * pair the race page uses, so "Aman" means the same thing on both screens. Four
-   * points is the minimum the 2-parameter model can honestly fit; below that the panel
-   * says "No CP fit" rather than inventing a verdict.
+   * The pair the panel judges against — the same `resolveCpFit` the race page calls, so
+   * "Aman" means the same thing on both screens.
+   *
+   * A measured fit (four merged durations is the minimum the 2-parameter model can
+   * honestly fit) wins. Without one, the CP/W′ the rider typed in Settings stands in for
+   * it — for the meter they do not own — and `cpFitEntered` makes the card say so instead
+   * of passing a typed number off as evidence. With neither, the panel keeps its honest
+   * "No CP fit" rather than inventing a verdict.
    */
-  const cpFit = $derived.by(() => {
-    const merged = mergePowerCurves((powerCurves.current ?? []).map((c) => c.points));
-    return merged.length >= 4 ? fitCriticalPower(merged) : undefined;
-  });
+  const resolvedCpFit = $derived(
+    resolveCpFit((powerCurves.current ?? []).map((c) => c.points), appSettings.current?.manualCpW)
+  );
+  /** the fit itself, for the engines (`routeCapability`, `routeObstacles`) */
+  const cpFit = $derived(resolvedCpFit?.fit);
+  /** true when those watts are the rider's typed pair, not something their rides measured */
+  const cpFitEntered = $derived(resolvedCpFit?.source === 'entered');
 
   /**
    * The physics the on-screen plan actually solved with: the shared rider block plus
@@ -1000,8 +1007,19 @@
     <div class="rounded-[14px] bg-black/45 border border-white/10 p-3.5 mb-4 flex flex-col gap-2.5">
       {#if capability?.verdict === 'unknown'}
         <p class="text-[11.5px] leading-relaxed text-white/80">
-          Ride with a power meter and this becomes a real judgement instead of a pace the model only hopes for.
+          No CP/W′ to judge against. Set the pair in Settings — a lab test, another app, or the estimate
+          worked out from your FTP — and this card judges the route for real instead of taking the pace on faith.
         </p>
+        <!--
+          The verdict is the gap, so the way out of it belongs here, not three taps away: this
+          row is the only place a rider meets "No CP fit" and can do something about it.
+        -->
+        <button
+          class="h-9 self-start shrink-0 rounded-pill border border-white/20 bg-white/10 px-3.5 text-[10px] font-extrabold uppercase tracking-wider text-white active:scale-[0.98] transition-transform"
+          onclick={() => route.navigate('settings')}
+        >
+          Set CP/W′
+        </button>
       {:else if capability?.breakKm != null}
         <p class="text-[11.5px] leading-relaxed text-white/80">
           {capability.at.reason}. Needs <span class="font-bold text-white text-tabular">{capability.at.requiredW} W</span>
@@ -1029,7 +1047,11 @@
       {#if cpFit}
         <p class="pt-2 border-t border-white/10 text-[10px] leading-relaxed text-white/55">
           <span class="text-white/85 font-semibold text-tabular">CP {cpFit.cp} W · W′ {(cpFit.wPrime / 1000).toFixed(1)} kJ</span>
-          — fit from <span class="text-white/85 font-medium text-tabular">{cpFit.points}</span> durations across <span class="text-white/85 font-medium text-tabular">{powerCurves.current?.length ?? 0}</span> rides
+          {#if cpFitEntered}
+            — entered in Settings, not fitted
+          {:else}
+            — fit from <span class="text-white/85 font-medium text-tabular">{cpFit.points}</span> durations across <span class="text-white/85 font-medium text-tabular">{powerCurves.current?.length ?? 0}</span> rides
+          {/if}
         </p>
       {/if}
     </div>

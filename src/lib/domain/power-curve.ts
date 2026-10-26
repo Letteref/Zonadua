@@ -11,6 +11,8 @@
  * That is what the race feasibility check (M4) will consume.
  */
 
+import { archetype, type ArchetypeKey } from './onboarding';
+
 /** Canonical durations, in seconds: short efforts then long efforts (ARCHITECTURE §5.1). */
 export const CURVE_DURATIONS_SEC: readonly number[] = Object.freeze([
   1, 5, 10, 15, 20, 30, 45, 60, 120, 180, 240, 300, 390, 600,
@@ -223,6 +225,144 @@ export function curveValueAt(curve: readonly CurvePoint[], seconds: number): num
     }
   }
   return last.watts;
+}
+
+/** Where the CP/W′ pair a judgement rests on came from. */
+export type CpFitSource = 'measured' | 'entered';
+
+export interface ResolvedCpFit {
+  fit: CriticalPowerFit;
+  /**
+   * `measured` — fitted from the rider's own power curves.
+   * `entered` — the pair the rider typed in themselves; a statement, not evidence.
+   */
+  source: CpFitSource;
+}
+
+/**
+ * The CP/W′ pair to judge a ride against: a fit when there is a curve, the rider's own
+ * typed pair when there is not.
+ *
+ * The two are not interchangeable, so the source travels with the fit and every surface
+ * has to say which one it got. A fit is measured — `points` durations from real rides,
+ * with an `r2` for how well the model matched. An entered pair is stated: many riders
+ * know CP/W′ from a lab test or another app, and no amount of arithmetic will pull two
+ * parameters out of a mean-max curve that does not exist. It reports `points: 0` and
+ * `r2: 0`, so nothing downstream can mistake it for a fit, and the capability card
+ * prints "entered in Settings, not fitted" instead of inventing provenance.
+ *
+ * A measured fit always wins when one exists: the rider's own rides are better evidence
+ * than a number typed from memory, however carefully it was typed.
+ */
+export function resolveCpFit(
+  curves: readonly (readonly CurvePoint[])[],
+  entered?: { cp: number; wPrime: number }
+): ResolvedCpFit | undefined {
+  const merged = mergePowerCurves(curves);
+  if (merged.length >= 4) {
+    const fit = fitCriticalPower(merged);
+    if (fit) return { fit, source: 'measured' };
+  }
+  if (entered && entered.cp > 0 && entered.wPrime > 0) {
+    return {
+      fit: {
+        cp: Math.round(entered.cp),
+        wPrime: Math.round(entered.wPrime),
+        r2: 0,
+        points: 0,
+        predicted: []
+      },
+      source: 'entered'
+    };
+  }
+  return undefined;
+}
+
+/**
+ * A starting pair for the rider who owns no power meter.
+ *
+ * Two parameters cannot be pulled out of a mean-max curve that does not exist, so both are
+ * arithmetic on numbers the rider does have:
+ *
+ *  - CP sits a little under the hour power most riders mean by FTP (0.95).
+ *  - W′ is an anaerobic tank, so it tracks body size and how much high-intensity work the
+ *    rider does — not one constant for everybody. It is scaled per kilo off the training
+ *    tier the rider picked at onboarding (see `W_PRIME_J_PER_KG`), then clamped to the
+ *    range real riders occupy.
+ *
+ * Nothing measured it, so the result is a suggestion for the fields, not a fit: the
+ * settings form prefills them and says where the numbers came from, and whatever the
+ * rider saves is stored as *their* stated pair (`resolveCpFit` reports it as `entered`).
+ * Returns undefined when there is no FTP to work from — a guess with no input is a guess.
+ */
+export const CP_FROM_FTP_RATIO = 0.95;
+
+/**
+ * Anaerobic work capacity per kilo of rider, by training tier.
+ *
+ * The tiers are the ones the onboarding picker already asks about, so "what kind of riding
+ * do you do" answers a question the estimate needs instead of a second prompt. A rank
+ * beginner holds roughly 170 J/kg, a rider training with structure ~210, and a racer with
+ * repeated above-threshold work ~250. Weight matters too: two riders of the same tier
+ * differ mostly by how much tissue is doing the work.
+ */
+export const W_PRIME_J_PER_KG: Record<ArchetypeKey, number> = {
+  foundation: 170,
+  structured: 210,
+  performance: 250
+};
+
+/** Nobody to weigh? Assume a mid-size rider rather than skipping the estimate entirely. */
+export const DEFAULT_RIDER_WEIGHT_KG = 70;
+
+/** The band real riders occupy; anything outside it is arithmetic, not physiology. */
+export const W_PRIME_MIN_J = 8_000;
+export const W_PRIME_MAX_J = 24_000;
+
+/**
+ * W′ from body mass and training tier, in joules, rounded to the nearest 100 J.
+ *
+ * An unknown or unusable weight falls back to `DEFAULT_RIDER_WEIGHT_KG`; an unknown tier
+ * falls back to the middle band (`archetype()` already does that). The result never leaves
+ * `[W_PRIME_MIN_J, W_PRIME_MAX_J]`. Callers that print the number should say it was
+ * assumed — `estimateCpWFromFtp` reports that alongside the pair.
+ */
+export function estimateWPrimeFromBody(
+  weightKg?: number | null,
+  archetypeKey?: string | null
+): number {
+  const tier = archetype(archetypeKey ?? '').key;
+  const kg = weightKg != null && Number.isFinite(weightKg) && weightKg > 0 ? weightKg : DEFAULT_RIDER_WEIGHT_KG;
+  const raw = W_PRIME_J_PER_KG[tier] * kg;
+  const clamped = Math.min(W_PRIME_MAX_J, Math.max(W_PRIME_MIN_J, raw));
+  return Math.round(clamped / 100) * 100;
+}
+
+export interface CpEstimate {
+  cp: number;
+  wPrime: number;
+  /** the body mass the W′ used, in kg */
+  weightKg: number;
+  /** true when that mass was the default rather than the rider's own */
+  weightAssumed: boolean;
+  /** the tier the J/kg figure came from */
+  archetype: ArchetypeKey;
+}
+
+export function estimateCpWFromFtp(
+  ftpW: number | undefined | null,
+  body?: { weightKg?: number | null; archetype?: string | null }
+): CpEstimate | undefined {
+  if (ftpW == null || !Number.isFinite(ftpW) || ftpW <= 0) return undefined;
+  const weightAssumed = body?.weightKg == null || !Number.isFinite(body.weightKg) || body.weightKg <= 0;
+  const tier = archetype(body?.archetype ?? '').key;
+  return {
+    cp: Math.round(ftpW * CP_FROM_FTP_RATIO),
+    wPrime: estimateWPrimeFromBody(body?.weightKg, tier),
+    weightKg: weightAssumed ? DEFAULT_RIDER_WEIGHT_KG : Math.round(body!.weightKg! * 10) / 10,
+    weightAssumed,
+    archetype: tier
+  };
 }
 
 function sseOf(cp: number, w: number, t: readonly number[], y: readonly number[]): number {

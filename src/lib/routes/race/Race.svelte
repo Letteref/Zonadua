@@ -4,7 +4,7 @@
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusChip from '$lib/components/StatusChip.svelte';
   import HatchTrack from '$lib/components/HatchTrack.svelte';
-  import { allBikes, allRoutes, fetchRouteProfile, fetchRouteTrack, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
+  import { allBikes, allRoutes, appSettings, fetchRouteProfile, fetchRouteTrack, finishedRaces, latestFtp, powerCurves, weightSeries } from '$lib/data/queries.svelte';
   import { db, type Race, type RaceCheckpoint, type RaceLog } from '$lib/data/db';
   import { newId } from '$lib/data/seed';
   import { liveQuery } from 'dexie';
@@ -21,13 +21,12 @@ import {
   wPrimeSpentAt,
   type CutoffGate
 } from '$lib/domain/race';
-import { fitCriticalPower, mergePowerCurves } from '$lib/domain/power-curve';
+import { resolveCpFit } from '$lib/domain/power-curve';
 import type { PhysicsParams, ProfilePoint } from '$lib/domain/physics';
 import { toast } from '$lib/toast.svelte';
 import { buildNutritionContext, buildCoachContext } from '$lib/infra/ai/context';
 import { buildRaceBriefing, verifyReview } from '$lib/infra/ai/review';
 import { generate } from '$lib/infra/ai/provider';
-import { appSettings } from '$lib/data/queries.svelte';
   
   // ---------- setup state (persisted to Dexie) ----------
   let raceId = $state<string | null>(null);
@@ -210,14 +209,13 @@ import { appSettings } from '$lib/data/queries.svelte';
   });
 
   /**
-   * CP/W' fitted from every activity that carries power — the same merged mean-max curve
-   * the dashboard uses. Null when the athlete has no power rides yet, which is an honest
-   * "cannot judge" rather than a guess.
+   * CP/W' from the same resolver the estimator's capability card calls — a fitted curve
+   * when the rider has power rides, otherwise the pair they typed in Settings. Null when
+   * neither exists, which is an honest "cannot judge" rather than a guess.
    */
-  const cpFit = $derived.by(() => {
-    const merged = mergePowerCurves((powerCurves.current ?? []).map((c) => c.points));
-    return merged.length >= 4 ? fitCriticalPower(merged) : undefined;
-  });
+  const cpFit = $derived(
+    resolveCpFit((powerCurves.current ?? []).map((c) => c.points), appSettings.current?.manualCpW)?.fit
+  );
 
   const racePlan = $derived(
     profile.length >= 2
