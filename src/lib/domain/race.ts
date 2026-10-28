@@ -440,8 +440,26 @@ export interface RouteObstacle {
 export interface ObstacleOptions {
   /** grade that starts a climb — 3 % is the cycling convention for a classified ramp */
   minGradePct?: number;
-  /** shorter is GPX jitter, not terrain — except walls, which bite at any length */
+  /** shorter is GPX jitter, not terrain — except walls and steep pitches, which bite at any length */
   minKm?: number;
+  /**
+   * How long a dip below `minGradePct` may run and still count as *inside* a feature
+   * rather than between two of them. 50 m is a breath, or a GPS losing the road under
+   * a bridge; a valley longer than this is a new problem for a rider.
+   */
+  maxBreathKm?: number;
+  /**
+   * Grade at which length stops mattering: a steep pitch is terrain however short,
+   * the same exception walls have always had. 10 % is where a ramp turns into a wall face.
+   */
+  steepGradePct?: number;
+  /**
+   * How far a steep-but-short run must actually rise to count. GPS/baro elevation on a
+   * track is noisy at the 1–2 m scale: a lone +1 m step between two flat stretches
+   * computes a spectacular 22 % over 5 m and is a recording artefact, not a climb the
+   * rider can train on. Real ramps at this length carry several metres of rise.
+   */
+  minRiseM?: number;
 }
 
 /**
@@ -451,11 +469,15 @@ export interface ObstacleOptions {
  * ## What counts
  *
  * A maximal *consecutive* run of solved segments that are either steeper than
- * `minGradePct` or `powerLimited`. No merging across a single flat metre: a climb, a
- * breath, then a ramp are two separate problems for a rider, and folding them together
- * would grade the middle as if it were hill. The name follows geometry (`climb` when
- * the steepest segment clears the threshold, else `wall`) — danger is the status
- * word's job, not the label's.
+ * `minGradePct` or `powerLimited` — with one deliberate seam. A dip below the threshold
+ * no longer than `maxBreathKm` (50 m) belongs *inside* the feature: a 12.8 % pitch, a
+ * 14 m breather, then a 21.7 % pitch is one climb the rider meets once, and splitting
+ * it used to produce two sub-half-kilometre runs that the length filter then deleted
+ * whole — a real 21 % wall vanished from the list for being caught mid-stride. A longer
+ * valley still splits, because a climb, a rest, then another climb really are two
+ * problems, and folding them together would grade the rest as if it were hill. The name
+ * follows geometry (`climb` when the steepest segment clears the threshold, else
+ * `wall`) — danger is the status word's job, not the label's.
  *
  * ## How each feature is judged
  *
@@ -486,6 +508,9 @@ export function routeObstacles(
 ): RouteObstacle[] {
   const minGradePct = opts.minGradePct ?? 3;
   const minKm = opts.minKm ?? 0.5;
+  const maxBreathKm = opts.maxBreathKm ?? 0.05;
+  const steepGradePct = opts.steepGradePct ?? 10;
+  const minRiseM = opts.minRiseM ?? 2;
   if (rows.length < 2 || segments.length === 0) return [];
   const finishKm = rows[rows.length - 1].km;
   const canJudge = !!fit && fit.cp > 0 && fit.wPrime > 0;
@@ -504,16 +529,35 @@ export function routeObstacles(
   }
   const runs: Tracked[][] = [];
   let current: Tracked[] = [];
+  /**
+   * Sub-threshold segments held *tentatively*: they join the run only while the dip
+   * stays inside `maxBreathKm`. Past that they are the valley between two features —
+   * the run closes on its last qualifying segment and this tail is dropped, never
+   * half of either neighbour.
+   */
+  let breath: Tracked[] = [];
+  let breathKm = 0;
   let prevEnd = 0;
+  const closeRun = (): void => {
+    if (current.length) runs.push(current);
+    current = [];
+    breath = [];
+    breathKm = 0;
+  };
   for (const s of segments) {
-    if (s.gradePct >= minGradePct || s.powerLimited) current.push({ seg: s, startKm: prevEnd });
-    else if (current.length) {
-      runs.push(current);
-      current = [];
+    const startKm = prevEnd;
+    if (s.gradePct >= minGradePct || s.powerLimited) {
+      current.push(...breath, { seg: s, startKm });
+      breath = [];
+      breathKm = 0;
+    } else if (current.length) {
+      breath.push({ seg: s, startKm });
+      breathKm += s.cumDistKm - startKm;
+      if (breathKm > maxBreathKm) closeRun();
     }
     prevEnd = s.cumDistKm;
   }
-  if (current.length) runs.push(current);
+  closeRun();
 
   const out: RouteObstacle[] = [];
   for (const run of runs) {
@@ -521,10 +565,15 @@ export function routeObstacles(
     const endKm = run[run.length - 1].seg.cumDistKm;
     const lengthKm = endKm - startKm;
     const isWall = run.some((t) => t.seg.powerLimited);
-    if (lengthKm < minKm && !isWall) continue; // jitter, not terrain
-
     const riseM = run.reduce((sum, t) => sum + t.seg.riseM, 0);
     const maxGradePct = run.reduce((m, t) => (t.seg.gradePct > m ? t.seg.gradePct : m), -Infinity);
+    // Jitter, not terrain — except the two things that bite at any length: a wall the
+    // solver stalled on, and a pitch steep enough to be a wall face before it stalls,
+    // so long as it really rises: a lone +1 m step between flat stretches computes a
+    // 22 % "climb" over 5 m, and the steep exception must not launder that noise into
+    // the list. Without the steep exception a 53 m, 12.8 % ramp simply disappeared
+    // while the 8 % bump beside it was correctly filtered as noise.
+    if (lengthKm < minKm && !isWall && (maxGradePct < steepGradePct || riseM < minRiseM)) continue;
     // Gradients equal to within floating-point noise are ONE stretch of terrain — a
     // uniform ramp disagrees with itself only in the 15th decimal, and letting `>`
     // resolve that is a decision about noise, not about terrain. The point reported is

@@ -778,6 +778,84 @@ describe('routeObstacles — the card\'s accordion list', () => {
     expect(out).toEqual([]);
   });
 
+  it('a steep pitch is terrain however short — the 0.5 km rule spares it like a wall', () => {
+    // 53 m at 12.8 % was dropped as "jitter" while the 8 % bump beside it was correctly
+    // filtered: length alone cannot be the judge once the gradient is a wall face.
+    const out = routeObstacles(
+      rows(),
+      [segAt(0, 0, 49.5), segAt(1, 49.5, 0.053, { gradePct: 12.8, riseM: 6.8 })],
+      PHYSICS,
+      FIT
+    )!;
+    expect(out).toHaveLength(1);
+    expect(out[0].kind).toBe('climb');
+    expect(out[0].startKm).toBeCloseTo(49.5, 6);
+    expect(out[0].lengthKm).toBeCloseTo(0.053, 6);
+    expect(out[0].maxGradePct).toBeCloseTo(12.8, 6);
+  });
+
+  it('a lone +1 m elevation step is noise, not a climb, however steep it computes', () => {
+    // The real GPX at km 55.47: 27.0 → 28.0 m in one point-gap (22 % over 5 m), then
+    // flat again. A step like this is a baro/GPS artefact; the steep exception must
+    // not launder it into the rider's obstacle list as "Climb · km 55.5–55.5".
+    const out = routeObstacles(
+      rows(),
+      [
+        segAt(0, 0, 55.4),
+        segAt(1, 55.4, 0.005, { gradePct: 22, riseM: 1, vKph: 5 }),
+        segAt(2, 55.405, 44.595)
+      ],
+      PHYSICS,
+      FIT
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('a breath inside a climb does not split it, however steep the second pitch', () => {
+    // The rider's own GPX at km 44: a 12.8 % pitch, a 14 m breather, then a 21.7 % pitch.
+    // Split at the breather, each half fell under the 0.5 km filter and the whole 21 %
+    // wall vanished from the list — caught mid-stride, not absent from the terrain.
+    const out = routeObstacles(
+      rows(),
+      [
+        segAt(0, 0, 44.2), // the flat lead-in real solver output always has
+        segAt(1, 44.2, 0.375, { gradePct: 12.8, riseM: 48 }),
+        segAt(2, 44.575, 0.014, { gradePct: 0.2, riseM: 0.03 }),
+        segAt(3, 44.589, 0.355, { gradePct: 21.7, riseM: 77 })
+      ],
+      PHYSICS,
+      FIT
+    )!;
+    expect(out).toHaveLength(1);
+    expect(out[0].startKm).toBeCloseTo(44.2, 6);
+    expect(out[0].endKm).toBeCloseTo(44.944, 6);
+    expect(out[0].lengthKm).toBeCloseTo(0.744, 6);
+    expect(out[0].maxGradePct).toBeCloseTo(21.7, 6);
+    // the breath counts as part of the feature's run, so its average grade is honest
+    expect(out[0].avgGradePct).toBeLessThan(21.7);
+  });
+
+  it('a valley longer than the breath window is still two obstacles', () => {
+    // 600 m of flat is a rest between climbs, not one climb with a breath in it
+    const out = routeObstacles(
+      rows(),
+      [
+        segAt(0, 0, 44.2),
+        segAt(1, 44.2, 0.3, { gradePct: 12, riseM: 36 }),
+        segAt(2, 44.5, 0.6, { gradePct: 0 }),
+        segAt(3, 45.1, 0.3, { gradePct: 15, riseM: 45 })
+      ],
+      PHYSICS,
+      FIT
+    )!;
+    // distance order, not the list's worst-first order — the claim is about grouping
+    expect(out.map((o) => o.startKm).sort((a, b) => a - b)).toEqual([44.2, 45.1]);
+    expect(out.map((o) => o.lengthKm).sort((a, b) => a - b)).toEqual([
+      expect.closeTo(0.3, 6),
+      expect.closeTo(0.3, 6)
+    ]);
+  });
+
   it('a stalled segment is a wall however short, below the climb threshold', () => {
     const out = routeObstacles(
       rows(),

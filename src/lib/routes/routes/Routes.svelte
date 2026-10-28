@@ -43,6 +43,22 @@
   let loadedRouteId = $state<string | null>(null);
   /** real elevation profile in km/alt — the physics input, never chart-normalised */
   let rawProfile = $state<ProfilePoint[] | null>(null);
+
+  /**
+   * The loaded route's elevation gain at **full resolution**, straight from the import
+   * pipeline (`elevGainM`), for as long as a route is loaded.
+   *
+   * The physics does not run on that resolution: `rawProfile` is the 600-point sample
+   * (stride decimation), and a sample that skips three of every four trackpoints also
+   * skips the micro-climbs between them — on a real 105 km GPX the sampled profile
+   * summed to 589 m against the file's own 694 m. The tile and the header accent used
+   * to read `plan.climbM`, so the same screen announced "694 m of climbing" in its
+   * import toast and printed 589 m in the panel below it. One route, one number: the
+   * gain is a property of the file, not of the solver's sampling grid.
+   *
+   * Null for the sample route, which has no file and falls back to the solver.
+   */
+  let routeElevStored = $state<number | null>(null);
   let fileInput: HTMLInputElement | null = $state(null);
 
   /**
@@ -402,7 +418,12 @@
   /** The headwind the plan actually solved with — forecast-derived, or the manual slider. */
   const appliedHeadwind = $derived(windCorrected.headwindKph);
 
-  const routeElevM = $derived(Math.round(plan.climbM ?? 0));
+  /**
+   * Elevation shown in the header accent and the metric tile: the file's own gain while
+   * a route is loaded, the solver's number only for the sample profile. See
+   * `routeElevStored` for why those two must not be the same source.
+   */
+  const routeElevM = $derived(routeElevStored ?? Math.round(plan.climbM ?? 0));
   /** one chart row per solved point — altitude + solved speed + elapsed, never normalised */
   const chartRows = $derived(planSeries(plan));
   const movingSec = $derived(plan.movingSec ?? 0);
@@ -486,6 +507,14 @@
   let openObstacle = $state<number | null>(null);
 
   /**
+   * Whether the accordion shows everything or only its worst 8. The list is sorted
+   * worst-first, so the collapsed state is the 8 that would bite hardest — the toggle
+   * exists because the steep/breath fixes let a real route carry a dozen features, and
+   * a card that scrolls forever stops being scannable on the phone it is read on.
+   */
+  let showAllObstacles = $state(false);
+
+  /**
    * The tightest point printed at a precision that can still be told apart from the
    * feature's own edges. One decimal is 100 m — coarser than a solver segment — so a
    * point 40 m into a climb rounds back onto its start and reads as "the beginning of
@@ -558,6 +587,7 @@
       customCheckpoints = null;
       routeName = r.name;
       rawProfile = r.sampled;
+      routeElevStored = r.elevGainM;
       // the file carries its own location and direction: the previous route's coordinates
       // and bearing describe the previous hill, and a forecast fetched for them would be
       // weather for a place this file never went. Wind goes back to manual.
@@ -638,6 +668,7 @@
         customCheckpoints = null;
         routeName = row.name;
         rawProfile = sampled;
+        routeElevStored = row.elevGainM;
         windForecast = null;
         windNote = null;
         // the saved route's own track restores the location the old preview dropped:
@@ -752,7 +783,7 @@
               movingSec,
               elapsedSec: plan.elapsedSec,
               avgKph,
-              climbM: plan.climbM
+              climbM: routeElevM
             }),
             status: 'planned',
             updatedAt: Date.now()
@@ -956,8 +987,11 @@
         <span class="h-1.5 w-1.5 rounded-pill bg-crimson"></span>
         <span class="text-[9px] font-bold tracking-tight text-rose">{hasRoute ? 'GPX' : 'SAMPLE'}</span>
       </div>
+      <!-- Obstacle *features*, the same merged rows the accordion below expands — not the
+           solver's 100 m segment count, which a single 1 km wall would inflate to ten. The
+           wall-segment count lives on the capability card, next to the list it describes. -->
       <div class="flex items-center justify-center gap-1 py-1.5 px-1 rounded-xl bg-[#1b1c22] border border-[#2b2d33]">
-        <span class="text-[9px] font-bold uppercase text-on-mono-dim">{plan.powerLimitedCount ? `${plan.powerLimitedCount} WALL` : 'CAT HC'}</span>
+        <span class="text-[9px] font-bold uppercase text-on-mono-dim">{obstacles.length ? `${obstacles.length} OBS` : 'CAT HC'}</span>
       </div>
     </div>
   </section>
@@ -981,7 +1015,16 @@
         <span class="h-1.5 w-1.5 rounded-pill bg-white shrink-0 shadow-[0_0_8px_rgba(255,255,255,0.8)]"></span>
         <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-white/80">Ride capability</span>
       </span>
-      <span class="px-2 py-0.5 rounded-pill border border-white/20 bg-black/25 text-[10px] font-bold text-white text-tabular shrink-0">CP/W′</span>
+      <span class="flex items-center gap-1.5 shrink-0">
+        <!-- Wall segments (solver 100 m steps, not features — the features are the rows
+             below). Shown here rather than in the metric strip because it is evidence
+             *about this plan's verdict*, and its count deliberately differs from the
+             accordion's row count: one wall is many segments. -->
+        {#if plan.ok && plan.powerLimitedCount}
+          <span class="px-2 py-0.5 rounded-pill border border-white/15 bg-black/25 text-[10px] font-bold text-white/80 text-tabular">{plan.powerLimitedCount} WALL</span>
+        {/if}
+        <span class="px-2 py-0.5 rounded-pill border border-white/20 bg-black/25 text-[10px] font-bold text-white text-tabular">CP/W′</span>
+      </span>
     </header>
 
     <!-- cockpit split: the finding anchors left, the verdict pill answers on the right -->
@@ -1066,7 +1109,7 @@
         </p>
       {:else}
         <div class="flex flex-col divide-y divide-white/10">
-        {#each obstacles.slice(0, 8) as obs (obs.startKm)}
+        {#each (showAllObstacles ? obstacles : obstacles.slice(0, 8)) as obs (obs.startKm)}
           {@const st = obstacleStatus(obs.judgement)}
           <div>
             <button
@@ -1131,9 +1174,15 @@
         {/each}
         </div>
         {#if obstacles.length > 8}
-          <p class="text-[10px] font-bold uppercase tracking-[0.06em] text-white/60 pt-2 mt-1 border-t border-white/10">
-            +{obstacles.length - 8} more features on this route
-          </p>
+          <!-- The note this replaces said "+N more features" and promised nothing. A
+               toggle answers the question it raised, and collapsing returns to the
+               worst 8 rather than the first 8 — the list is sorted worst-first. -->
+          <button
+            class="mt-2 h-9 w-full rounded-pill border border-white/15 bg-black/25 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/75 active:scale-[0.99] transition-transform"
+            onclick={() => (showAllObstacles = !showAllObstacles)}
+          >
+            {showAllObstacles ? 'Show worst 8 only' : `Show all ${obstacles.length} features`}
+          </button>
         {/if}
       {/if}
     {/if}
