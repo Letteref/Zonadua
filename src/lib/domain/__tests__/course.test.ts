@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { PAUSE_GAP_SEC, decimateTrack, haversineM, parseCourse } from '../course';
+import { PAUSE_GAP_SEC, decimateTrack, elevationGainM, haversineM, parseCourse } from '../course';
 import { extractPower } from '../../data/streams';
 
 /** Minimal GPX with N points on a straight line, optional elevation and timestamps. */
@@ -237,6 +237,55 @@ ${Array.from({ length: 4 }, (_, i) => {
     // no-meter case so the honest empty state still fires.
     const plain = parseCourse(gpx({ points: 5, startAlt: 20 }), 'plain.gpx');
     expect(plain.points.every((p) => p.watts === undefined && p.hr === undefined && p.cad === undefined)).toBe(true);
+  });
+});
+
+describe('elevationGainM — smoothing + persistence', () => {
+  /** a series n samples long, `stepM` apart, alternating around 100 m by `noiseM` */
+  const noisy = (n: number, stepM: number, noiseM: number) => {
+    const alts: number[] = [];
+    const dists: number[] = [];
+    for (let i = 0; i < n; i++) {
+      dists.push(i * stepM);
+      alts.push(100 + (i % 2 === 0 ? noiseM : -noiseM));
+    }
+    return { alts, dists };
+  };
+
+  it('rejects oscillation below the persistence threshold instead of counting it as climbing', () => {
+    // ±0.4 m of barometer wobble every 10 m: raw summing calls this ~200 m of gain on
+    // a road that never left 100 m. Both stages must refuse it outright
+    const { alts, dists } = noisy(500, 10, 0.4);
+    expect(elevationGainM(alts, dists)).toBeLessThan(1);
+    // …and the old behaviour, both stages off, really did count it — this is the number
+    // the app used to store as the route's elevation gain
+    expect(elevationGainM(alts, dists, 0, 0)).toBeGreaterThan(150);
+  });
+
+  it('keeps a real ramp: smoothing may shave the ends, never flatten the climb', () => {
+    // 2 km at a constant 10% — 200 m of gain with no noise at all to remove
+    const alts: number[] = [];
+    const dists: number[] = [];
+    for (let i = 0; i <= 200; i++) {
+      dists.push(i * 10);
+      alts.push(50 + i);
+    }
+    const gain = elevationGainM(alts, dists);
+    // centred windows at the two ends average *into* the ramp, so each end loses about
+    // half a window of rise — accept that edge effect, reject any meaningful loss
+    expect(gain).toBeGreaterThan(185);
+    expect(gain).toBeLessThanOrEqual(200);
+  });
+
+  it('is a plain sum of positive deltas when both stages are switched off', () => {
+    const alts = [100, 103, 101, 106, 99];
+    const dists = [0, 50, 100, 150, 200];
+    expect(elevationGainM(alts, dists, 0, 0)).toBe(3 + 5);
+  });
+
+  it('reports zero gain when there are fewer than two altitude samples', () => {
+    expect(elevationGainM([], [], 50, 1)).toBe(0);
+    expect(elevationGainM([100], [0], 50, 1)).toBe(0);
   });
 });
 

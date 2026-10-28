@@ -51,10 +51,12 @@
    * The physics does not run on that resolution: `rawProfile` is the 600-point sample
    * (stride decimation), and a sample that skips three of every four trackpoints also
    * skips the micro-climbs between them — on a real 105 km GPX the sampled profile
-   * summed to 589 m against the file's own 694 m. The tile and the header accent used
-   * to read `plan.climbM`, so the same screen announced "694 m of climbing" in its
-   * import toast and printed 589 m in the panel below it. One route, one number: the
-   * gain is a property of the file, not of the solver's sampling grid.
+   * summed to 589 m against the file's own full-resolution gain. The tile and the header
+   * accent used to read `plan.climbM`, so the same screen announced the file's gain in
+   * its import toast and printed 589 m in the panel below it. One route, one number: the
+   * gain is a property of the file, not of the solver's sampling grid. (The file's own
+   * gain is itself smoothed at import — see `elevationGainM` in `domain/course.ts` — so
+   * it lands near the same route's Strava figure instead of summing sensor noise.)
    *
    * Null for the sample route, which has no file and falls back to the solver.
    */
