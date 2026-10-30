@@ -1029,17 +1029,21 @@
       </span>
     </header>
 
-    <!-- cockpit split: the finding anchors left, the verdict pill answers on the right -->
+    <!-- cockpit split: the finding anchors left, the verdict pill answers on the right.
+         The headline has to say what fails and where on its own: "Plan power gives out"
+         made a rider open this file to learn whose power, and "gives out" sat awkwardly
+         next to a 100% W′ readout directly beneath it. Each branch now states the same
+         fact the evidence line proves, in plain words, so the two never contradict. -->
     <div class="flex items-center justify-between gap-3 mb-4">
       <p class="min-w-0 pr-1 text-[14px] font-bold text-white leading-snug">
         {#if capability?.breakKm != null}
-          Plan power gives out at <span class="text-[#ffb4a8] text-tabular font-extrabold whitespace-nowrap">km {capability.breakKm.toFixed(1)}</span>
+          You can’t hold this plan at <span class="text-[#ffb4a8] text-tabular font-extrabold whitespace-nowrap">km {capability.breakKm.toFixed(1)}</span>.
         {:else if capability?.verdict === 'sustainable'}
-          Plan power holds to the finish.
+          You can hold this plan to the finish.
         {:else if capability?.verdict === 'unknown'}
-          Ride with power to judge this route.
+          This route can’t be judged without your CP/W′.
         {:else}
-          Not judged.
+          No plan to judge yet.
         {/if}
       </p>
       <span class="h-8 px-3 rounded-pill bg-black/40 border border-white/15 inline-flex items-center gap-1.5 shrink-0">
